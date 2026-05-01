@@ -14,10 +14,12 @@ Lines are aggregated across every US bookmaker the API returns:
 
 from __future__ import annotations
 
+import csv
 import os
 import unicodedata
 from collections import defaultdict
 from datetime import date
+from pathlib import Path
 
 import requests
 
@@ -218,3 +220,99 @@ def _match_by_name(name: str, lines: list[dict], key: str) -> dict | None:
         if _normalize_name(line.get(key, "")) == target:
             return line
     return None
+
+
+# ---------- Line preservation across same-day reruns ----------
+#
+# Books pull markets once games start, so a later run will fetch zero
+# lines and would otherwise wipe out the morning's capture. These helpers
+# load lines from a previously-written projection CSV and merge them with
+# the fresh fetch, with fresh winning on conflict (more current) and
+# preserved data filling the gaps.
+
+
+def load_previous_pitcher_lines(csv_path: Path) -> list[dict]:
+    """Reload pitcher lines from a previous projection CSV in the shape
+    fetch_pitcher_k_lines() returns. Empty list if file is missing."""
+    return _load_previous_lines(csv_path, csv_player_col="pitcher", line_name_field="pitcher_name")
+
+
+def load_previous_hitter_lines(csv_path: Path) -> list[dict]:
+    """Reload hitter lines from a previous projection CSV in the shape
+    fetch_hitter_k_lines() returns. Empty list if file is missing."""
+    return _load_previous_lines(csv_path, csv_player_col="hitter", line_name_field="hitter_name")
+
+
+def _load_previous_lines(
+    csv_path: Path,
+    csv_player_col: str,
+    line_name_field: str,
+) -> list[dict]:
+    if not csv_path.exists():
+        return []
+    out: list[dict] = []
+    with csv_path.open() as f:
+        for row in csv.DictReader(f):
+            n_books = _safe_int(row.get("n_books"))
+            # Old schema (pre-multi-book aggregation) didn't write n_books;
+            # treat any row with both prices as 1 book of preserved data.
+            if n_books is None:
+                if row.get("over_odds") and row.get("under_odds"):
+                    n_books = 1
+                else:
+                    continue
+            if n_books <= 0:
+                continue
+
+            line_val = _safe_float(row.get("line"))
+            over_odds = _safe_int(row.get("over_odds"))
+            under_odds = _safe_int(row.get("under_odds"))
+            if line_val is None or over_odds is None or under_odds is None:
+                continue
+
+            consensus = _safe_float(row.get("novig_over"))
+            out.append({
+                line_name_field: row.get(csv_player_col, ""),
+                "line": line_val,
+                "over_odds": over_odds,
+                "over_book": row.get("over_book") or "",
+                "under_odds": under_odds,
+                "under_book": row.get("under_book") or "",
+                "consensus_p_over": consensus if consensus is not None else 0.0,
+                "n_books": n_books,
+                "books": [],
+            })
+    return out
+
+
+def merge_lines(fresh: list[dict], preserved: list[dict], name_field: str) -> list[dict]:
+    """Merge two line lists: fresh wins on player-name conflict, preserved
+    fills gaps for players the fresh fetch didn't return."""
+    by_name: dict[str, dict] = {}
+    for entry in preserved:
+        name = entry.get(name_field)
+        if name:
+            by_name[_normalize_name(name)] = entry
+    for entry in fresh:
+        name = entry.get(name_field)
+        if name:
+            by_name[_normalize_name(name)] = entry
+    return list(by_name.values())
+
+
+def _safe_int(value) -> int | None:
+    if value in ("", None):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_float(value) -> float | None:
+    if value in ("", None):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

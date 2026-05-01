@@ -33,7 +33,13 @@ from .model import (
     project_pitcher_ks_v1,
     project_pitcher_ks_v2,
 )
-from .odds import fetch_pitcher_k_lines, has_api_key, match_line
+from .odds import (
+    fetch_pitcher_k_lines,
+    has_api_key,
+    load_previous_pitcher_lines,
+    match_line,
+    merge_lines,
+)
 from .web import generate as generate_dashboard
 
 load_dotenv(PROJECT_ROOT / ".env")
@@ -60,6 +66,18 @@ def run(target_date: date | None = None) -> None:
             "ODDS_API_KEY not set — skipping line comparison. "
             "See README for setup.\n"
         )
+
+    # Preserve any lines captured by an earlier run today. Books pull
+    # markets once games start, so a later run otherwise wipes the morning
+    # capture. Fresh fetches still win on overlap.
+    out_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}.csv"
+    preserved = load_previous_pitcher_lines(out_path)
+    if preserved:
+        merged = merge_lines(lines, preserved, "pitcher_name")
+        added = len(merged) - len(lines)
+        if added > 0:
+            print(f"Preserved {added} line(s) from earlier run today.\n")
+        lines = merged
 
     swstr_lookup = pitcher_swstr_lookup(season)
     if swstr_lookup:
@@ -174,7 +192,6 @@ def run(target_date: date | None = None) -> None:
     )
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}.csv"
     with out_path.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()

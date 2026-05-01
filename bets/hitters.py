@@ -34,7 +34,13 @@ from .model import (
     prob_over_poisson,
     project_hitter_ks_v0,
 )
-from .odds import fetch_hitter_k_lines, has_api_key, match_hitter_line
+from .odds import (
+    fetch_hitter_k_lines,
+    has_api_key,
+    load_previous_hitter_lines,
+    match_hitter_line,
+    merge_lines,
+)
 
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -60,6 +66,16 @@ def run(target_date: date | None = None) -> None:
             "ODDS_API_KEY not set — skipping line comparison. "
             "See README for setup.\n"
         )
+
+    # Preserve any lines captured by an earlier run today.
+    out_path = OUTPUT_DIR / f"hitter_ks_{target_date.isoformat()}.csv"
+    preserved = load_previous_hitter_lines(out_path)
+    if preserved:
+        merged = merge_lines(lines, preserved, "hitter_name")
+        added = len(merged) - len(lines)
+        if added > 0:
+            print(f"Preserved {added} line(s) from earlier run today.\n")
+        lines = merged
 
     # Collect every batter ID across confirmed lineups, then batch-fetch
     # their hitting stats in one MLB API call.
@@ -189,7 +205,6 @@ def run(target_date: date | None = None) -> None:
     )
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTPUT_DIR / f"hitter_ks_{target_date.isoformat()}.csv"
     with out_path.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
