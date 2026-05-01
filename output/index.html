@@ -258,16 +258,9 @@
     <h1>MLB K Prop Projections</h1>
     <div class="date">Thursday, April 30, 2026</div>
   </div>
-  <div class="actions">
-    <form action="/refresh" method="post" onsubmit="document.body.classList.add('loading');">
-      <button type="submit" class="primary">Refresh Lines</button>
-    </form>
-    <form action="/settle" method="post" onsubmit="document.body.classList.add('loading');">
-      <button type="submit">Settle Yesterday</button>
-    </form>
-  </div>
+  <div class='actions static-meta'><span class='last-refresh'>Auto-refreshed daily &middot; <strong>Apr 30, 2026 10:06 PM ET</strong></span></div>
   <nav class="tabs">
-    <button data-tab="pitchers" type="button">Pitcher Ks <span class='count'>(2 focus / 1 verify)</span></button>
+    <button data-tab="pitchers" type="button">Pitcher Ks <span class='count'>(0 focus / 0 verify)</span></button>
     <button data-tab="hitters" type="button">Hitter Ks <span class='count'>(0 focus / 0 verify)</span></button>
   </nav>
 </header>
@@ -309,58 +302,22 @@
       </tr>
     </thead>
     <tbody>
-    <tr class="row-focus dir-under">
-      <td class="player">Bailey Ober</td>
-      <td>Toronto Blue Jays</td>
-      <td class="num">3.68</td>
-      <td class="num">3.5</td>
-      <td class="num" title="Best price at betmgm">140</td>
-      <td class="num" title="Best price at draftkings">123</td>
-      <td class="num">0.501</td>
-      <td class="num" title="Median across 7 books">0.575</td>
-      <td class="num edge under">-0.074</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-over">
-      <td class="player">Kevin Gausman</td>
-      <td>Minnesota Twins</td>
-      <td class="num">5.96</td>
-      <td class="num">5.5</td>
-      <td class="num" title="Best price at betmgm">105</td>
-      <td class="num" title="Best price at betrivers">175</td>
-      <td class="num">0.547</td>
-      <td class="num" title="Median across 7 books">0.484</td>
-      <td class="num edge over">+0.064</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span></td>
-    </tr>
-    <tr class="row-investigate dir-under">
-      <td class="player">Lance McCullers Jr.</td>
-      <td>Baltimore Orioles</td>
-      <td class="num">4.36</td>
-      <td class="num">5.5</td>
-      <td class="num" title="Best price at draftkings">100</td>
-      <td class="num" title="Best price at betmgm">110</td>
-      <td class="num">0.274</td>
-      <td class="num" title="Median across 2 books">0.513</td>
-      <td class="num edge under">-0.239</td>
-      <td class="badge"><span class="tag tag-investigate tag-dir-under">Verify <strong>UNDER</strong>?</span></td>
-    </tr>
-    <tr class="row-noise dir-under">
-      <td class="player">Adrian Houser</td>
-      <td>Philadelphia Phillies</td>
-      <td class="num">2.84</td>
-      <td class="num">3.5</td>
-      <td class="num" title="Best price at draftkings">-102</td>
-      <td class="num" title="Best price at betonlineag">103</td>
-      <td class="num">0.316</td>
-      <td class="num" title="Median across 6 books">0.508</td>
-      <td class="num edge under">-0.192</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-under">—</span></td>
+    <tr class="row-noline">
+      <td class="player">Tim Mayza</td>
+      <td>San Francisco Giants</td>
+      <td class="num">10.05</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
       <td class="player">Peter Lambert</td>
       <td>Baltimore Orioles</td>
-      <td class="num">7.66</td>
+      <td class="num">7.79</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -372,7 +329,7 @@
     <tr class="row-noline">
       <td class="player">Cristopher Sánchez</td>
       <td>San Francisco Giants</td>
-      <td class="num">7.13</td>
+      <td class="num">7.19</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -406,9 +363,33 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
+      <td class="player">Kevin Gausman</td>
+      <td>Minnesota Twins</td>
+      <td class="num">5.36</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
       <td class="player">Michael Soroka</td>
       <td>Milwaukee Brewers</td>
       <td class="num">5.26</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
+      <td class="player">Lance McCullers Jr.</td>
+      <td>Baltimore Orioles</td>
+      <td class="num">5.25</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -430,18 +411,6 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Logan Webb</td>
-      <td>Philadelphia Phillies</td>
-      <td class="num">4.98</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
       <td class="player">Miles Mikolas</td>
       <td>New York Mets</td>
       <td class="num">4.9</td>
@@ -454,9 +423,21 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
+      <td class="player">Logan Webb</td>
+      <td>Philadelphia Phillies</td>
+      <td class="num">4.87</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
       <td class="player">Noah Cameron</td>
       <td>Athletics</td>
-      <td class="num">4.66</td>
+      <td class="num">4.61</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -468,19 +449,7 @@
     <tr class="row-noline">
       <td class="player">Jeffrey Springs</td>
       <td>Kansas City Royals</td>
-      <td class="num">4.49</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Tim Mayza</td>
-      <td>San Francisco Giants</td>
-      <td class="num">4.48</td>
+      <td class="num">4.37</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -550,9 +519,33 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
+      <td class="player">Bailey Ober</td>
+      <td>Toronto Blue Jays</td>
+      <td class="num">3.41</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
       <td class="player">Brandon Young</td>
       <td>Houston Astros</td>
-      <td class="num">2.62</td>
+      <td class="num">3.26</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
+      <td class="player">Adrian Houser</td>
+      <td>Philadelphia Phillies</td>
+      <td class="num">2.7</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -564,7 +557,7 @@
     <tr class="row-noline">
       <td class="player">Chris Bassitt</td>
       <td>Houston Astros</td>
-      <td class="num">2.59</td>
+      <td class="num">2.55</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -909,20 +902,6 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Heliot Ramos</td>
-      <td class="num slot">1</td>
-      <td>San Francisco Giants</td>
-      <td>vs Cristopher Sánchez</td>
-      <td class="num">1.61</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
       <td class="player">Rafael Devers</td>
       <td class="num slot">5</td>
       <td>San Francisco Giants</td>
@@ -941,6 +920,20 @@
       <td class="num slot">1</td>
       <td>Pittsburgh Pirates</td>
       <td>vs Hunter Dobbins</td>
+      <td class="num">1.59</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
+      <td class="player">Heliot Ramos</td>
+      <td class="num slot">1</td>
+      <td>San Francisco Giants</td>
+      <td>vs Cristopher Sánchez</td>
       <td class="num">1.59</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1049,11 +1042,11 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Heliot Ramos</td>
-      <td class="num slot">1</td>
+      <td class="player">Rafael Devers</td>
+      <td class="num slot">5</td>
       <td>San Francisco Giants</td>
       <td>vs Tim Mayza</td>
-      <td class="num">1.42</td>
+      <td class="num">1.41</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1063,11 +1056,11 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Rafael Devers</td>
-      <td class="num slot">5</td>
+      <td class="player">Heliot Ramos</td>
+      <td class="num slot">1</td>
       <td>San Francisco Giants</td>
       <td>vs Tim Mayza</td>
-      <td class="num">1.41</td>
+      <td class="num">1.4</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1161,11 +1154,11 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Byron Buxton</td>
-      <td class="num slot">1</td>
-      <td>Minnesota Twins</td>
-      <td>vs Kevin Gausman</td>
-      <td class="num">1.23</td>
+      <td class="player">Weston Wilson</td>
+      <td class="num slot">8</td>
+      <td>Baltimore Orioles</td>
+      <td>vs Lance McCullers Jr.</td>
+      <td class="num">1.22</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1175,10 +1168,10 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Weston Wilson</td>
-      <td class="num slot">8</td>
-      <td>Baltimore Orioles</td>
-      <td>vs Lance McCullers Jr.</td>
+      <td class="player">Matt Chapman</td>
+      <td class="num slot">2</td>
+      <td>San Francisco Giants</td>
+      <td>vs Cristopher Sánchez</td>
       <td class="num">1.22</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1245,11 +1238,11 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Matt Chapman</td>
-      <td class="num slot">2</td>
-      <td>San Francisco Giants</td>
-      <td>vs Cristopher Sánchez</td>
-      <td class="num">1.17</td>
+      <td class="player">Byron Buxton</td>
+      <td class="num slot">1</td>
+      <td>Minnesota Twins</td>
+      <td>vs Kevin Gausman</td>
+      <td class="num">1.18</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1319,34 +1312,6 @@
       <td class="num slot">3</td>
       <td>Arizona Diamondbacks</td>
       <td>vs Brandon Woodruff</td>
-      <td class="num">1.15</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Kazuma Okamoto</td>
-      <td class="num slot">4</td>
-      <td>Toronto Blue Jays</td>
-      <td>vs Bailey Ober</td>
-      <td class="num">1.15</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Brandon Valenzuela</td>
-      <td class="num slot">9</td>
-      <td>Toronto Blue Jays</td>
-      <td>vs Bailey Ober</td>
       <td class="num">1.15</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1497,6 +1462,34 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
+      <td class="player">Kazuma Okamoto</td>
+      <td class="num slot">4</td>
+      <td>Toronto Blue Jays</td>
+      <td>vs Bailey Ober</td>
+      <td class="num">1.09</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
+      <td class="player">Brandon Valenzuela</td>
+      <td class="num slot">9</td>
+      <td>Toronto Blue Jays</td>
+      <td>vs Bailey Ober</td>
+      <td class="num">1.09</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
       <td class="player">Spencer Torkelson</td>
       <td class="num slot">5</td>
       <td>Detroit Tigers</td>
@@ -1553,10 +1546,10 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Kyle Schwarber</td>
+      <td class="player">Matt Chapman</td>
       <td class="num slot">2</td>
-      <td>Philadelphia Phillies</td>
-      <td>vs Logan Webb</td>
+      <td>San Francisco Giants</td>
+      <td>vs Tim Mayza</td>
       <td class="num">1.07</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1572,6 +1565,20 @@
       <td>Kansas City Royals</td>
       <td>vs Jeffrey Springs</td>
       <td class="num">1.07</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
+      <td class="player">Kyle Schwarber</td>
+      <td class="num slot">2</td>
+      <td>Philadelphia Phillies</td>
+      <td>vs Logan Webb</td>
+      <td class="num">1.06</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1628,20 +1635,6 @@
       <td>Baltimore Orioles</td>
       <td>vs Lance McCullers Jr.</td>
       <td class="num">1.04</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Matt Chapman</td>
-      <td class="num slot">2</td>
-      <td>San Francisco Giants</td>
-      <td>vs Tim Mayza</td>
-      <td class="num">1.03</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1763,20 +1756,6 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Adolis García</td>
-      <td class="num slot">4</td>
-      <td>Philadelphia Phillies</td>
-      <td>vs Logan Webb</td>
-      <td class="num">0.95</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
       <td class="player">Jake Bauers</td>
       <td class="num slot">4</td>
       <td>Milwaukee Brewers</td>
@@ -1791,11 +1770,11 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Alec Burleson</td>
-      <td class="num slot">3</td>
-      <td>St. Louis Cardinals</td>
-      <td>vs Paul Skenes</td>
-      <td class="num">0.93</td>
+      <td class="player">Adolis García</td>
+      <td class="num slot">4</td>
+      <td>Philadelphia Phillies</td>
+      <td>vs Logan Webb</td>
+      <td class="num">0.94</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1805,10 +1784,10 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">George Springer</td>
-      <td class="num slot">1</td>
-      <td>Toronto Blue Jays</td>
-      <td>vs Bailey Ober</td>
+      <td class="player">Alec Burleson</td>
+      <td class="num slot">3</td>
+      <td>St. Louis Cardinals</td>
+      <td>vs Paul Skenes</td>
       <td class="num">0.93</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -1880,6 +1859,20 @@
       <td>Washington Nationals</td>
       <td>vs Freddy Peralta</td>
       <td class="num">0.91</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
+      <td class="player">George Springer</td>
+      <td class="num slot">1</td>
+      <td>Toronto Blue Jays</td>
+      <td>vs Bailey Ober</td>
+      <td class="num">0.89</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -2043,20 +2036,6 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Trea Turner</td>
-      <td class="num slot">1</td>
-      <td>Philadelphia Phillies</td>
-      <td>vs Logan Webb</td>
-      <td class="num">0.81</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
       <td class="player">Matt McLain</td>
       <td class="num slot">2</td>
       <td>Cincinnati Reds</td>
@@ -2099,6 +2078,20 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
+      <td class="player">Trea Turner</td>
+      <td class="num slot">1</td>
+      <td>Philadelphia Phillies</td>
+      <td>vs Logan Webb</td>
+      <td class="num">0.8</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
       <td class="player">Tyler Stephenson</td>
       <td class="num slot">6</td>
       <td>Cincinnati Reds</td>
@@ -2113,10 +2106,10 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Yohendrick Pinango</td>
-      <td class="num slot">7</td>
-      <td>Toronto Blue Jays</td>
-      <td>vs Bailey Ober</td>
+      <td class="player">Trevor Larnach</td>
+      <td class="num slot">2</td>
+      <td>Minnesota Twins</td>
+      <td>vs Kevin Gausman</td>
       <td class="num">0.8</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -2169,24 +2162,10 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Daulton Varsho</td>
-      <td class="num slot">5</td>
+      <td class="player">Yohendrick Pinango</td>
+      <td class="num slot">7</td>
       <td>Toronto Blue Jays</td>
       <td>vs Bailey Ober</td>
-      <td class="num">0.78</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Trevor Larnach</td>
-      <td class="num slot">2</td>
-      <td>Minnesota Twins</td>
-      <td>vs Kevin Gausman</td>
       <td class="num">0.78</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -2239,20 +2218,6 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Brandon Marsh</td>
-      <td class="num slot">5</td>
-      <td>Philadelphia Phillies</td>
-      <td>vs Logan Webb</td>
-      <td class="num">0.75</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
       <td class="player">Shea Langeliers</td>
       <td class="num slot">2</td>
       <td>Athletics</td>
@@ -2281,8 +2246,8 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Bryce Harper</td>
-      <td class="num slot">3</td>
+      <td class="player">Brandon Marsh</td>
+      <td class="num slot">5</td>
       <td>Philadelphia Phillies</td>
       <td>vs Logan Webb</td>
       <td class="num">0.74</td>
@@ -2337,6 +2302,20 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
+      <td class="player">Bryce Harper</td>
+      <td class="num slot">3</td>
+      <td>Philadelphia Phillies</td>
+      <td>vs Logan Webb</td>
+      <td class="num">0.73</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
       <td class="player">Will Benson</td>
       <td class="num slot">9</td>
       <td>Cincinnati Reds</td>
@@ -2365,11 +2344,11 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Colt Keith</td>
-      <td class="num slot">3</td>
-      <td>Detroit Tigers</td>
-      <td>vs Bryce Elder</td>
-      <td class="num">0.71</td>
+      <td class="player">Daulton Varsho</td>
+      <td class="num slot">5</td>
+      <td>Toronto Blue Jays</td>
+      <td>vs Bailey Ober</td>
+      <td class="num">0.73</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -2379,10 +2358,10 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Casey Schmitt</td>
-      <td class="num slot">4</td>
-      <td>San Francisco Giants</td>
-      <td>vs Tim Mayza</td>
+      <td class="player">Colt Keith</td>
+      <td class="num slot">3</td>
+      <td>Detroit Tigers</td>
+      <td>vs Bryce Elder</td>
       <td class="num">0.71</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -2407,11 +2386,25 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
+      <td class="player">Casey Schmitt</td>
+      <td class="num slot">4</td>
+      <td>San Francisco Giants</td>
+      <td>vs Tim Mayza</td>
+      <td class="num">0.7</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
       <td class="player">Bryson Stott</td>
       <td class="num slot">6</td>
       <td>Philadelphia Phillies</td>
       <td>vs Logan Webb</td>
-      <td class="num">0.7</td>
+      <td class="num">0.69</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -2519,34 +2512,6 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Jesús Sánchez</td>
-      <td class="num slot">2</td>
-      <td>Toronto Blue Jays</td>
-      <td>vs Bailey Ober</td>
-      <td class="num">0.67</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Austin Martin</td>
-      <td class="num slot">5</td>
-      <td>Minnesota Twins</td>
-      <td>vs Kevin Gausman</td>
-      <td class="num">0.67</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
       <td class="player">Jordan Beck</td>
       <td class="num slot">1</td>
       <td>Colorado Rockies</td>
@@ -2561,8 +2526,8 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Luke Keaschall</td>
-      <td class="num slot">7</td>
+      <td class="player">Brooks Lee</td>
+      <td class="num slot">8</td>
       <td>Minnesota Twins</td>
       <td>vs Kevin Gausman</td>
       <td class="num">0.66</td>
@@ -2589,8 +2554,8 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Brooks Lee</td>
-      <td class="num slot">8</td>
+      <td class="player">Ryan Jeffers</td>
+      <td class="num slot">3</td>
       <td>Minnesota Twins</td>
       <td>vs Kevin Gausman</td>
       <td class="num">0.65</td>
@@ -2631,6 +2596,48 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
+      <td class="player">Jesús Sánchez</td>
+      <td class="num slot">2</td>
+      <td>Toronto Blue Jays</td>
+      <td>vs Bailey Ober</td>
+      <td class="num">0.64</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
+      <td class="player">Austin Martin</td>
+      <td class="num slot">5</td>
+      <td>Minnesota Twins</td>
+      <td>vs Kevin Gausman</td>
+      <td class="num">0.64</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
+      <td class="player">Luke Keaschall</td>
+      <td class="num slot">7</td>
+      <td>Minnesota Twins</td>
+      <td>vs Kevin Gausman</td>
+      <td class="num">0.64</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
       <td class="player">Spencer Steer</td>
       <td class="num slot">8</td>
       <td>Cincinnati Reds</td>
@@ -2649,34 +2656,6 @@
       <td class="num slot">7</td>
       <td>New York Mets</td>
       <td>vs Miles Mikolas</td>
-      <td class="num">0.63</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Ryan Jeffers</td>
-      <td class="num slot">3</td>
-      <td>Minnesota Twins</td>
-      <td>vs Kevin Gausman</td>
-      <td class="num">0.63</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Josh Bell</td>
-      <td class="num slot">4</td>
-      <td>Minnesota Twins</td>
-      <td>vs Kevin Gausman</td>
       <td class="num">0.63</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -2729,11 +2708,11 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Kyle Schwarber</td>
-      <td class="num slot">2</td>
-      <td>Philadelphia Phillies</td>
-      <td>vs Adrian Houser</td>
-      <td class="num">0.59</td>
+      <td class="player">Josh Bell</td>
+      <td class="num slot">4</td>
+      <td>Minnesota Twins</td>
+      <td>vs Kevin Gausman</td>
+      <td class="num">0.6</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -2771,6 +2750,20 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
+      <td class="player">Kyle Schwarber</td>
+      <td class="num slot">2</td>
+      <td>Philadelphia Phillies</td>
+      <td>vs Adrian Houser</td>
+      <td class="num">0.58</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
       <td class="player">Marcus Semien</td>
       <td class="num slot">6</td>
       <td>New York Mets</td>
@@ -2789,20 +2782,6 @@
       <td class="num slot">6</td>
       <td>Arizona Diamondbacks</td>
       <td>vs Brandon Woodruff</td>
-      <td class="num">0.58</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Andrés Giménez</td>
-      <td class="num slot">8</td>
-      <td>Toronto Blue Jays</td>
-      <td>vs Bailey Ober</td>
       <td class="num">0.58</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -2845,6 +2824,20 @@
       <td class="num slot">4</td>
       <td>Cincinnati Reds</td>
       <td>vs Michael Lorenzen</td>
+      <td class="num">0.56</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
+      <td class="player">Andrés Giménez</td>
+      <td class="num slot">8</td>
+      <td>Toronto Blue Jays</td>
+      <td>vs Bailey Ober</td>
       <td class="num">0.56</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -2939,20 +2932,6 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Adolis García</td>
-      <td class="num slot">4</td>
-      <td>Philadelphia Phillies</td>
-      <td>vs Adrian Houser</td>
-      <td class="num">0.52</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
       <td class="player">Troy Johnston</td>
       <td class="num slot">9</td>
       <td>Colorado Rockies</td>
@@ -2967,11 +2946,11 @@
       <td class="badge"><span class="tag tag-noline">No line</span></td>
     </tr>
     <tr class="row-noline">
-      <td class="player">Vladimir Guerrero Jr.</td>
-      <td class="num slot">3</td>
-      <td>Toronto Blue Jays</td>
-      <td>vs Bailey Ober</td>
-      <td class="num">0.52</td>
+      <td class="player">Adolis García</td>
+      <td class="num slot">4</td>
+      <td>Philadelphia Phillies</td>
+      <td>vs Adrian Houser</td>
+      <td class="num">0.51</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -3041,6 +3020,20 @@
       <td class="num slot">6</td>
       <td>Pittsburgh Pirates</td>
       <td>vs Hunter Dobbins</td>
+      <td class="num">0.49</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td class="num" title="Median across 0 books">—</td>
+      <td class="num edge ">—</td>
+      <td class="badge"><span class="tag tag-noline">No line</span></td>
+    </tr>
+    <tr class="row-noline">
+      <td class="player">Vladimir Guerrero Jr.</td>
+      <td class="num slot">3</td>
+      <td>Toronto Blue Jays</td>
+      <td>vs Bailey Ober</td>
       <td class="num">0.49</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -3489,7 +3482,7 @@
       <td class="num slot">6</td>
       <td>Toronto Blue Jays</td>
       <td>vs Bailey Ober</td>
-      <td class="num">0.3</td>
+      <td class="num">0.28</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -3573,7 +3566,7 @@
       <td class="num slot">9</td>
       <td>Philadelphia Phillies</td>
       <td>vs Adrian Houser</td>
-      <td class="num">0.18</td>
+      <td class="num">0.17</td>
       <td class="num">—</td>
       <td class="num">—</td>
       <td class="num">—</td>
@@ -3968,9 +3961,9 @@
   </div>
 </main>
 <footer>
-  Generated 2026-04-30 20:21 &middot;
-  Pitchers: 2 focus / 1 verify /
-  1 noise / 18 no-line &middot;
+  Generated 2026-04-30 22:06 &middot;
+  Pitchers: 0 focus / 0 verify /
+  0 noise / 22 no-line &middot;
   Hitters: 0 focus / 0 verify /
   0 noise / 198 no-line
 </footer>
