@@ -1,6 +1,6 @@
 # DFS Intelligence System
 
-A data pipeline and modeling system for identifying +EV prop bets on daily fantasy sites (PrizePicks, Underdog), covering **MLB pitcher strikeouts** and **MLB hitter strikeouts**. The dashboard surfaces both as separate tabs.
+A data pipeline and modeling system for identifying +EV prop bets on daily fantasy sites (PrizePicks, Underdog). Currently active: **MLB pitcher strikeouts**. The hitter strikeouts pipeline exists but is paused while the pitcher model accumulates calibration data — see [Re-enabling hitters](#re-enabling-hitters).
 
 ## Daily Routine
 
@@ -73,13 +73,13 @@ bets/
 |---|---|---|
 | `python -m bets.server` | Once per session — runs in foreground | Serves dashboard at http://127.0.0.1:8000 |
 | `python -m bets.main` | Every morning (CLI flow) | `output/pitcher_ks_<today>.csv`, `output/index.html` |
-| `python -m bets.hitters` | Every morning, after lineups post (~2–3 hrs before first pitch) | `output/hitter_ks_<today>.csv` |
-| `python -m bets.settle` | Every morning (settles yesterday — both pitchers and hitters) | `output/{pitcher,hitter}_ks_<yesterday>_settled.csv` |
-| `python -m bets.settle 2026-04-30` | Settle a specific past date | `output/{pitcher,hitter}_ks_2026-04-30_settled.csv` |
+| `python -m bets.hitters` | *Paused* — manual only, costs Odds API quota | `output/hitter_ks_<today>.csv` |
+| `python -m bets.settle` | Every morning (settles yesterday — pitcher; hitter no-ops while paused) | `output/pitcher_ks_<yesterday>_settled.csv` |
+| `python -m bets.settle 2026-04-30` | Settle a specific past date | `output/pitcher_ks_2026-04-30_settled.csv` |
 | `python -m bets.analyze` | Periodic review | (prints to stdout) |
 | `python -m bets.web` | Regenerate dashboard without re-running projections | `output/index.html` |
 
-The Flask server's **Refresh Lines** button runs both pitcher and hitter pipelines back-to-back; **Settle Yesterday** settles both. The dashboard has two tabs: `#pitchers` (default) and `#hitters`.
+The Flask server's **Re-run pipeline** button runs the pitcher pipeline (hitter pipeline call is currently commented out — see `bets/server.py`). The dashboard renders a single Pitcher Ks view; the Hitter Ks tab returns when `SHOW_HITTERS = True` in `bets/web.py`.
 
 ## Local Development
 
@@ -179,7 +179,7 @@ That's it. The model code, settle path, and CSV format are all preserved untouch
 - ✅ The Odds API integration with multi-book aggregation: median line, best odds per side with sourcing book, median no-vig P(over)
 - ✅ Line preservation across same-day reruns (`load_previous_*_lines` + `merge_lines`) so a late run doesn't wipe morning lines when books pull markets
 - ✅ Calibration harness: settle vs actual outcomes, MAE / RMSE / bias for v0 / v1 / v2 head-to-head, P(over) buckets, edge-threshold ROI
-- ✅ Tabbed HTML dashboard (pitchers / hitters) with focus highlighting, OVER / UNDER recommendations, Recent Results section per tab; tab state in URL hash
+- ✅ HTML dashboard with focus highlighting, OVER / UNDER recommendations, Recent Results section. Currently single-tab (Pitcher Ks); tabbed layout returns when hitters are re-enabled.
 - ✅ Local Flask server (port 8000) with Refresh Lines / Settle Yesterday buttons — dev/test only
 - ✅ Public Netlify deploy at https://winningbets.netlify.app/. **Client-side rendering**: thin HTML+JS shell on Netlify, browser fetches CSVs from raw.githubusercontent.com → CSV updates do NOT trigger Netlify redeploys, so daily cron commits are free. Manual **Refresh data** button re-fetches at any time.
 
