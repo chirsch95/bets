@@ -66,11 +66,12 @@ def refresh():
         run_projections()
     except Exception as e:  # noqa: BLE001
         errors.append(f"pitcher refresh failed: {e}")
-    try:
-        run_hitter_projections()
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"hitter refresh failed: {e}")
-    # Always regenerate so partial success still updates the dashboard.
+    # Hitter pipeline paused — re-enable by un-commenting once the
+    # pitcher model is validated and you've flipped SHOW_HITTERS in web.py.
+    # try:
+    #     run_hitter_projections()
+    # except Exception as e:  # noqa: BLE001
+    #     errors.append(f"hitter refresh failed: {e}")
     try:
         generate_dashboard(_today())
     except Exception as e:  # noqa: BLE001

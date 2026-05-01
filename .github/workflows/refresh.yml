@@ -51,9 +51,12 @@ jobs:
       - name: Project today's pitchers
         run: python -m bets.main
 
-      - name: Project today's hitters
-        run: python -m bets.hitters
-        continue-on-error: true   # lineups may not be posted yet
+      # Hitter pipeline paused 2026-05-01 to conserve Odds API quota
+      # while pitcher Ks are validated. Re-enable by uncommenting and
+      # flipping SHOW_HITTERS in bets/web.py.
+      # - name: Project today's hitters
+      #   run: python -m bets.hitters
+      #   continue-on-error: true
 
       - name: Regenerate dashboard
         run: python -m bets.web

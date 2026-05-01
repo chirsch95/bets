@@ -29,6 +29,14 @@ from .config import OUTPUT_DIR
 REPO = "chirsch95/bets"
 BRANCH = "main"
 
+# Hitter-Ks pipeline is paused (2026-05-01) to conserve Odds API quota
+# while the pitcher model accumulates calibration data. Flip to True once
+# pitcher Ks are validated and you're ready to re-enable. The Python
+# pipeline code (bets/hitters.py, model.py:project_hitter_ks_v0,
+# settle.py:settle_hitters_date) is kept intact — flipping this back on
+# plus re-adding the workflow step + server route is all you need.
+SHOW_HITTERS = False
+
 # Edge bands. Mirror values used by the JS classifier — keep in sync.
 FOCUS_EDGE_MIN = 0.05
 FOCUS_EDGE_MAX = 0.15
@@ -294,12 +302,14 @@ def _render_js() -> str:
     Results. Mirrors the per-row classification + sort logic that used to
     live in Python."""
     raw_base = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/output/"
+    show_hitters_js = "true" if SHOW_HITTERS else "false"
     return f"""
 (() => {{
   const FOCUS_MIN = {FOCUS_EDGE_MIN};
   const FOCUS_MAX = {FOCUS_EDGE_MAX};
   const INVESTIGATE = {INVESTIGATE_EDGE};
   const RAW_BASE = "{raw_base}";
+  const SHOW_HITTERS = {show_hitters_js};
 
   function baseUrl() {{
     const h = location.hostname;
@@ -744,22 +754,34 @@ def _render_js() -> str:
     document.body.classList.add("loading");
 
     try {{
-      const [pSlate, hSlate, pSettled, hSettled] = await Promise.all([
+      const fetches = [
         fetchTodaysCSV("pitcher_ks"),
-        fetchTodaysCSV("hitter_ks"),
         fetchMostRecentSettled("pitcher_ks"),
-        fetchMostRecentSettled("hitter_ks"),
-      ]);
+      ];
+      if (SHOW_HITTERS) {{
+        fetches.push(
+          fetchTodaysCSV("hitter_ks"),
+          fetchMostRecentSettled("hitter_ks"),
+        );
+      }}
+      const results = await Promise.all(fetches);
+      const [pSlate, pSettled, hSlate, hSettled] = results;
 
       const pTab = renderPitcherTab({{ slate: pSlate, settled: pSettled }});
-      const hTab = renderHitterTab({{ slate: hSlate, settled: hSettled }});
-
-      document.getElementById("pitcher-panel").innerHTML = pTab.html;
-      document.getElementById("hitter-panel").innerHTML = hTab.html;
-      document.getElementById("pitcher-counts").textContent =
+      const pPanel = document.getElementById("pitcher-panel");
+      if (pPanel) pPanel.innerHTML = pTab.html;
+      const pCounts = document.getElementById("pitcher-counts");
+      if (pCounts) pCounts.textContent =
         `(${{pTab.cnt.focus}} focus / ${{pTab.cnt.investigate}} verify)`;
-      document.getElementById("hitter-counts").textContent =
-        `(${{hTab.cnt.focus}} focus / ${{hTab.cnt.investigate}} verify)`;
+
+      if (SHOW_HITTERS && hSlate) {{
+        const hTab = renderHitterTab({{ slate: hSlate, settled: hSettled }});
+        const hPanel = document.getElementById("hitter-panel");
+        if (hPanel) hPanel.innerHTML = hTab.html;
+        const hCounts = document.getElementById("hitter-counts");
+        if (hCounts) hCounts.textContent =
+          `(${{hTab.cnt.focus}} focus / ${{hTab.cnt.investigate}} verify)`;
+      }}
 
       const stamp = new Date().toLocaleString("en-US", {{
         timeZone: "America/Chicago",
@@ -804,8 +826,9 @@ def _render_js() -> str:
     document.querySelectorAll(".tabs button").forEach(b => {{
       b.addEventListener("click", () => showTab(b.dataset.tab));
     }});
+    const allowed = SHOW_HITTERS ? ["pitchers", "hitters"] : ["pitchers"];
     const initial = (location.hash || "#pitchers").slice(1);
-    showTab(["pitchers", "hitters"].includes(initial) ? initial : "pitchers");
+    showTab(allowed.includes(initial) ? initial : "pitchers");
 
     const btn = document.getElementById("refresh-btn");
     if (btn) btn.addEventListener("click", loadAndRender);
@@ -822,6 +845,23 @@ def generate(target_date: date | None = None) -> Path | None:
 
     actions_block = _action_buttons_html(static_mode)
     js = _render_js()
+
+    if SHOW_HITTERS:
+        tabs_nav = """    <button data-tab="pitchers" type="button">Pitcher Ks <span class="count" id="pitcher-counts"></span></button>
+    <button data-tab="hitters" type="button">Hitter Ks <span class="count" id="hitter-counts"></span></button>"""
+        panels = """  <div class="tab-panel" data-tab="pitchers" id="pitcher-panel">
+    <p class="muted">Loading…</p>
+  </div>
+  <div class="tab-panel" data-tab="hitters" id="hitter-panel">
+    <p class="muted">Loading…</p>
+  </div>"""
+    else:
+        # Single-tab layout. Keep the same DOM IDs so JS can still find
+        # them; just no tab nav and no hitter panel.
+        tabs_nav = ""
+        panels = """  <div class="tab-panel active" data-tab="pitchers" id="pitcher-panel">
+    <p class="muted">Loading…</p>
+  </div>"""
 
     # Note: NO date or timestamp in the shell — those are rendered client-
     # side by JS so the shell stays byte-identical across cron regens.
@@ -842,18 +882,10 @@ def generate(target_date: date | None = None) -> Path | None:
     <div class="date" id="header-date"></div>
   </div>
   {actions_block}
-  <nav class="tabs">
-    <button data-tab="pitchers" type="button">Pitcher Ks <span class="count" id="pitcher-counts"></span></button>
-    <button data-tab="hitters" type="button">Hitter Ks <span class="count" id="hitter-counts"></span></button>
-  </nav>
+  {f'<nav class="tabs">{chr(10)}{tabs_nav}{chr(10)}  </nav>' if SHOW_HITTERS else ''}
 </header>
 <main>
-  <div class="tab-panel" data-tab="pitchers" id="pitcher-panel">
-    <p class="muted">Loading…</p>
-  </div>
-  <div class="tab-panel" data-tab="hitters" id="hitter-panel">
-    <p class="muted">Loading…</p>
-  </div>
+{panels}
 </main>
 <footer>
   Data fetched live from {REPO}/output on each load &middot;

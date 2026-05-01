@@ -234,6 +234,7 @@
   const FOCUS_MAX = 0.15;
   const INVESTIGATE = 0.2;
   const RAW_BASE = "https://raw.githubusercontent.com/chirsch95/bets/main/output/";
+  const SHOW_HITTERS = false;
 
   function baseUrl() {
     const h = location.hostname;
@@ -678,22 +679,34 @@
     document.body.classList.add("loading");
 
     try {
-      const [pSlate, hSlate, pSettled, hSettled] = await Promise.all([
+      const fetches = [
         fetchTodaysCSV("pitcher_ks"),
-        fetchTodaysCSV("hitter_ks"),
         fetchMostRecentSettled("pitcher_ks"),
-        fetchMostRecentSettled("hitter_ks"),
-      ]);
+      ];
+      if (SHOW_HITTERS) {
+        fetches.push(
+          fetchTodaysCSV("hitter_ks"),
+          fetchMostRecentSettled("hitter_ks"),
+        );
+      }
+      const results = await Promise.all(fetches);
+      const [pSlate, pSettled, hSlate, hSettled] = results;
 
       const pTab = renderPitcherTab({ slate: pSlate, settled: pSettled });
-      const hTab = renderHitterTab({ slate: hSlate, settled: hSettled });
-
-      document.getElementById("pitcher-panel").innerHTML = pTab.html;
-      document.getElementById("hitter-panel").innerHTML = hTab.html;
-      document.getElementById("pitcher-counts").textContent =
+      const pPanel = document.getElementById("pitcher-panel");
+      if (pPanel) pPanel.innerHTML = pTab.html;
+      const pCounts = document.getElementById("pitcher-counts");
+      if (pCounts) pCounts.textContent =
         `(${pTab.cnt.focus} focus / ${pTab.cnt.investigate} verify)`;
-      document.getElementById("hitter-counts").textContent =
-        `(${hTab.cnt.focus} focus / ${hTab.cnt.investigate} verify)`;
+
+      if (SHOW_HITTERS && hSlate) {
+        const hTab = renderHitterTab({ slate: hSlate, settled: hSettled });
+        const hPanel = document.getElementById("hitter-panel");
+        if (hPanel) hPanel.innerHTML = hTab.html;
+        const hCounts = document.getElementById("hitter-counts");
+        if (hCounts) hCounts.textContent =
+          `(${hTab.cnt.focus} focus / ${hTab.cnt.investigate} verify)`;
+      }
 
       const stamp = new Date().toLocaleString("en-US", {
         timeZone: "America/Chicago",
@@ -738,8 +751,9 @@
     document.querySelectorAll(".tabs button").forEach(b => {
       b.addEventListener("click", () => showTab(b.dataset.tab));
     });
+    const allowed = SHOW_HITTERS ? ["pitchers", "hitters"] : ["pitchers"];
     const initial = (location.hash || "#pitchers").slice(1);
-    showTab(["pitchers", "hitters"].includes(initial) ? initial : "pitchers");
+    showTab(allowed.includes(initial) ? initial : "pitchers");
 
     const btn = document.getElementById("refresh-btn");
     if (btn) btn.addEventListener("click", loadAndRender);
@@ -764,16 +778,10 @@
       <button type="submit">Settle yesterday</button>
     </form>
   </div>
-  <nav class="tabs">
-    <button data-tab="pitchers" type="button">Pitcher Ks <span class="count" id="pitcher-counts"></span></button>
-    <button data-tab="hitters" type="button">Hitter Ks <span class="count" id="hitter-counts"></span></button>
-  </nav>
+  
 </header>
 <main>
-  <div class="tab-panel" data-tab="pitchers" id="pitcher-panel">
-    <p class="muted">Loading…</p>
-  </div>
-  <div class="tab-panel" data-tab="hitters" id="hitter-panel">
+  <div class="tab-panel active" data-tab="pitchers" id="pitcher-panel">
     <p class="muted">Loading…</p>
   </div>
 </main>

@@ -160,9 +160,20 @@ To change the refresh time, edit the cron in `.github/workflows/refresh.yml` —
 - ✅ v1 model: per-pitcher expected BF + log5 matchup vs opposing team K%
 - ✅ v2 model: SwStr%-blended pitcher K% (Baseball Savant CSV, 12h cache), lineup-level opp K% (team K% fallback), park K factors
 
-**Hitter Ks**
-- ✅ v0 model: log5(hitter K%, opp starter K%) × park × lineup-slot PA — own dashboard tab, own settle path
+**Hitter Ks** *(paused 2026-05-01 — see Re-enabling hitters below)*
+- ✅ v0 model: log5(hitter K%, opp starter K%) × park × lineup-slot PA — code intact in `bets/hitters.py`
 - ⏳ v1: bullpen K% blending (currently treats whole game as vs starter), platoon splits, per-player PA history
+
+### Re-enabling hitters
+
+The hitter pipeline was disabled to conserve Odds API quota while the pitcher model gathers ~30 days of calibration data. To turn it back on:
+
+1. Flip `SHOW_HITTERS = False` to `True` in `bets/web.py`
+2. Uncomment the "Project today's hitters" step in `.github/workflows/refresh.yml`
+3. Uncomment the `run_hitter_projections()` block in `bets/server.py:refresh`
+4. Commit + push — Netlify will redeploy the shell with the hitter tab visible
+
+That's it. The model code, settle path, and CSV format are all preserved untouched. Note: re-enabling adds ~15 quota/cron-run = ~450/month back to the Odds API budget; either bump cron to every-other-day or move to the paid Odds API tier.
 
 **Pipeline + UI**
 - ✅ The Odds API integration with multi-book aggregation: median line, best odds per side with sourcing book, median no-vig P(over)
