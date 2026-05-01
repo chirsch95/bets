@@ -927,7 +927,7 @@ def generate(target_date: date | None = None) -> Path | None:
         actions_block = (
             f"<div class='actions static-meta'>"
             f"<span class='last-refresh'>Last updated <strong>{refreshed_at}</strong>"
-            f"<br><span class='schedule'>Auto-refreshes 10:30 AM &amp; 4:00 PM ET daily</span>"
+            f"<br><span class='schedule'>Auto-refreshes daily ~12:00 PM CT</span>"
             f"</span>"
             f"</div>"
         )

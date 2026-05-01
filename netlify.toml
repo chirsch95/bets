@@ -1,9 +1,15 @@
 # Netlify just serves the static files committed by the GitHub Action.
 # No build step on Netlify itself — the GH Action does all the work.
+#
+# Skip the deploy entirely when nothing in output/*.csv changed since the
+# last successful deploy. Index.html alone (timestamp-only updates) won't
+# burn a credit. Exit code 0 from the ignore command = skip; non-zero =
+# proceed with the deploy.
 
 [build]
   publish = "output"
   command = ""
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- output/*.csv"
 
 # Cache index.html for 5 minutes — short enough that the daily refresh shows
 # up quickly, long enough to absorb burst traffic without re-fetching every

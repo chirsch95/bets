@@ -1,19 +1,17 @@
 name: Refresh dashboard
 
-# Build today's slate twice a day so the dashboard catches both the
-# matinee lineups (10:30 AM ET) and the night-game lineups (4:00 PM ET).
-# Crons are in UTC. During EDT the times are exact; during EST they shift
-# back by an hour (which is fine — MLB season is mostly EDT anyway).
+# Build today's slate once a day around noon CT to manage Netlify deploy
+# credits. Cron is in UTC and doesn't shift with daylight saving:
 #
-#   14:30 UTC = 10:30 AM EDT / 9:30 AM EST  → matinees + line settle
-#   20:00 UTC = 4:00 PM EDT  / 3:00 PM EST  → night-game lineups + line moves
+#   17:00 UTC = 12:00 PM CDT (summer) / 11:00 AM CST (winter)
 #
-# Adjust either cron as you like; the manual trigger is always available.
+# For an extra refresh on a big night slate (e.g. to pick up afternoon
+# lineup news), trigger manually from the Actions tab or via:
+#   gh workflow run "Refresh dashboard" -R chirsch95/bets
 
 on:
   schedule:
-    - cron: "30 14 * * *"
-    - cron: "0 20 * * *"
+    - cron: "0 17 * * *"
   workflow_dispatch: {}    # manual trigger from the Actions tab
 
 permissions:

@@ -112,9 +112,9 @@ The 14-day calibration summary at the top (MAE, bias, flat-bet ROI) populates as
 
 The dashboard can be published to a public Netlify URL so you can read it from any device. The architecture:
 
-1. **GitHub Actions** runs the pipeline twice a day — 14:30 UTC (~10:30 AM ET, catches matinees + line settle) and 20:00 UTC (~4:00 PM ET, catches night-game lineups). See `.github/workflows/refresh.yml`.
+1. **GitHub Actions** runs the pipeline once a day at 17:00 UTC (~12:00 PM CDT / 11:00 AM CST). See `.github/workflows/refresh.yml`. Trigger an extra run anytime via `gh workflow run "Refresh dashboard" -R <user>/<repo>` or the Actions tab.
 2. The Action regenerates `output/`, commits, and pushes.
-3. **Netlify** auto-deploys the new `output/` folder on every push.
+3. **Netlify** auto-deploys the new `output/` folder on every push, *unless* only the `index.html` timestamp changed. The `netlify.toml` ignore rule (`git diff $CACHED_COMMIT_REF $COMMIT_REF -- output/*.csv`) skips no-op deploys to conserve build credits.
 
 The published page is **read-only** — when `STATIC_MODE=1` is set in the workflow env, the action buttons are replaced with an "Auto-refreshed daily" timestamp. The `ODDS_API_KEY` lives only in GitHub Secrets, never on Netlify.
 
