@@ -1,0 +1,14 @@
+# Netlify just serves the static files committed by the GitHub Action.
+# No build step on Netlify itself — the GH Action does all the work.
+
+[build]
+  publish = "output"
+  command = ""
+
+# Cache index.html for 5 minutes — short enough that the daily refresh shows
+# up quickly, long enough to absorb burst traffic without re-fetching every
+# request. CSVs aren't served by the public site so no header needed.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=300"

@@ -1,0 +1,68 @@
+name: Refresh dashboard
+
+# Daily build of today's slate, then commit output/ so Netlify auto-deploys.
+# Schedule is in UTC. 13:30 UTC ≈ 9:30 AM ET (EDT) / 8:30 AM ET (EST).
+# Runs early enough to catch sportsbook lines before games start, late enough
+# that probable starters are settled. Adjust as you like.
+
+on:
+  schedule:
+    - cron: "30 13 * * *"
+  workflow_dispatch: {}    # manual trigger from the Actions tab
+
+permissions:
+  contents: write          # needed for the bot to commit output/
+
+concurrency:
+  group: refresh-dashboard
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      STATIC_MODE: "1"
+      TZ: America/New_York
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Settle yesterday first so the dashboard's Recent Results section is
+      # current. Use continue-on-error: a missing CSV (e.g. day after we
+      # first deploy) shouldn't fail the whole run.
+      - name: Settle yesterday
+        run: python -m bets.settle
+        continue-on-error: true
+
+      - name: Project today's pitchers
+        run: python -m bets.main
+
+      - name: Project today's hitters
+        run: python -m bets.hitters
+        continue-on-error: true   # lineups may not be posted yet
+
+      - name: Regenerate dashboard
+        run: python -m bets.web
+
+      - name: Commit and push regenerated output/
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add output/
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "refresh: $(date -u +%Y-%m-%d) data"
+            git push
+          fi

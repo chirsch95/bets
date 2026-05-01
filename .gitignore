@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# SwStr cache — regenerated each run, no value committing
+data/*
+!data/.gitkeep
+
+# output/ is intentionally tracked: the GH Action commits the regenerated
+# dashboard + CSVs here, and Netlify publishes the directory.
+
+# Secrets
+.env
+.env.local
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

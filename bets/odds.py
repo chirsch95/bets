@@ -1,0 +1,220 @@
+"""Sportsbook line fetching via The Odds API.
+
+Sign up at https://the-odds-api.com to get a key (free tier: 500 req/month).
+Set ODDS_API_KEY in the environment, or place it in a .env file at the
+project root (loaded by config.py).
+
+Lines are aggregated across every US bookmaker the API returns:
+    - line          : median across books
+    - over_odds     : best (max American) over price + sourcing book
+    - under_odds    : best (max American) under price + sourcing book
+    - consensus_p_over: median no-vig P(over) across books
+    - n_books       : how many books contributed
+"""
+
+from __future__ import annotations
+
+import os
+import unicodedata
+from collections import defaultdict
+from datetime import date
+
+import requests
+
+THE_ODDS_API_BASE = "https://api.the-odds-api.com/v4"
+HTTP_TIMEOUT = 10
+
+
+def has_api_key() -> bool:
+    return bool(os.environ.get("ODDS_API_KEY"))
+
+
+def _american_to_decimal(american: int) -> float:
+    if american > 0:
+        return 1 + american / 100
+    return 1 + 100 / abs(american)
+
+
+def _implied_prob(american: int) -> float:
+    return 1 / _american_to_decimal(american)
+
+
+def _novig_p_over(over_odds: int, under_odds: int) -> float:
+    p_over = _implied_prob(over_odds)
+    p_under = _implied_prob(under_odds)
+    total = p_over + p_under
+    if total <= 0:
+        return 0.0
+    return p_over / total
+
+
+def _median(values: list[float]) -> float:
+    sorted_values = sorted(values)
+    n = len(sorted_values)
+    if n == 0:
+        return 0.0
+    mid = n // 2
+    if n % 2 == 1:
+        return sorted_values[mid]
+    return (sorted_values[mid - 1] + sorted_values[mid]) / 2
+
+
+def fetch_pitcher_k_lines(
+    target_date: date | None = None,
+    sport: str = "baseball_mlb",
+) -> list[dict]:
+    """Return aggregated pitcher_strikeouts O/U lines across all US books.
+
+    Each entry: pitcher_name, line, over_odds, over_book, under_odds,
+    under_book, consensus_p_over, n_books, books.
+    """
+    return _fetch_player_prop_lines(
+        market_key="pitcher_strikeouts",
+        name_key="pitcher_name",
+        target_date=target_date,
+        sport=sport,
+    )
+
+
+def fetch_hitter_k_lines(
+    target_date: date | None = None,
+    sport: str = "baseball_mlb",
+) -> list[dict]:
+    """Return aggregated batter_strikeouts O/U lines across all US books.
+
+    Each entry: hitter_name, line, over_odds, over_book, under_odds,
+    under_book, consensus_p_over, n_books, books.
+    """
+    return _fetch_player_prop_lines(
+        market_key="batter_strikeouts",
+        name_key="hitter_name",
+        target_date=target_date,
+        sport=sport,
+    )
+
+
+def _fetch_player_prop_lines(
+    market_key: str,
+    name_key: str,
+    target_date: date | None,
+    sport: str,
+) -> list[dict]:
+    """Generic over/under prop fetcher across every US book on the API."""
+    key = os.environ.get("ODDS_API_KEY")
+    if not key:
+        return []
+
+    target_date = target_date or date.today()
+    target_iso = target_date.isoformat()
+
+    events_resp = requests.get(
+        f"{THE_ODDS_API_BASE}/sports/{sport}/events",
+        params={"apiKey": key, "dateFormat": "iso"},
+        timeout=HTTP_TIMEOUT,
+    )
+    events_resp.raise_for_status()
+    events = [
+        e
+        for e in events_resp.json()
+        if e.get("commence_time", "").startswith(target_iso)
+    ]
+
+    per_player: dict[str, list[dict]] = defaultdict(list)
+
+    for event in events:
+        event_id = event["id"]
+        odds_resp = requests.get(
+            f"{THE_ODDS_API_BASE}/sports/{sport}/events/{event_id}/odds",
+            params={
+                "apiKey": key,
+                "markets": market_key,
+                "regions": "us",
+                "oddsFormat": "american",
+            },
+            timeout=HTTP_TIMEOUT,
+        )
+        if not odds_resp.ok:
+            continue
+
+        for book in odds_resp.json().get("bookmakers", []):
+            for entry in _parse_player_outcomes(book, market_key):
+                per_player[entry["player_name"]].append(entry)
+
+    return [
+        _aggregate_player(name, entries, name_key)
+        for name, entries in per_player.items()
+    ]
+
+
+def _parse_player_outcomes(bookmaker: dict, market_key: str) -> list[dict]:
+    """Yield one record per player per market, joining over/under outcomes."""
+    book_key = bookmaker.get("key", "?")
+    by_player: dict[str, dict] = {}
+    for market in bookmaker.get("markets", []):
+        if market.get("key") != market_key:
+            continue
+        for outcome in market.get("outcomes", []):
+            name = outcome.get("description", "")
+            if not name:
+                continue
+            entry = by_player.setdefault(
+                name,
+                {"player_name": name, "book": book_key},
+            )
+            line = outcome.get("point")
+            price = outcome.get("price")
+            side = outcome.get("name", "").lower()
+            if line is not None:
+                entry["line"] = line
+            if side == "over":
+                entry["over_odds"] = price
+            elif side == "under":
+                entry["under_odds"] = price
+    return [
+        e
+        for e in by_player.values()
+        if "line" in e and "over_odds" in e and "under_odds" in e
+    ]
+
+
+def _aggregate_player(name: str, entries: list[dict], name_key: str) -> dict:
+    """Median line, best (max American) odds per side, median consensus P(over)."""
+    lines = [e["line"] for e in entries]
+    median_line = _median(lines)
+    best_over = max(entries, key=lambda e: e["over_odds"])
+    best_under = max(entries, key=lambda e: e["under_odds"])
+    p_overs = [_novig_p_over(e["over_odds"], e["under_odds"]) for e in entries]
+    consensus_p_over = _median(p_overs)
+    return {
+        name_key: name,
+        "line": median_line,
+        "over_odds": best_over["over_odds"],
+        "over_book": best_over["book"],
+        "under_odds": best_under["under_odds"],
+        "under_book": best_under["book"],
+        "consensus_p_over": consensus_p_over,
+        "n_books": len(entries),
+        "books": sorted({e["book"] for e in entries}),
+    }
+
+
+def _normalize_name(name: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", name)
+    no_accents = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return no_accents.lower().strip()
+
+
+def match_line(pitcher_name: str, lines: list[dict]) -> dict | None:
+    return _match_by_name(pitcher_name, lines, "pitcher_name")
+
+
+def match_hitter_line(hitter_name: str, lines: list[dict]) -> dict | None:
+    return _match_by_name(hitter_name, lines, "hitter_name")
+
+
+def _match_by_name(name: str, lines: list[dict], key: str) -> dict | None:
+    target = _normalize_name(name)
+    for line in lines:
+        if _normalize_name(line.get(key, "")) == target:
+            return line
+    return None

@@ -1,0 +1,23 @@
+date,game_pk,pitcher_id,pitcher,opp,season_k_pct,recent_k_pct,swstr_pct,opp_k_pct,opp_k_source,park_factor,matchup_k_pct,exp_bf,proj_ks_v0,proj_ks_v1,proj_ks_v2,line,over_odds,over_book,under_odds,under_book,n_books,p_over,novig_over,edge,ev_over,ev_under
+2026-04-30,823714,592332,Kevin Gausman,Minnesota Twins,0.275,0.227,0.156,0.208,lineup,1.01,0.255,23.3,5.89,6.05,5.96,5.5,105,betmgm,175,betrivers,7,0.547,0.484,0.064,0.122,0.245
+2026-04-30,823714,641927,Bailey Ober,Toronto Blue Jays,0.203,0.224,0.095,0.179,lineup,1.01,0.163,22.6,4.86,3.96,3.68,3.5,140,betmgm,123,draftkings,7,0.501,0.575,-0.074,0.202,0.113
+2026-04-30,823471,605288,Adrian Houser,Philadelphia Phillies,0.113,0.113,0.096,0.185,lineup,1.0,0.114,24.8,2.6,2.69,2.84,3.5,-102,draftkings,103,betonlineag,6,0.316,0.508,-0.192,-0.374,0.388
+2026-04-30,824850,621121,Lance McCullers Jr.,Baltimore Orioles,0.227,0.189,0.103,0.242,lineup,1.0,0.224,19.5,4.87,4.38,4.36,5.5,100,draftkings,110,betmgm,2,0.274,0.513,-0.239,-0.452,0.524
+2026-04-30,824848,663567,Peter Lambert,Baltimore Orioles,0.288,0.288,0.21,0.237,lineup,1.0,0.348,22.0,6.62,6.72,7.66,,,,,,0,,,,,
+2026-04-30,823472,650911,Cristopher Sánchez,San Francisco Giants,0.278,0.244,0.158,0.219,lineup,1.0,0.272,26.2,6.08,6.72,7.13,,,,,,0,,,,,
+2026-04-30,823634,642547,Freddy Peralta,Washington Nationals,0.256,0.23,0.143,0.211,lineup,1.02,0.246,23.8,5.65,5.75,5.85,,,,,,0,,,,,
+2026-04-30,823391,694973,Paul Skenes,St. Louis Cardinals,0.293,0.317,0.121,0.224,lineup,1.0,0.278,19.7,6.97,5.82,5.49,,,,,,0,,,,,
+2026-04-30,823795,647336,Michael Soroka,Milwaukee Brewers,0.265,0.224,0.115,0.215,lineup,1.0,0.23,22.9,5.72,5.27,5.26,,,,,,0,,,,,
+2026-04-30,824929,693821,Bryce Elder,Detroit Tigers,0.209,0.184,0.099,0.235,lineup,1.0,0.206,24.7,4.58,4.73,5.09,,,,,,0,,,,,
+2026-04-30,823472,657277,Logan Webb,Philadelphia Phillies,0.202,0.19,0.094,0.215,lineup,1.0,0.184,27.1,4.54,5.13,4.98,,,,,,0,,,,,
+2026-04-30,823634,571945,Miles Mikolas,New York Mets,0.15,0.169,0.087,0.244,lineup,1.02,0.179,27.4,3.62,4.05,4.9,,,,,,0,,,,,
+2026-04-30,825016,702070,Noah Cameron,Athletics,0.197,0.189,0.109,0.218,lineup,1.0,0.195,24.0,4.46,4.78,4.66,,,,,,0,,,,,
+2026-04-30,825016,605488,Jeffrey Springs,Kansas City Royals,0.222,0.226,0.112,0.2,lineup,1.0,0.197,22.7,5.14,5.03,4.49,,,,,,0,,,,,
+2026-04-30,823471,641835,Tim Mayza,San Francisco Giants,0.242,0.0,0.099,0.194,lineup,1.0,0.195,23.0,5.58,5.41,4.48,,,,,,0,,,,,
+2026-04-30,824929,664285,Framber Valdez,Atlanta Braves,0.185,0.177,0.088,0.214,lineup,1.0,0.169,24.7,4.18,3.95,4.19,,,,,,0,,,,,
+2026-04-30,823391,690928,Hunter Dobbins,Pittsburgh Pirates,0.211,0.211,0.0,0.233,lineup,1.0,0.218,19.0,4.84,4.32,4.14,,,,,,0,,,,,
+2026-04-30,824524,671096,Andrew Abbott,Colorado Rockies,0.152,0.136,0.097,0.253,lineup,1.0,0.181,22.3,3.35,3.63,4.04,,,,,,0,,,,,
+2026-04-30,823795,605540,Brandon Woodruff,Arizona Diamondbacks,0.207,0.186,0.117,0.211,lineup,1.0,0.196,20.3,4.56,3.9,3.97,,,,,,0,,,,,
+2026-04-30,824524,547179,Michael Lorenzen,Cincinnati Reds,0.146,0.157,0.094,0.225,lineup,1.0,0.162,23.3,3.46,3.8,3.77,,,,,,0,,,,,
+2026-04-30,824850,687064,Brandon Young,Houston Astros,0.136,0.136,0.101,0.19,lineup,1.0,0.133,19.7,3.12,2.33,2.62,,,,,,0,,,,,
+2026-04-30,824848,605135,Chris Bassitt,Houston Astros,0.126,0.127,0.089,0.183,lineup,1.0,0.116,22.3,2.91,2.47,2.59,,,,,,0,,,,,
