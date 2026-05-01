@@ -4,15 +4,15 @@ A data pipeline and modeling system for identifying +EV prop bets on daily fanta
 
 ## Daily Routine
 
-Open **https://winningbets.netlify.app/** in any browser. That's it. A GitHub Action regenerates the dashboard once a day at noon CT and Netlify auto-deploys; the page shows a "Last updated" timestamp so you know it's fresh.
+Open **https://winningbets.netlify.app/** in any browser. The dashboard fetches the latest CSVs from this GitHub repo at page-load — click **Refresh data** any time to re-pull, no Netlify deploy required (so refreshing is *free*, doesn't burn your Netlify credit budget).
 
-For an off-schedule refresh (e.g. before a big night slate, or when news drops):
+A GitHub Action runs the underlying pipeline daily at noon CT to keep the CSVs fresh. For an off-schedule pipeline run (e.g. before a big night slate, or when news drops):
 
 ```sh
 gh workflow run "Refresh dashboard" -R chirsch95/bets
 ```
 
-Wait ~3 minutes and reload. The local Flask server isn't part of the daily routine anymore — it's reserved for code-change testing (see [Local Development](#local-development)).
+Wait ~1 minute and click **Refresh data** on the dashboard. The local Flask server isn't part of the daily routine — it's reserved for code-change testing (see [Local Development](#local-development)).
 
 **Periodic (weekly is fine):**
 
@@ -56,8 +56,8 @@ bets/
 │   ├── hitters.py                  CLI: project today's hitter slate (separate runner for clarity)
 │   ├── settle.py                   Settle yesterday's pitchers + hitters with actuals
 │   ├── analyze.py                  Aggregate settled history (pitcher only so far)
-│   ├── web.py                      Tabbed HTML dashboard (pitchers + hitters); STATIC_MODE=1 hides action buttons
-│   └── server.py                   Local Flask server (port 8000 default; override with BETS_PORT)
+│   ├── web.py                      HTML+JS dashboard shell (client-side rendered); STATIC_MODE=1 hides local-only buttons
+│   └── server.py                   Local Flask server (port 8000); GET / serves shell, also serves output/ CSVs as static
 ├── data/                           caches (gitignored): swstr_<season>.json
 └── output/                         tracked — Netlify publishes from here:
     ├── pitcher_ks_<date>.csv
@@ -124,7 +124,9 @@ The dashboard can be published to a public Netlify URL so you can read it from a
 
 1. **GitHub Actions** runs the pipeline once a day at 17:00 UTC (~12:00 PM CDT / 11:00 AM CST). See `.github/workflows/refresh.yml`. Trigger an extra run anytime via `gh workflow run "Refresh dashboard" -R <user>/<repo>` or the Actions tab.
 2. The Action regenerates `output/`, commits, and pushes.
-3. **Netlify** auto-deploys the new `output/` folder on every push, *unless* only the `index.html` timestamp changed. The `netlify.toml` ignore rule (`git diff $CACHED_COMMIT_REF $COMMIT_REF -- output/*.csv`) skips no-op deploys to conserve build credits.
+3. **Netlify** publishes a thin HTML+JS shell. The browser fetches CSV data directly from `https://raw.githubusercontent.com/chirsch95/bets/main/output/*.csv` on each page load, so committing new CSV data does NOT require a Netlify redeploy. The `netlify.toml` ignore rule (`git diff $CACHED_COMMIT_REF $COMMIT_REF -- output/index.html`) only redeploys when the *shell itself* changes — i.e. when you ship a code/UI change. Daily cron commits are free.
+
+This requires the repo to be **public** (so `raw.githubusercontent.com` can serve the CSVs unauthenticated). Picks are already public via the Netlify URL, so making the source repo public doesn't expose anything new.
 
 The published page is **read-only** — when `STATIC_MODE=1` is set in the workflow env, the action buttons are replaced with an "Auto-refreshed daily" timestamp. The `ODDS_API_KEY` lives only in GitHub Secrets, never on Netlify.
 
@@ -168,7 +170,7 @@ To change the refresh time, edit the cron in `.github/workflows/refresh.yml` —
 - ✅ Calibration harness: settle vs actual outcomes, MAE / RMSE / bias for v0 / v1 / v2 head-to-head, P(over) buckets, edge-threshold ROI
 - ✅ Tabbed HTML dashboard (pitchers / hitters) with focus highlighting, OVER / UNDER recommendations, Recent Results section per tab; tab state in URL hash
 - ✅ Local Flask server (port 8000) with Refresh Lines / Settle Yesterday buttons — dev/test only
-- ✅ Public Netlify deploy at https://winningbets.netlify.app/ with once-daily cron + `output/*.csv`-change-only deploy ignore rule for credit conservation
+- ✅ Public Netlify deploy at https://winningbets.netlify.app/. **Client-side rendering**: thin HTML+JS shell on Netlify, browser fetches CSVs from raw.githubusercontent.com → CSV updates do NOT trigger Netlify redeploys, so daily cron commits are free. Manual **Refresh data** button re-fetches at any time.
 
 **Future**
 - ⏳ Empirical-Bayes shrinkage, catcher framing, umpire tendencies

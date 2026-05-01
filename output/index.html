@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>MLB K Props — 2026-05-01</title>
+<title>MLB K Props</title>
 <style>
   :root {
     --bg: #0e1015;
@@ -37,7 +37,7 @@
   }
   header h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
   header .date { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
-  .actions { display: flex; gap: 8px; padding-top: 4px; }
+  .actions { display: flex; gap: 8px; padding-top: 4px; align-items: center; flex-wrap: wrap; }
   .actions form { margin: 0; }
   .actions button {
     background: var(--panel);
@@ -60,15 +60,8 @@
   .actions button:disabled { opacity: 0.5; cursor: wait; }
   body.loading { cursor: progress; }
   body.loading .actions button { opacity: 0.5; cursor: wait; }
-  .static-meta {
-    align-self: center;
-    color: var(--muted);
-    font-size: 12px;
-    text-align: right;
-    line-height: 1.4;
-  }
-  .static-meta .last-refresh strong { color: var(--text); font-weight: 500; }
-  .static-meta .schedule { font-size: 11px; opacity: 0.8; }
+  .last-refresh { color: var(--muted); font-size: 12px; margin-left: 8px; }
+  .last-refresh strong { color: var(--text); font-weight: 500; }
   .tabs {
     display: flex;
     gap: 4px;
@@ -220,6 +213,7 @@
   .tag-noise { background: transparent; color: var(--muted); }
   .tag-noline { background: transparent; color: var(--muted); }
   .muted { color: var(--muted); }
+  .empty-msg { color: var(--muted); padding: 24px; text-align: center; }
   footer {
     padding: 16px 32px;
     color: var(--muted);
@@ -235,65 +229,399 @@
   }
 </style>
 <script>
-  function showTab(name) {
-    document.querySelectorAll('.tab-panel').forEach(p =>
-      p.classList.toggle('active', p.dataset.tab === name)
-    );
-    document.querySelectorAll('.tabs button').forEach(b =>
-      b.classList.toggle('active', b.dataset.tab === name)
-    );
-    if (location.hash !== '#' + name) {
-      history.replaceState(null, '', '#' + name);
-    }
+(() => {
+  const FOCUS_MIN = 0.05;
+  const FOCUS_MAX = 0.15;
+  const INVESTIGATE = 0.2;
+  const RAW_BASE = "https://raw.githubusercontent.com/chirsch95/bets/main/output/";
+
+  function baseUrl() {
+    const h = location.hostname;
+    if (h === "localhost" || h === "127.0.0.1" || h === "") return "./";
+    return RAW_BASE;
   }
-  document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.tabs button').forEach(b => {
-      b.addEventListener('click', () => showTab(b.dataset.tab));
+
+  function dateInChicago(offsetDays = 0) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + offsetDays);
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Chicago",
+      year: "numeric", month: "2-digit", day: "2-digit",
     });
-    const initial = (location.hash || '#pitchers').slice(1);
-    showTab(['pitchers','hitters'].includes(initial) ? initial : 'pitchers');
-  });
-</script>
-</head>
-<body>
-<header>
-  <div>
-    <h1>MLB K Prop Projections</h1>
-    <div class="date">Friday, May 01, 2026</div>
-  </div>
-  <div class='actions static-meta'><span class='last-refresh'>Last updated <strong>May 01, 2026 11:59 AM ET</strong><br><span class='schedule'>Auto-refreshes daily ~12:00 PM CT</span></span></div>
-  <nav class="tabs">
-    <button data-tab="pitchers" type="button">Pitcher Ks <span class='count'>(5 focus / 2 verify)</span></button>
-    <button data-tab="hitters" type="button">Hitter Ks <span class='count'>(9 focus / 2 verify)</span></button>
-  </nav>
-</header>
-<main>
-  <div class="tab-panel" data-tab="pitchers">
+    return fmt.format(d);
+  }
 
-  <div class="summary"><p><strong>22</strong> settled starts in last 14 days &middot; v2 MAE <strong>1.92</strong> &middot; bias <strong>-0.10</strong> &middot; flat-bet over ROI <strong>-0.500</strong>/$1 (n=4)</p></div>
+  async function fetchCSV(url) {
+    const r = await fetch(url, { cache: "no-cache" });
+    if (!r.ok) return null;
+    return await r.text();
+  }
 
-  <div class="legend">
-    <div class="legend-row">
-      <span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span>
-      <span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span>
-      <span>moderate edge (5%–15%) — actionable pick</span>
-    </div>
-    <div class="legend-row">
-      <span class="tag tag-investigate">Verify <strong>OVER</strong>?</span>
-      <span class="tag tag-investigate">Verify <strong>UNDER</strong>?</span>
-      <span>extreme edge (&ge; 20%) — model probably wrong, do not bet</span>
-    </div>
-    <div class="legend-row">
-      <span class="tag tag-noline">No line</span>
-      <span>book hasn't posted, or game already started</span>
-    </div>
-  </div>
+  function parseCSV(text) {
+    if (!text) return [];
+    const lines = text.replace(/\r/g, "").split("\n").filter(l => l.length);
+    if (lines.length < 1) return [];
+    const headers = lines[0].split(",");
+    return lines.slice(1).map(line => {
+      const values = splitCSVLine(line);
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = values[i] !== undefined ? values[i] : ""; });
+      return obj;
+    });
+  }
 
-  <table>
-    <thead>
-      <tr>
-        <th>Pitcher</th>
-        <th>Opponent</th>
+  // Minimal RFC4180-ish split: handles quoted fields containing commas.
+  function splitCSVLine(line) {
+    const out = [];
+    let cur = "";
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (c === "," && !inQ) {
+        out.push(cur); cur = "";
+      } else {
+        cur += c;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  function f(v) {
+    if (v === "" || v === null || v === undefined) return null;
+    const n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }
+
+  function classify(edge) {
+    if (edge === null) return "noline";
+    const a = Math.abs(edge);
+    if (a >= INVESTIGATE) return "investigate";
+    if (a >= FOCUS_MIN && a <= FOCUS_MAX) return "focus";
+    return "noise";
+  }
+
+  function label(cls, dir) {
+    if (cls === "focus" && dir) return `Bet <strong>${dir.toUpperCase()}</strong>`;
+    if (cls === "investigate" && dir) return `Verify <strong>${dir.toUpperCase()}</strong>?`;
+    if (cls === "noline") return "No line";
+    return "—";
+  }
+
+  function dash(v) {
+    if (v === "" || v === null || v === undefined) return "—";
+    return escapeHTML(String(v));
+  }
+
+  function escapeHTML(s) {
+    return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function sortKey(r, projField) {
+    const edge = f(r.edge);
+    const cls = classify(edge);
+    const clsRank = { focus: 0, investigate: 1, noise: 2, noline: 3 }[cls];
+    const edgeRank = edge === null ? 0 : -Math.abs(edge);
+    const proj = -(f(r[projField]) || 0);
+    return [clsRank, edgeRank, proj];
+  }
+
+  function sortRows(rows, projField) {
+    return rows.slice().sort((a, b) => {
+      const ka = sortKey(a, projField), kb = sortKey(b, projField);
+      for (let i = 0; i < ka.length; i++) {
+        if (ka[i] !== kb[i]) return ka[i] - kb[i];
+      }
+      return 0;
+    });
+  }
+
+  function pitcherRow(r) {
+    const edge = f(r.edge);
+    const cls = classify(edge);
+    const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
+    const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + edge.toFixed(3);
+    const rowCls = `row-${cls}` + (dir ? ` dir-${dir}` : "");
+    const tagCls = `tag-${cls}` + (dir ? ` tag-dir-${dir}` : "");
+    const proj = r.proj_ks_v2 || r.proj_ks_v1 || "";
+    const overTitle = r.over_book ? ` title="Best price at ${escapeHTML(r.over_book)}"` : "";
+    const underTitle = r.under_book ? ` title="Best price at ${escapeHTML(r.under_book)}"` : "";
+    const novigTitle = r.n_books ? ` title="Median across ${escapeHTML(r.n_books)} books"` : "";
+    return `<tr class="${rowCls}">
+      <td class="player">${escapeHTML(r.pitcher || "")}</td>
+      <td>${escapeHTML(r.opp || "")}</td>
+      <td class="num">${dash(proj)}</td>
+      <td class="num">${dash(r.line)}</td>
+      <td class="num"${overTitle}>${dash(r.over_odds)}</td>
+      <td class="num"${underTitle}>${dash(r.under_odds)}</td>
+      <td class="num">${dash(r.p_over)}</td>
+      <td class="num"${novigTitle}>${dash(r.novig_over)}</td>
+      <td class="num edge ${dir}">${edgeStr}</td>
+      <td class="badge"><span class="tag ${tagCls}">${label(cls, dir)}</span></td>
+    </tr>`;
+  }
+
+  function hitterRow(r) {
+    const edge = f(r.edge);
+    const cls = classify(edge);
+    const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
+    const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + edge.toFixed(3);
+    const rowCls = `row-${cls}` + (dir ? ` dir-${dir}` : "");
+    const tagCls = `tag-${cls}` + (dir ? ` tag-dir-${dir}` : "");
+    const overTitle = r.over_book ? ` title="Best price at ${escapeHTML(r.over_book)}"` : "";
+    const underTitle = r.under_book ? ` title="Best price at ${escapeHTML(r.under_book)}"` : "";
+    const novigTitle = r.n_books ? ` title="Median across ${escapeHTML(r.n_books)} books"` : "";
+    return `<tr class="${rowCls}">
+      <td class="player">${escapeHTML(r.hitter || "")}</td>
+      <td class="num slot">${dash(r.slot)}</td>
+      <td>${escapeHTML(r.team || "")}</td>
+      <td>vs ${escapeHTML(r.opp_pitcher || "")}</td>
+      <td class="num">${dash(r.proj_ks)}</td>
+      <td class="num">${dash(r.line)}</td>
+      <td class="num"${overTitle}>${dash(r.over_odds)}</td>
+      <td class="num"${underTitle}>${dash(r.under_odds)}</td>
+      <td class="num">${dash(r.p_over)}</td>
+      <td class="num"${novigTitle}>${dash(r.novig_over)}</td>
+      <td class="num edge ${dir}">${edgeStr}</td>
+      <td class="badge"><span class="tag ${tagCls}">${label(cls, dir)}</span></td>
+    </tr>`;
+  }
+
+  function pitcherResultRow(r) {
+    const actual = f(r.actual_ks);
+    const proj = f(r.proj_ks_v2) || f(r.proj_ks_v1);
+    const line = f(r.line);
+    const overHit = f(r.over_hit);
+    let errCls = "zero", errStr = "—";
+    if (actual !== null && proj !== null) {
+      const e = actual - proj;
+      if (e > 0.5) { errCls = "over"; errStr = `+${e.toFixed(1)}`; }
+      else if (e < -0.5) { errCls = "under"; errStr = e.toFixed(1); }
+      else { errCls = "zero"; errStr = (e >= 0 ? "+" : "") + e.toFixed(1); }
+    }
+    let resultCell = '<td class="muted">—</td>';
+    if (line === null) resultCell = '<td class="muted">no line</td>';
+    else if (overHit !== null) resultCell = overHit >= 1
+      ? '<td class="hit">OVER hit</td>'
+      : '<td class="miss">UNDER hit</td>';
+    const projCell = r.proj_ks_v2 || r.proj_ks_v1;
+    return `<tr>
+      <td class="player">${escapeHTML(r.pitcher || "")}</td>
+      <td>${escapeHTML(r.opp || "")}</td>
+      <td class="num">${dash(projCell)}</td>
+      <td class="num">${actual !== null ? Math.round(actual) : "—"}</td>
+      <td class="num error ${errCls}">${errStr}</td>
+      <td class="num">${dash(r.line)}</td>
+      ${resultCell}
+    </tr>`;
+  }
+
+  function hitterResultRow(r) {
+    const actual = f(r.actual_ks);
+    const proj = f(r.proj_ks);
+    const line = f(r.line);
+    const overHit = f(r.over_hit);
+    let errCls = "zero", errStr = "—";
+    if (actual !== null && proj !== null) {
+      const e = actual - proj;
+      if (e > 0.3) { errCls = "over"; errStr = `+${e.toFixed(1)}`; }
+      else if (e < -0.3) { errCls = "under"; errStr = e.toFixed(1); }
+      else { errCls = "zero"; errStr = (e >= 0 ? "+" : "") + e.toFixed(1); }
+    }
+    let resultCell = '<td class="muted">—</td>';
+    if (line === null) resultCell = '<td class="muted">no line</td>';
+    else if (overHit !== null) resultCell = overHit >= 1
+      ? '<td class="hit">OVER hit</td>'
+      : '<td class="miss">UNDER hit</td>';
+    return `<tr>
+      <td class="player">${escapeHTML(r.hitter || "")}</td>
+      <td>${escapeHTML(r.team || "")}</td>
+      <td class="num">${dash(r.proj_ks)}</td>
+      <td class="num">${actual !== null ? Math.round(actual) : "—"}</td>
+      <td class="num error ${errCls}">${errStr}</td>
+      <td class="num">${dash(r.line)}</td>
+      ${resultCell}
+    </tr>`;
+  }
+
+  // Try fetching today's CSV; fall back up to 3 days if not yet posted.
+  async function fetchTodaysCSV(prefix) {
+    for (let i = 0; i <= 3; i++) {
+      const d = dateInChicago(-i);
+      const text = await fetchCSV(baseUrl() + `${prefix}_${d}.csv`);
+      if (text) return { date: d, rows: parseCSV(text) };
+    }
+    return { date: null, rows: [] };
+  }
+
+  // Most recent settled CSV — yesterday or earlier.
+  async function fetchMostRecentSettled(prefix) {
+    for (let i = 1; i <= 14; i++) {
+      const d = dateInChicago(-i);
+      const text = await fetchCSV(baseUrl() + `${prefix}_${d}_settled.csv`);
+      if (text) {
+        const rows = parseCSV(text).filter(r => f(r.actual_ks) !== null);
+        if (rows.length) return { date: d, rows };
+      }
+    }
+    return { date: null, rows: [] };
+  }
+
+  function counts(rows) {
+    const c = { focus: 0, investigate: 0, noise: 0, noline: 0 };
+    for (const r of rows) c[classify(f(r.edge))]++;
+    return c;
+  }
+
+  function settledTitle(d) {
+    if (!d) return "Recent Results";
+    const today = dateInChicago(0);
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago",
+      weekday: "long", year: "numeric", month: "long", day: "numeric"
+    });
+    // Parse YYYY-MM-DD safely (avoid local-tz off-by-one)
+    const [yy, mm, dd] = d.split("-").map(Number);
+    const dateObj = new Date(Date.UTC(yy, mm - 1, dd, 12));
+    const label = fmt.format(dateObj);
+    if (d === today) return `Today's Results — ${label}`;
+    // Yesterday in CT?
+    const yesterday = dateInChicago(-1);
+    if (d === yesterday) return `Yesterday's Results — ${label}`;
+    return `Most Recent Results — ${label}`;
+  }
+
+  function avg(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
+
+  function renderPitcherTab(target) {
+    const slate = target.slate;
+    const settled = target.settled;
+    const hasRows = slate.rows.length > 0;
+    const sorted = hasRows ? sortRows(slate.rows, "proj_ks_v2") : [];
+    const cnt = counts(slate.rows);
+
+    const slateBody = hasRows
+      ? sorted.map(pitcherRow).join("")
+      : `<tr><td colspan="10" class="empty-msg">No pitcher projections yet — first cron runs at noon CT. <a href="https://github.com/chirsch95/bets/actions" style="color: var(--green);">Trigger one manually</a> if needed.</td></tr>`;
+
+    let resultsSection = "";
+    if (settled.rows.length) {
+      const errs = settled.rows
+        .map(r => f(r.error_v2) || f(r.error_v1))
+        .filter(x => x !== null);
+      const mae = errs.length ? avg(errs.map(Math.abs)) : 0;
+      const bias = errs.length ? avg(errs) : 0;
+      const hits = settled.rows.map(r => f(r.over_hit)).filter(h => h !== null);
+      const overHitCount = hits.filter(h => h >= 1).length;
+      const overRate = hits.length ? overHitCount / hits.length : null;
+      const sortedSettled = settled.rows.slice().sort((a, b) => {
+        const ea = f(a.error_v2) || f(a.error_v1) || 0;
+        const eb = f(b.error_v2) || f(b.error_v1) || 0;
+        return Math.abs(eb) - Math.abs(ea);
+      });
+      const summary = [
+        `<strong>${settled.rows.length}</strong> pitchers`,
+        `MAE <strong>${mae.toFixed(2)}</strong>`,
+        `bias <strong>${(bias >= 0 ? "+" : "") + bias.toFixed(2)}</strong>`,
+      ];
+      if (overRate !== null) {
+        summary.push(`OVER hit <strong>${(overRate * 100).toFixed(0)}%</strong> (${overHitCount}/${hits.length} lines)`);
+      }
+      resultsSection = `<section class="results-section">
+        <h2>${settledTitle(settled.date)}</h2>
+        <p class="muted">${summary.join(" &middot; ")}</p>
+        <table>
+          <thead><tr>
+            <th>Pitcher</th><th>Opponent</th>
+            <th class="num" title="Model projection">Proj</th>
+            <th class="num" title="Actual strikeouts">Actual</th>
+            <th class="num" title="Actual minus projected">Off By</th>
+            <th class="num" title="Sportsbook line that day">Line</th>
+            <th title="Whether OVER or UNDER hit">Result</th>
+          </tr></thead>
+          <tbody>${sortedSettled.map(pitcherResultRow).join("")}</tbody>
+        </table>
+      </section>`;
+    } else {
+      resultsSection = `<section class="results-section"><h2>Recent Results</h2><p class="muted">No settled days yet.</p></section>`;
+    }
+
+    return { html: pitcherTabHTML(slateBody, resultsSection), cnt };
+  }
+
+  function renderHitterTab(target) {
+    const slate = target.slate;
+    const settled = target.settled;
+    const hasRows = slate.rows.length > 0;
+    const sorted = hasRows ? sortRows(slate.rows, "proj_ks") : [];
+    const cnt = counts(slate.rows);
+
+    const slateBody = hasRows
+      ? sorted.map(hitterRow).join("")
+      : `<tr><td colspan="12" class="empty-msg">No hitter projections yet — needs confirmed lineups (typically posted 2–3 hrs before first pitch).</td></tr>`;
+
+    let resultsSection = "";
+    if (settled.rows.length) {
+      const errs = settled.rows.map(r => f(r.error)).filter(x => x !== null);
+      const mae = errs.length ? avg(errs.map(Math.abs)) : 0;
+      const bias = errs.length ? avg(errs) : 0;
+      const hits = settled.rows.map(r => f(r.over_hit)).filter(h => h !== null);
+      const overHitCount = hits.filter(h => h >= 1).length;
+      const overRate = hits.length ? overHitCount / hits.length : null;
+      const sortedSettled = settled.rows.slice().sort((a, b) => {
+        return Math.abs(f(b.error) || 0) - Math.abs(f(a.error) || 0);
+      }).slice(0, 40);
+      const summary = [
+        `<strong>${sortedSettled.length}</strong> top-error hitters`,
+        `MAE <strong>${mae.toFixed(2)}</strong>`,
+        `bias <strong>${(bias >= 0 ? "+" : "") + bias.toFixed(2)}</strong>`,
+      ];
+      if (overRate !== null) {
+        summary.push(`OVER hit <strong>${(overRate * 100).toFixed(0)}%</strong> (${overHitCount}/${hits.length} lines)`);
+      }
+      resultsSection = `<section class="results-section">
+        <h2>${settledTitle(settled.date)}</h2>
+        <p class="muted">${summary.join(" &middot; ")}</p>
+        <table>
+          <thead><tr>
+            <th>Hitter</th><th>Team</th>
+            <th class="num">Proj</th><th class="num">Actual</th>
+            <th class="num">Off By</th><th class="num">Line</th>
+            <th>Result</th>
+          </tr></thead>
+          <tbody>${sortedSettled.map(hitterResultRow).join("")}</tbody>
+        </table>
+      </section>`;
+    } else {
+      resultsSection = `<section class="results-section"><h2>Recent Results</h2><p class="muted">No settled hitter days yet.</p></section>`;
+    }
+
+    return { html: hitterTabHTML(slateBody, resultsSection), cnt };
+  }
+
+  function pitcherTabHTML(slateBody, resultsSection) {
+    return `<div class="legend">
+      <div class="legend-row">
+        <span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span>
+        <span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span>
+        <span>moderate edge (5%–15%) — actionable pick</span>
+      </div>
+      <div class="legend-row">
+        <span class="tag tag-investigate">Verify <strong>OVER</strong>?</span>
+        <span class="tag tag-investigate">Verify <strong>UNDER</strong>?</span>
+        <span>extreme edge (≥ 20%) — model probably wrong</span>
+      </div>
+      <div class="legend-row">
+        <span class="tag tag-noline">No line</span>
+        <span>book hasn't posted, or game already started</span>
+      </div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Pitcher</th><th>Opponent</th>
         <th class="num" title="Model projection (v2)">Our Proj</th>
         <th class="num" title="Sportsbook over/under line">Book Line</th>
         <th class="num" title="Best OVER price across all US books">Over Odds</th>
@@ -302,1261 +630,146 @@
         <th class="num" title="Median no-vig P(over) across books">Book Over %</th>
         <th class="num" title="Our Over % minus Book Over %">Edge</th>
         <th title="Pick recommendation">Pick</th>
-      </tr>
-    </thead>
-    <tbody>
-    <tr class="row-focus dir-under">
-      <td class="player">Zack Wheeler</td>
-      <td>Miami Marlins</td>
-      <td class="num">5.73</td>
-      <td class="num">6.5</td>
-      <td class="num" title="Best price at betrivers">200</td>
-      <td class="num" title="Best price at draftkings">-131</td>
-      <td class="num">0.35</td>
-      <td class="num" title="Median across 7 books">0.461</td>
-      <td class="num edge under">-0.111</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-under">
-      <td class="player">Shane McClanahan</td>
-      <td>San Francisco Giants</td>
-      <td class="num">4.79</td>
-      <td class="num">5.5</td>
-      <td class="num" title="Best price at draftkings">116</td>
-      <td class="num" title="Best price at bovada">-135</td>
-      <td class="num">0.348</td>
-      <td class="num" title="Median across 7 books">0.443</td>
-      <td class="num edge under">-0.095</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-over">
-      <td class="player">Jake Irvin</td>
-      <td>Milwaukee Brewers</td>
-      <td class="num">5.04</td>
-      <td class="num">4.5</td>
-      <td class="num" title="Best price at fanduel">100</td>
-      <td class="num" title="Best price at betrivers">163</td>
-      <td class="num">0.567</td>
-      <td class="num" title="Median across 7 books">0.472</td>
-      <td class="num edge over">+0.094</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-under">
-      <td class="player">Jack Flaherty</td>
-      <td>Texas Rangers</td>
-      <td class="num">4.9</td>
-      <td class="num">5.5</td>
-      <td class="num" title="Best price at fanduel">126</td>
-      <td class="num" title="Best price at betrivers">128</td>
-      <td class="num">0.366</td>
-      <td class="num" title="Median across 7 books">0.431</td>
-      <td class="num edge under">-0.064</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-over">
-      <td class="player">MacKenzie Gore</td>
-      <td>Detroit Tigers</td>
-      <td class="num">6.27</td>
-      <td class="num">5.5</td>
-      <td class="num" title="Best price at betrivers">270</td>
-      <td class="num" title="Best price at draftkings">105</td>
-      <td class="num">0.597</td>
-      <td class="num" title="Median across 7 books">0.534</td>
-      <td class="num edge over">+0.063</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span></td>
-    </tr>
-    <tr class="row-investigate dir-under">
-      <td class="player">Zac Gallen</td>
-      <td>Chicago Cubs</td>
-      <td class="num">2.74</td>
-      <td class="num">4.5</td>
-      <td class="num" title="Best price at betrivers">255</td>
-      <td class="num" title="Best price at betmgm">-135</td>
-      <td class="num">0.143</td>
-      <td class="num" title="Median across 7 books">0.445</td>
-      <td class="num edge under">-0.302</td>
-      <td class="badge"><span class="tag tag-investigate tag-dir-under">Verify <strong>UNDER</strong>?</span></td>
-    </tr>
-    <tr class="row-investigate dir-over">
-      <td class="player">Colin Rea</td>
-      <td>Arizona Diamondbacks</td>
-      <td class="num">6.05</td>
-      <td class="num">4.5</td>
-      <td class="num" title="Best price at bovada">130</td>
-      <td class="num" title="Best price at betmgm">-150</td>
-      <td class="num">0.721</td>
-      <td class="num" title="Median across 7 books">0.423</td>
-      <td class="num edge over">+0.298</td>
-      <td class="badge"><span class="tag tag-investigate tag-dir-over">Verify <strong>OVER</strong>?</span></td>
-    </tr>
-    <tr class="row-noise dir-over">
-      <td class="player">Jacob Misiorowski</td>
-      <td>Washington Nationals</td>
-      <td class="num">8.23</td>
-      <td class="num">6.5</td>
-      <td class="num" title="Best price at betonlineag">-132</td>
-      <td class="num" title="Best price at betmgm">115</td>
-      <td class="num">0.714</td>
-      <td class="num" title="Median across 7 books">0.538</td>
-      <td class="num edge over">+0.176</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-over">—</span></td>
-    </tr>
-    <tr class="row-noise dir-under">
-      <td class="player">Brady Singer</td>
-      <td>Pittsburgh Pirates</td>
-      <td class="num">3.73</td>
-      <td class="num">4.5</td>
-      <td class="num" title="Best price at betonlineag">113</td>
-      <td class="num" title="Best price at betrivers">-124</td>
-      <td class="num">0.319</td>
-      <td class="num" title="Median across 7 books">0.48</td>
-      <td class="num edge under">-0.161</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-under">—</span></td>
-    </tr>
-    <tr class="row-noise dir-over">
-      <td class="player">Mike Burrows</td>
-      <td>Boston Red Sox</td>
-      <td class="num">5.43</td>
-      <td class="num">5.5</td>
-      <td class="num" title="Best price at bovada">130</td>
-      <td class="num" title="Best price at betrivers">118</td>
-      <td class="num">0.459</td>
-      <td class="num" title="Median across 7 books">0.417</td>
-      <td class="num edge over">+0.042</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-over">—</span></td>
-    </tr>
-    <tr class="row-noise dir-under">
-      <td class="player">Robbie Ray</td>
-      <td>Tampa Bay Rays</td>
-      <td class="num">5.09</td>
-      <td class="num">5.5</td>
-      <td class="num" title="Best price at fanduel">124</td>
-      <td class="num" title="Best price at betrivers">285</td>
-      <td class="num">0.399</td>
-      <td class="num" title="Median across 7 books">0.431</td>
-      <td class="num edge under">-0.032</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-under">—</span></td>
-    </tr>
-    <tr class="row-noise dir-under">
-      <td class="player">Mitch Keller</td>
-      <td>Cincinnati Reds</td>
-      <td class="num">4.78</td>
-      <td class="num">4.5</td>
-      <td class="num" title="Best price at betrivers">310</td>
-      <td class="num" title="Best price at betmgm">115</td>
-      <td class="num">0.52</td>
-      <td class="num" title="Median across 7 books">0.551</td>
-      <td class="num edge under">-0.031</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-under">—</span></td>
-    </tr>
-    <tr class="row-noise dir-under">
-      <td class="player">Eury Pérez</td>
-      <td>Philadelphia Phillies</td>
-      <td class="num">5.35</td>
-      <td class="num">5.5</td>
-      <td class="num" title="Best price at bovada">105</td>
-      <td class="num" title="Best price at betrivers">155</td>
-      <td class="num">0.444</td>
-      <td class="num" title="Median across 7 books">0.474</td>
-      <td class="num edge under">-0.030</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-under">—</span></td>
-    </tr>
-    <tr class="row-noise dir-over">
-      <td class="player">Will Warren</td>
-      <td>Baltimore Orioles</td>
-      <td class="num">6.04</td>
-      <td class="num">5.5</td>
-      <td class="num" title="Best price at betrivers">143</td>
-      <td class="num" title="Best price at draftkings">115</td>
-      <td class="num">0.561</td>
-      <td class="num" title="Median across 7 books">0.56</td>
-      <td class="num edge over">+0.001</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-over">—</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Cole Ragans</td>
-      <td>Seattle Mariners</td>
-      <td class="num">5.95</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Emmet Sheehan</td>
-      <td>St. Louis Cardinals</td>
-      <td class="num">5.81</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Walbert Urena</td>
-      <td>New York Mets</td>
-      <td class="num">5.77</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Joey Cantillo</td>
-      <td>Athletics</td>
-      <td class="num">5.51</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Noah Schultz</td>
-      <td>San Diego Padres</td>
-      <td class="num">5.41</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Grant Holmes</td>
-      <td>Colorado Rockies</td>
-      <td class="num">5.06</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Bryan Woo</td>
-      <td>Kansas City Royals</td>
-      <td class="num">4.73</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">J.T. Ginn</td>
-      <td>Cleveland Guardians</td>
-      <td class="num">4.33</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Patrick Corbin</td>
-      <td>Minnesota Twins</td>
-      <td class="num">4.14</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Germán Márquez</td>
-      <td>Chicago White Sox</td>
-      <td class="num">4.13</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Matthew Liberatore</td>
-      <td>Los Angeles Dodgers</td>
-      <td class="num">3.19</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Simeon Woods Richardson</td>
-      <td>Toronto Blue Jays</td>
-      <td class="num">2.32</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Jose Quintana</td>
-      <td>Atlanta Braves</td>
-      <td class="num">2.18</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    <tr class="row-noline">
-      <td class="player">Christian Scott</td>
-      <td>Los Angeles Angels</td>
-      <td class="num">1.12</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num">—</td>
-      <td class="num" title="Median across 0 books">—</td>
-      <td class="num edge ">—</td>
-      <td class="badge"><span class="tag tag-noline">No line</span></td>
-    </tr>
-    </tbody>
-  </table>
+      </tr></thead>
+      <tbody>${slateBody}</tbody>
+    </table>
+    ${resultsSection}`;
+  }
 
-  <section class="results-section">
-  <h2>Yesterday's Results — Thursday, April 30, 2026</h2>
-  <p class="muted"><strong>22</strong> pitchers &middot; MAE <strong>1.92</strong> &middot; bias <strong>-0.10</strong> &middot; OVER hit <strong>25%</strong> (1/4 lines)</p>
-  <table>
-    <thead>
-      <tr>
-        <th>Pitcher</th>
-        <th>Opponent</th>
-        <th class="num" title="Model projection">Proj</th>
-        <th class="num" title="Actual strikeouts">Actual</th>
-        <th class="num" title="Actual minus projected">Off By</th>
-        <th class="num" title="Sportsbook line that day">Line</th>
-        <th title="Whether OVER or UNDER hit">Result</th>
-      </tr>
-    </thead>
-    <tbody>
-    <tr>
-      <td class="player">Lance McCullers Jr.</td>
-      <td>Baltimore Orioles</td>
-      <td class="num">4.36</td>
-      <td class="num">9</td>
-      <td class="num error over">+4.6</td>
-      <td class="num">5.5</td>
-      <td class="hit">OVER hit</td>
-    </tr>
-    <tr>
-      <td class="player">Chris Bassitt</td>
-      <td>Houston Astros</td>
-      <td class="num">2.59</td>
-      <td class="num">7</td>
-      <td class="num error over">+4.4</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Framber Valdez</td>
-      <td>Atlanta Braves</td>
-      <td class="num">4.19</td>
-      <td class="num">8</td>
-      <td class="num error over">+3.8</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Paul Skenes</td>
-      <td>St. Louis Cardinals</td>
-      <td class="num">5.49</td>
-      <td class="num">9</td>
-      <td class="num error over">+3.5</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Michael Lorenzen</td>
-      <td>Cincinnati Reds</td>
-      <td class="num">3.77</td>
-      <td class="num">5</td>
-      <td class="num error over">+1.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Logan Webb</td>
-      <td>Philadelphia Phillies</td>
-      <td class="num">4.98</td>
-      <td class="num">6</td>
-      <td class="num error over">+1.0</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Andrew Abbott</td>
-      <td>Colorado Rockies</td>
-      <td class="num">4.04</td>
-      <td class="num">5</td>
-      <td class="num error over">+1.0</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Noah Cameron</td>
-      <td>Athletics</td>
-      <td class="num">4.66</td>
-      <td class="num">5</td>
-      <td class="num error zero">+0.3</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Freddy Peralta</td>
-      <td>Washington Nationals</td>
-      <td class="num">5.85</td>
-      <td class="num">6</td>
-      <td class="num error zero">+0.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Bryce Elder</td>
-      <td>Detroit Tigers</td>
-      <td class="num">5.09</td>
-      <td class="num">5</td>
-      <td class="num error zero">-0.1</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Cristopher Sánchez</td>
-      <td>San Francisco Giants</td>
-      <td class="num">7.13</td>
-      <td class="num">7</td>
-      <td class="num error zero">-0.1</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Hunter Dobbins</td>
-      <td>Pittsburgh Pirates</td>
-      <td class="num">4.14</td>
-      <td class="num">4</td>
-      <td class="num error zero">-0.1</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Jeffrey Springs</td>
-      <td>Kansas City Royals</td>
-      <td class="num">4.49</td>
-      <td class="num">4</td>
-      <td class="num error zero">-0.5</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Brandon Young</td>
-      <td>Houston Astros</td>
-      <td class="num">2.62</td>
-      <td class="num">2</td>
-      <td class="num error under">-0.6</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Adrian Houser</td>
-      <td>Philadelphia Phillies</td>
-      <td class="num">2.84</td>
-      <td class="num">2</td>
-      <td class="num error under">-0.8</td>
-      <td class="num">3.5</td>
-      <td class="miss">UNDER hit</td>
-    </tr>
-    <tr>
-      <td class="player">Bailey Ober</td>
-      <td>Toronto Blue Jays</td>
-      <td class="num">3.68</td>
-      <td class="num">2</td>
-      <td class="num error under">-1.7</td>
-      <td class="num">3.5</td>
-      <td class="miss">UNDER hit</td>
-    </tr>
-    <tr>
-      <td class="player">Miles Mikolas</td>
-      <td>New York Mets</td>
-      <td class="num">4.9</td>
-      <td class="num">3</td>
-      <td class="num error under">-1.9</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Brandon Woodruff</td>
-      <td>Arizona Diamondbacks</td>
-      <td class="num">3.97</td>
-      <td class="num">2</td>
-      <td class="num error under">-2.0</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Tim Mayza</td>
-      <td>San Francisco Giants</td>
-      <td class="num">4.48</td>
-      <td class="num">2</td>
-      <td class="num error under">-2.5</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Michael Soroka</td>
-      <td>Milwaukee Brewers</td>
-      <td class="num">5.26</td>
-      <td class="num">2</td>
-      <td class="num error under">-3.3</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Kevin Gausman</td>
-      <td>Minnesota Twins</td>
-      <td class="num">5.96</td>
-      <td class="num">2</td>
-      <td class="num error under">-4.0</td>
-      <td class="num">5.5</td>
-      <td class="miss">UNDER hit</td>
-    </tr>
-    <tr>
-      <td class="player">Peter Lambert</td>
-      <td>Baltimore Orioles</td>
-      <td class="num">7.66</td>
-      <td class="num">3</td>
-      <td class="num error under">-4.7</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    </tbody>
-  </table>
-</section>
-
-  </div>
-  <div class="tab-panel" data-tab="hitters">
-
-  <div class="summary"><p><strong>198</strong> settled batters in last 14 days &middot; MAE <strong>0.73</strong> &middot; bias <strong>-0.00</strong></p></div>
-
-  <div class="legend">
-    <div class="legend-row">
-      <span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span>
-      <span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span>
-      <span>moderate edge (5%–15%) — actionable pick</span>
+  function hitterTabHTML(slateBody, resultsSection) {
+    return `<div class="legend">
+      <div class="legend-row">
+        <span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span>
+        <span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span>
+        <span>moderate edge (5%–15%) — actionable pick</span>
+      </div>
+      <div class="legend-row">
+        <span class="tag tag-investigate">Verify <strong>OVER</strong>?</span>
+        <span class="tag tag-investigate">Verify <strong>UNDER</strong>?</span>
+        <span>extreme edge (≥ 20%) — model probably wrong</span>
+      </div>
+      <div class="legend-row">
+        <span class="tag tag-noline">No line</span>
+        <span>book hasn't posted batter K market for this player</span>
+      </div>
     </div>
-    <div class="legend-row">
-      <span class="tag tag-investigate">Verify <strong>OVER</strong>?</span>
-      <span class="tag tag-investigate">Verify <strong>UNDER</strong>?</span>
-      <span>extreme edge (&ge; 20%) — model probably wrong, do not bet</span>
-    </div>
-    <div class="legend-row">
-      <span class="tag tag-noline">No line</span>
-      <span>book hasn't posted batter K market for this player</span>
-    </div>
-  </div>
-
-  <details class="howto">
-    <summary>How the hitter K projection works</summary>
-    <dl>
-      <dt>Projection</dt>
-      <dd>(Hitter K% × opposing starter K% / league K%) × park × expected PA. Expected PA comes from a static lineup-slot table (leadoff ≈ 4.65, #9 ≈ 3.85). v0 treats the whole game as if every PA were vs the starter — bullpen K% blending is a future improvement.</dd>
-      <dt>Lines</dt>
-      <dd>Hitter K lines are usually 0.5 or 1.5. Distribution is Poisson-like with low mean, so the same P(over) math from the pitcher model carries over.</dd>
-      <dt>Heads up</dt>
-      <dd>Hitter projections only render for batters whose lineup card is confirmed in the MLB API — typically 2–3 hours before first pitch.</dd>
-    </dl>
-  </details>
-
-  <table>
-    <thead>
-      <tr>
+    <table>
+      <thead><tr>
         <th>Hitter</th>
         <th class="num" title="Batting-order slot">Slot</th>
-        <th>Team</th>
-        <th>Matchup</th>
-        <th class="num" title="Model projection">Our Proj</th>
-        <th class="num" title="Sportsbook line">Book Line</th>
+        <th>Team</th><th>Matchup</th>
+        <th class="num">Our Proj</th>
+        <th class="num">Book Line</th>
         <th class="num">Over Odds</th>
         <th class="num">Under Odds</th>
         <th class="num">Our Over %</th>
         <th class="num">Book Over %</th>
         <th class="num">Edge</th>
         <th>Pick</th>
-      </tr>
-    </thead>
-    <tbody>
-    <tr class="row-focus dir-under">
-      <td class="player">Michael Busch</td>
-      <td class="num slot">6</td>
-      <td>Chicago Cubs</td>
-      <td>vs Zac Gallen</td>
-      <td class="num">0.63</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-190</td>
-      <td class="num" title="Best price at betmgm">140</td>
-      <td class="num">0.467</td>
-      <td class="num" title="Median across 1 books">0.611</td>
-      <td class="num edge under">-0.144</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-under">
-      <td class="player">Nico Hoerner</td>
-      <td class="num slot">1</td>
-      <td>Chicago Cubs</td>
-      <td>vs Zac Gallen</td>
-      <td class="num">0.27</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">150</td>
-      <td class="num" title="Best price at betmgm">-200</td>
-      <td class="num">0.235</td>
-      <td class="num" title="Median across 1 books">0.375</td>
-      <td class="num edge under">-0.140</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-under">
-      <td class="player">Alex Bregman</td>
-      <td class="num slot">3</td>
-      <td>Chicago Cubs</td>
-      <td>vs Zac Gallen</td>
-      <td class="num">0.43</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-105</td>
-      <td class="num" title="Best price at betmgm">-125</td>
-      <td class="num">0.352</td>
-      <td class="num" title="Median across 1 books">0.48</td>
-      <td class="num edge under">-0.128</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-under">
-      <td class="player">Pete Crow-Armstrong</td>
-      <td class="num slot">8</td>
-      <td>Chicago Cubs</td>
-      <td>vs Zac Gallen</td>
-      <td class="num">0.74</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-220</td>
-      <td class="num" title="Best price at betmgm">165</td>
-      <td class="num">0.522</td>
-      <td class="num" title="Median across 1 books">0.646</td>
-      <td class="num edge under">-0.123</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-under">
-      <td class="player">Jose Fernandez</td>
-      <td class="num slot">6</td>
-      <td>Arizona Diamondbacks</td>
-      <td>vs Colin Rea</td>
-      <td class="num">0.74</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-210</td>
-      <td class="num" title="Best price at betmgm">155</td>
-      <td class="num">0.524</td>
-      <td class="num" title="Median across 1 books">0.633</td>
-      <td class="num edge under">-0.110</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-under">
-      <td class="player">Alek Thomas</td>
-      <td class="num slot">8</td>
-      <td>Arizona Diamondbacks</td>
-      <td>vs Colin Rea</td>
-      <td class="num">0.67</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-160</td>
-      <td class="num" title="Best price at betmgm">120</td>
-      <td class="num">0.489</td>
-      <td class="num" title="Median across 1 books">0.575</td>
-      <td class="num edge under">-0.086</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-under">
-      <td class="player">Ildemaro Vargas</td>
-      <td class="num slot">2</td>
-      <td>Arizona Diamondbacks</td>
-      <td>vs Colin Rea</td>
-      <td class="num">0.43</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">115</td>
-      <td class="num" title="Best price at betmgm">-155</td>
-      <td class="num">0.348</td>
-      <td class="num" title="Median across 1 books">0.433</td>
-      <td class="num edge under">-0.086</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-under">
-      <td class="player">Gabriel Moreno</td>
-      <td class="num slot">5</td>
-      <td>Arizona Diamondbacks</td>
-      <td>vs Colin Rea</td>
-      <td class="num">0.63</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-140</td>
-      <td class="num" title="Best price at betmgm">105</td>
-      <td class="num">0.468</td>
-      <td class="num" title="Median across 1 books">0.545</td>
-      <td class="num edge under">-0.077</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-focus dir-under">
-      <td class="player">Nolan Arenado</td>
-      <td class="num slot">7</td>
-      <td>Arizona Diamondbacks</td>
-      <td>vs Colin Rea</td>
-      <td class="num">0.56</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-105</td>
-      <td class="num" title="Best price at betmgm">-125</td>
-      <td class="num">0.426</td>
-      <td class="num" title="Median across 1 books">0.48</td>
-      <td class="num edge under">-0.054</td>
-      <td class="badge"><span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span></td>
-    </tr>
-    <tr class="row-investigate dir-under">
-      <td class="player">Moisés Ballesteros</td>
-      <td class="num slot">2</td>
-      <td>Chicago Cubs</td>
-      <td>vs Zac Gallen</td>
-      <td class="num">0.37</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-155</td>
-      <td class="num" title="Best price at betmgm">115</td>
-      <td class="num">0.311</td>
-      <td class="num" title="Median across 1 books">0.567</td>
-      <td class="num edge under">-0.256</td>
-      <td class="badge"><span class="tag tag-investigate tag-dir-under">Verify <strong>UNDER</strong>?</span></td>
-    </tr>
-    <tr class="row-investigate dir-under">
-      <td class="player">Seiya Suzuki</td>
-      <td class="num slot">5</td>
-      <td>Chicago Cubs</td>
-      <td>vs Zac Gallen</td>
-      <td class="num">0.66</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-275</td>
-      <td class="num" title="Best price at betmgm">195</td>
-      <td class="num">0.482</td>
-      <td class="num" title="Median across 1 books">0.684</td>
-      <td class="num edge under">-0.202</td>
-      <td class="badge"><span class="tag tag-investigate tag-dir-under">Verify <strong>UNDER</strong>?</span></td>
-    </tr>
-    <tr class="row-noise dir-under">
-      <td class="player">Dansby Swanson</td>
-      <td class="num slot">9</td>
-      <td>Chicago Cubs</td>
-      <td>vs Zac Gallen</td>
-      <td class="num">0.52</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-185</td>
-      <td class="num" title="Best price at betmgm">135</td>
-      <td class="num">0.405</td>
-      <td class="num" title="Median across 1 books">0.604</td>
-      <td class="num edge under">-0.199</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-under">—</span></td>
-    </tr>
-    <tr class="row-noise dir-under">
-      <td class="player">Carson Kelly</td>
-      <td class="num slot">7</td>
-      <td>Chicago Cubs</td>
-      <td>vs Zac Gallen</td>
-      <td class="num">0.42</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-135</td>
-      <td class="num" title="Best price at betmgm">100</td>
-      <td class="num">0.344</td>
-      <td class="num" title="Median across 1 books">0.535</td>
-      <td class="num edge under">-0.191</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-under">—</span></td>
-    </tr>
-    <tr class="row-noise dir-under">
-      <td class="player">Ian Happ</td>
-      <td class="num slot">4</td>
-      <td>Chicago Cubs</td>
-      <td>vs Zac Gallen</td>
-      <td class="num">0.76</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-275</td>
-      <td class="num" title="Best price at betmgm">200</td>
-      <td class="num">0.534</td>
-      <td class="num" title="Median across 1 books">0.688</td>
-      <td class="num edge under">-0.154</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-under">—</span></td>
-    </tr>
-    <tr class="row-noise dir-under">
-      <td class="player">Geraldo Perdomo</td>
-      <td class="num slot">1</td>
-      <td>Arizona Diamondbacks</td>
-      <td>vs Colin Rea</td>
-      <td class="num">0.59</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-110</td>
-      <td class="num" title="Best price at betmgm">-120</td>
-      <td class="num">0.445</td>
-      <td class="num" title="Median across 1 books">0.49</td>
-      <td class="num edge under">-0.045</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-under">—</span></td>
-    </tr>
-    <tr class="row-noise dir-under">
-      <td class="player">Adrian Del Castillo</td>
-      <td class="num slot">4</td>
-      <td>Arizona Diamondbacks</td>
-      <td>vs Colin Rea</td>
-      <td class="num">1.1</td>
-      <td class="num">1.5</td>
-      <td class="num" title="Best price at betmgm">170</td>
-      <td class="num" title="Best price at betmgm">-235</td>
-      <td class="num">0.302</td>
-      <td class="num" title="Median across 1 books">0.346</td>
-      <td class="num edge under">-0.043</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-under">—</span></td>
-    </tr>
-    <tr class="row-noise dir-over">
-      <td class="player">Jorge Barrosa</td>
-      <td class="num slot">9</td>
-      <td>Arizona Diamondbacks</td>
-      <td>vs Colin Rea</td>
-      <td class="num">1.09</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-210</td>
-      <td class="num" title="Best price at betmgm">155</td>
-      <td class="num">0.665</td>
-      <td class="num" title="Median across 1 books">0.633</td>
-      <td class="num edge over">+0.032</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-over">—</span></td>
-    </tr>
-    <tr class="row-noise dir-over">
-      <td class="player">Corbin Carroll</td>
-      <td class="num slot">3</td>
-      <td>Arizona Diamondbacks</td>
-      <td>vs Colin Rea</td>
-      <td class="num">1.09</td>
-      <td class="num">0.5</td>
-      <td class="num" title="Best price at betmgm">-225</td>
-      <td class="num" title="Best price at betmgm">165</td>
-      <td class="num">0.663</td>
-      <td class="num" title="Median across 1 books">0.647</td>
-      <td class="num edge over">+0.015</td>
-      <td class="badge"><span class="tag tag-noise tag-dir-over">—</span></td>
-    </tr>
-    </tbody>
-  </table>
+      </tr></thead>
+      <tbody>${slateBody}</tbody>
+    </table>
+    ${resultsSection}`;
+  }
 
-  <section class="results-section">
-  <h2>Yesterday's Results — Thursday, April 30, 2026</h2>
-  <p class="muted"><strong>40</strong> top-error hitters &middot; MAE <strong>1.53</strong> &middot; bias <strong>+0.71</strong></p>
-  <table>
-    <thead>
-      <tr>
-        <th>Hitter</th>
-        <th>Team</th>
-        <th class="num" title="Model projection">Proj</th>
-        <th class="num" title="Actual strikeouts">Actual</th>
-        <th class="num" title="Actual minus projected">Off By</th>
-        <th class="num" title="Sportsbook line that day">Line</th>
-        <th title="Whether OVER or UNDER hit">Result</th>
-      </tr>
-    </thead>
-    <tbody>
-    <tr>
-      <td class="player">Samuel Basallo</td>
-      <td>Baltimore Orioles</td>
-      <td class="num">1.04</td>
-      <td class="num">4</td>
-      <td class="num error over">+3.0</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Trea Turner</td>
-      <td>Philadelphia Phillies</td>
-      <td class="num">0.44</td>
-      <td class="num">3</td>
-      <td class="num error over">+2.6</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Brandon Marsh</td>
-      <td>Philadelphia Phillies</td>
-      <td class="num">0.74</td>
-      <td class="num">3</td>
-      <td class="num error over">+2.3</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Trea Turner</td>
-      <td>Philadelphia Phillies</td>
-      <td class="num">0.8</td>
-      <td class="num">3</td>
-      <td class="num error over">+2.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Austin Riley</td>
-      <td>Atlanta Braves</td>
-      <td class="num">0.91</td>
-      <td class="num">3</td>
-      <td class="num error over">+2.1</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Carter Jensen</td>
-      <td>Kansas City Royals</td>
-      <td class="num">1.07</td>
-      <td class="num">3</td>
-      <td class="num error over">+1.9</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Riley Greene</td>
-      <td>Detroit Tigers</td>
-      <td class="num">1.09</td>
-      <td class="num">3</td>
-      <td class="num error over">+1.9</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Hunter Goodman</td>
-      <td>Colorado Rockies</td>
-      <td class="num">1.13</td>
-      <td class="num">3</td>
-      <td class="num error over">+1.9</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Adrian Del Castillo</td>
-      <td>Arizona Diamondbacks</td>
-      <td class="num">1.17</td>
-      <td class="num">3</td>
-      <td class="num error over">+1.8</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Yordan Alvarez</td>
-      <td>Houston Astros</td>
-      <td class="num">0.24</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.8</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Yordan Alvarez</td>
-      <td>Houston Astros</td>
-      <td class="num">0.25</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.8</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Carlos Cortes</td>
-      <td>Athletics</td>
-      <td class="num">0.35</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.6</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Bryson Stott</td>
-      <td>Philadelphia Phillies</td>
-      <td class="num">0.39</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.6</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Heliot Ramos</td>
-      <td>San Francisco Giants</td>
-      <td class="num">1.59</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.6</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Jung Hoo Lee</td>
-      <td>San Francisco Giants</td>
-      <td class="num">0.54</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.5</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Blaze Alexander</td>
-      <td>Baltimore Orioles</td>
-      <td class="num">1.45</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.4</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Eli White</td>
-      <td>Atlanta Braves</td>
-      <td class="num">0.55</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.4</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Lourdes Gurriel Jr.</td>
-      <td>Arizona Diamondbacks</td>
-      <td class="num">0.58</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.4</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Heliot Ramos</td>
-      <td>San Francisco Giants</td>
-      <td class="num">1.4</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.4</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Jung Hoo Lee</td>
-      <td>San Francisco Giants</td>
-      <td class="num">0.62</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.4</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Carson Benge</td>
-      <td>New York Mets</td>
-      <td class="num">0.63</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.4</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Colby Thomas</td>
-      <td>Athletics</td>
-      <td class="num">1.34</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.3</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Braden Shewmake</td>
-      <td>Houston Astros</td>
-      <td class="num">0.68</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.3</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Pete Alonso</td>
-      <td>Baltimore Orioles</td>
-      <td class="num">1.31</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.3</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Bryson Stott</td>
-      <td>Philadelphia Phillies</td>
-      <td class="num">0.69</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.3</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Ketel Marte</td>
-      <td>Arizona Diamondbacks</td>
-      <td class="num">0.69</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.3</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Alek Thomas</td>
-      <td>Arizona Diamondbacks</td>
-      <td class="num">0.71</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.3</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Will Benson</td>
-      <td>Cincinnati Reds</td>
-      <td class="num">0.73</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.3</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Drake Baldwin</td>
-      <td>Atlanta Braves</td>
-      <td class="num">0.77</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Greg Jones</td>
-      <td>Milwaukee Brewers</td>
-      <td class="num">1.78</td>
-      <td class="num">3</td>
-      <td class="num error over">+1.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Weston Wilson</td>
-      <td>Baltimore Orioles</td>
-      <td class="num">1.22</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Jeremiah Jackson</td>
-      <td>Baltimore Orioles</td>
-      <td class="num">1.21</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Starling Marte</td>
-      <td>Kansas City Royals</td>
-      <td class="num">1.18</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Byron Buxton</td>
-      <td>Minnesota Twins</td>
-      <td class="num">1.18</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Ronald Acuña Jr.</td>
-      <td>Atlanta Braves</td>
-      <td class="num">0.84</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Brice Matthews</td>
-      <td>Houston Astros</td>
-      <td class="num">0.84</td>
-      <td class="num">2</td>
-      <td class="num error over">+1.2</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">MJ Melendez</td>
-      <td>New York Mets</td>
-      <td class="num">1.15</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.1</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Corbin Carroll</td>
-      <td>Arizona Diamondbacks</td>
-      <td class="num">1.15</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.1</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Isaac Collins</td>
-      <td>Kansas City Royals</td>
-      <td class="num">1.13</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.1</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    <tr>
-      <td class="player">Brice Turang</td>
-      <td>Milwaukee Brewers</td>
-      <td class="num">1.12</td>
-      <td class="num">0</td>
-      <td class="num error under">-1.1</td>
-      <td class="num">—</td>
-      <td class="muted">no line</td>
-    </tr>
-    </tbody>
-  </table>
-</section>
+  async function loadAndRender() {
+    const btn = document.getElementById("refresh-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "Refreshing…"; }
+    document.body.classList.add("loading");
 
+    try {
+      const [pSlate, hSlate, pSettled, hSettled] = await Promise.all([
+        fetchTodaysCSV("pitcher_ks"),
+        fetchTodaysCSV("hitter_ks"),
+        fetchMostRecentSettled("pitcher_ks"),
+        fetchMostRecentSettled("hitter_ks"),
+      ]);
+
+      const pTab = renderPitcherTab({ slate: pSlate, settled: pSettled });
+      const hTab = renderHitterTab({ slate: hSlate, settled: hSettled });
+
+      document.getElementById("pitcher-panel").innerHTML = pTab.html;
+      document.getElementById("hitter-panel").innerHTML = hTab.html;
+      document.getElementById("pitcher-counts").textContent =
+        `(${pTab.cnt.focus} focus / ${pTab.cnt.investigate} verify)`;
+      document.getElementById("hitter-counts").textContent =
+        `(${hTab.cnt.focus} focus / ${hTab.cnt.investigate} verify)`;
+
+      const stamp = new Date().toLocaleString("en-US", {
+        timeZone: "America/Chicago",
+        month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+      });
+      const lr = document.getElementById("last-refresh");
+      if (lr) lr.innerHTML = `Last fetched <strong>${stamp} CT</strong>`;
+    } catch (e) {
+      console.error(e);
+      const lr = document.getElementById("last-refresh");
+      if (lr) lr.textContent = "Refresh failed — check your connection.";
+    } finally {
+      document.body.classList.remove("loading");
+      if (btn) { btn.disabled = false; btn.textContent = "Refresh data"; }
+    }
+  }
+
+  function showTab(name) {
+    document.querySelectorAll(".tab-panel").forEach(p =>
+      p.classList.toggle("active", p.dataset.tab === name)
+    );
+    document.querySelectorAll(".tabs button").forEach(b =>
+      b.classList.toggle("active", b.dataset.tab === name)
+    );
+    if (location.hash !== "#" + name) {
+      history.replaceState(null, "", "#" + name);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".tabs button").forEach(b => {
+      b.addEventListener("click", () => showTab(b.dataset.tab));
+    });
+    const initial = (location.hash || "#pitchers").slice(1);
+    showTab(["pitchers", "hitters"].includes(initial) ? initial : "pitchers");
+
+    const btn = document.getElementById("refresh-btn");
+    if (btn) btn.addEventListener("click", loadAndRender);
+
+    loadAndRender();
+  });
+})();
+</script>
+</head>
+<body>
+<header>
+  <div>
+    <h1>MLB K Prop Projections</h1>
+    <div class="date">Friday, May 01, 2026</div>
+  </div>
+  <div class="actions">
+    <button type="button" id="refresh-btn" class="primary">Refresh data</button><span class="last-refresh" id="last-refresh"></span>
+    <form action="/refresh" method="post" onsubmit="document.body.classList.add('loading');">
+      <button type="submit">Re-run pipeline</button>
+    </form>
+    <form action="/settle" method="post" onsubmit="document.body.classList.add('loading');">
+      <button type="submit">Settle yesterday</button>
+    </form>
+  </div>
+  <nav class="tabs">
+    <button data-tab="pitchers" type="button">Pitcher Ks <span class="count" id="pitcher-counts"></span></button>
+    <button data-tab="hitters" type="button">Hitter Ks <span class="count" id="hitter-counts"></span></button>
+  </nav>
+</header>
+<main>
+  <div class="tab-panel" data-tab="pitchers" id="pitcher-panel">
+    <p class="muted">Loading…</p>
+  </div>
+  <div class="tab-panel" data-tab="hitters" id="hitter-panel">
+    <p class="muted">Loading…</p>
   </div>
 </main>
 <footer>
-  Generated 2026-05-01 11:59 &middot;
-  Pitchers: 5 focus / 2 verify /
-  7 noise / 14 no-line &middot;
-  Hitters: 9 focus / 2 verify /
-  7 noise / 0 no-line
+  Shell built 2026-05-01 11:44 &middot;
+  Data fetched live from chirsch95/bets/output on each load &middot;
+  <a href="https://github.com/chirsch95/bets" style="color: var(--muted);">source</a>
 </footer>
 </body>
 </html>

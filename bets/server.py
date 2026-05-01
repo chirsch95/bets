@@ -19,7 +19,7 @@ import os
 from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, request, send_file
+from flask import Flask, redirect, request, send_file, send_from_directory
 
 from .config import OUTPUT_DIR, PROJECT_ROOT
 from .hitters import run as run_hitter_projections
@@ -44,6 +44,19 @@ def index():
             404,
         )
     return send_file(out_path)
+
+
+@app.get("/<path:filename>")
+def output_file(filename: str):
+    """Serve any other file from output/ as a static asset (CSVs, etc.).
+
+    The dashboard's JS fetches `./pitcher_ks_<date>.csv` etc. when running
+    on localhost; this route handles those requests. Restricts to the
+    output directory to prevent path-traversal escapes.
+    """
+    if ".." in filename or filename.startswith("/"):
+        return "forbidden", 403
+    return send_from_directory(OUTPUT_DIR, filename)
 
 
 @app.post("/refresh")

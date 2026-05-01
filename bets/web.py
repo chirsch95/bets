@@ -1,653 +1,45 @@
-"""Static HTML dashboard generator.
+"""Static HTML dashboard generator (client-side rendered).
 
-Renders a tabbed dashboard with two views:
-    - Pitcher Ks (today's slate + Recent Results)
-    - Hitter Ks  (today's slate + Recent Results)
+Generates a thin HTML shell with embedded JavaScript. The JS fetches CSV
+files at page-load:
+  - On localhost / 127.0.0.1: from same origin (`./...csv`) — Flask
+    server serves them from output/.
+  - On any other host (Netlify): from
+    `https://raw.githubusercontent.com/chirsch95/bets/main/output/...csv`.
 
-Both tabs are server-rendered into the same index.html; a tiny JS toggle
-switches which section is visible. Open in a browser:
+Rendering happens client-side, so committing new CSV data does NOT require
+a Netlify redeploy — saves build credits. Netlify only re-deploys when the
+shell itself (this generated index.html) changes, governed by the
+`netlify.toml` ignore rule.
 
+Run with:
     python -m bets.web              # today
-    python -m bets.web 2026-04-30   # specific date
+    python -m bets.web 2026-04-30   # specific date (only affects header label)
 """
 
 from __future__ import annotations
 
-import csv
-import html
 import os
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from pathlib import Path
-from statistics import mean
-
-try:
-    from zoneinfo import ZoneInfo  # py3.9+
-except ImportError:  # pragma: no cover
-    ZoneInfo = None  # type: ignore
 
 from .config import OUTPUT_DIR
 
+REPO = "chirsch95/bets"
+BRANCH = "main"
 
-def _is_static_mode() -> bool:
-    """When STATIC_MODE=1, render a read-only dashboard (no buttons).
-
-    Set this in the GitHub Actions workflow that publishes to Netlify, so
-    the deployed page doesn't show buttons that POST to a Flask server
-    that isn't there.
-    """
-    return os.environ.get("STATIC_MODE", "").strip() not in ("", "0", "false", "False")
-
-
-def _generated_at_label() -> str:
-    """Return a human-friendly 'last refreshed' string in US/Eastern."""
-    now_utc = datetime.now(timezone.utc)
-    if ZoneInfo is not None:
-        try:
-            return now_utc.astimezone(ZoneInfo("America/New_York")).strftime(
-                "%b %d, %Y %-I:%M %p ET"
-            )
-        except Exception:  # noqa: BLE001
-            pass
-    return now_utc.strftime("%b %d, %Y %H:%M UTC")
-
-# Edge bands (shared between pitcher and hitter views).
+# Edge bands. Mirror values used by the JS classifier — keep in sync.
 FOCUS_EDGE_MIN = 0.05
 FOCUS_EDGE_MAX = 0.15
 INVESTIGATE_EDGE = 0.20
 
 
-def _f(v):
-    if v in ("", None):
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _classify(edge: float | None) -> str:
-    if edge is None:
-        return "noline"
-    abs_edge = abs(edge)
-    if abs_edge >= INVESTIGATE_EDGE:
-        return "investigate"
-    if FOCUS_EDGE_MIN <= abs_edge <= FOCUS_EDGE_MAX:
-        return "focus"
-    return "noise"
-
-
-def _label(cls: str, direction: str) -> str:
-    if cls == "focus" and direction:
-        return f"Bet <strong>{direction.upper()}</strong>"
-    if cls == "investigate" and direction:
-        return f"Verify <strong>{direction.upper()}</strong>?"
-    if cls == "noline":
-        return "No line"
-    return "—"
-
-
-def _dash(value) -> str:
-    if value in ("", None):
-        return "—"
-    return html.escape(str(value))
-
-
-def _sort_key(r: dict, proj_field: str):
-    edge = _f(r.get("edge"))
-    cls = _classify(edge)
-    cls_rank = {"focus": 0, "investigate": 1, "noise": 2, "noline": 3}[cls]
-    edge_rank = -abs(edge) if edge is not None else 0
-    proj = -(_f(r.get(proj_field)) or 0)
-    return (cls_rank, edge_rank, proj)
-
-
-# ---------- Pitcher view ----------
-
-
-def _pitcher_row_html(r: dict) -> str:
-    edge = _f(r.get("edge"))
-    cls = _classify(edge)
-    direction = ""
-    if edge is not None and edge != 0:
-        direction = "over" if edge > 0 else "under"
-
-    edge_str = f"{edge:+.3f}" if edge is not None else "—"
-    row_classes = f"row-{cls}" + (f" dir-{direction}" if direction else "")
-    tag_classes = f"tag-{cls}" + (f" tag-dir-{direction}" if direction else "")
-
-    over_book = r.get("over_book") or ""
-    under_book = r.get("under_book") or ""
-    n_books = r.get("n_books") or ""
-    over_title = f' title="Best price at {over_book}"' if over_book else ""
-    under_title = f' title="Best price at {under_book}"' if under_book else ""
-    novig_title = f' title="Median across {n_books} books"' if n_books else ""
-
-    proj = r.get("proj_ks_v2") or r.get("proj_ks_v1")
-    return f"""    <tr class="{row_classes}">
-      <td class="player">{html.escape(r.get('pitcher', ''))}</td>
-      <td>{html.escape(r.get('opp', ''))}</td>
-      <td class="num">{_dash(proj)}</td>
-      <td class="num">{_dash(r.get('line'))}</td>
-      <td class="num"{over_title}>{_dash(r.get('over_odds'))}</td>
-      <td class="num"{under_title}>{_dash(r.get('under_odds'))}</td>
-      <td class="num">{_dash(r.get('p_over'))}</td>
-      <td class="num"{novig_title}>{_dash(r.get('novig_over'))}</td>
-      <td class="num edge {direction}">{edge_str}</td>
-      <td class="badge"><span class="tag {tag_classes}">{_label(cls, direction)}</span></td>
-    </tr>"""
-
-
-def _pitcher_result_row_html(r: dict) -> str:
-    actual = _f(r.get("actual_ks"))
-    proj = _f(r.get("proj_ks_v2")) or _f(r.get("proj_ks_v1"))
-    line = _f(r.get("line"))
-    over_hit = _f(r.get("over_hit"))
-
-    err = (actual - proj) if (actual is not None and proj is not None) else None
-    if err is None:
-        err_cls = "zero"
-        err_str = "—"
-    elif err > 0.5:
-        err_cls = "over"
-        err_str = f"+{err:.1f}"
-    elif err < -0.5:
-        err_cls = "under"
-        err_str = f"{err:.1f}"
-    else:
-        err_cls = "zero"
-        err_str = f"{err:+.1f}"
-
-    if line is None:
-        result_cell = '<td class="muted">no line</td>'
-    elif over_hit is None:
-        result_cell = '<td class="muted">—</td>'
-    elif over_hit >= 1:
-        result_cell = '<td class="hit">OVER hit</td>'
-    else:
-        result_cell = '<td class="miss">UNDER hit</td>'
-
-    proj_cell = r.get("proj_ks_v2") or r.get("proj_ks_v1")
-    return f"""    <tr>
-      <td class="player">{html.escape(r.get('pitcher', ''))}</td>
-      <td>{html.escape(r.get('opp', ''))}</td>
-      <td class="num">{_dash(proj_cell)}</td>
-      <td class="num">{int(actual) if actual is not None else '—'}</td>
-      <td class="num error {err_cls}">{err_str}</td>
-      <td class="num">{_dash(r.get('line'))}</td>
-      {result_cell}
-    </tr>"""
-
-
-# ---------- Hitter view ----------
-
-
-def _hitter_row_html(r: dict) -> str:
-    edge = _f(r.get("edge"))
-    cls = _classify(edge)
-    direction = ""
-    if edge is not None and edge != 0:
-        direction = "over" if edge > 0 else "under"
-
-    edge_str = f"{edge:+.3f}" if edge is not None else "—"
-    row_classes = f"row-{cls}" + (f" dir-{direction}" if direction else "")
-    tag_classes = f"tag-{cls}" + (f" tag-dir-{direction}" if direction else "")
-
-    over_book = r.get("over_book") or ""
-    under_book = r.get("under_book") or ""
-    n_books = r.get("n_books") or ""
-    over_title = f' title="Best price at {over_book}"' if over_book else ""
-    under_title = f' title="Best price at {under_book}"' if under_book else ""
-    novig_title = f' title="Median across {n_books} books"' if n_books else ""
-
-    return f"""    <tr class="{row_classes}">
-      <td class="player">{html.escape(r.get('hitter', ''))}</td>
-      <td class="num slot">{_dash(r.get('slot'))}</td>
-      <td>{html.escape(r.get('team', ''))}</td>
-      <td>vs {html.escape(r.get('opp_pitcher', ''))}</td>
-      <td class="num">{_dash(r.get('proj_ks'))}</td>
-      <td class="num">{_dash(r.get('line'))}</td>
-      <td class="num"{over_title}>{_dash(r.get('over_odds'))}</td>
-      <td class="num"{under_title}>{_dash(r.get('under_odds'))}</td>
-      <td class="num">{_dash(r.get('p_over'))}</td>
-      <td class="num"{novig_title}>{_dash(r.get('novig_over'))}</td>
-      <td class="num edge {direction}">{edge_str}</td>
-      <td class="badge"><span class="tag {tag_classes}">{_label(cls, direction)}</span></td>
-    </tr>"""
-
-
-def _hitter_result_row_html(r: dict) -> str:
-    actual = _f(r.get("actual_ks"))
-    proj = _f(r.get("proj_ks"))
-    line = _f(r.get("line"))
-    over_hit = _f(r.get("over_hit"))
-
-    err = (actual - proj) if (actual is not None and proj is not None) else None
-    if err is None:
-        err_cls = "zero"
-        err_str = "—"
-    elif err > 0.3:
-        err_cls = "over"
-        err_str = f"+{err:.1f}"
-    elif err < -0.3:
-        err_cls = "under"
-        err_str = f"{err:.1f}"
-    else:
-        err_cls = "zero"
-        err_str = f"{err:+.1f}"
-
-    if line is None:
-        result_cell = '<td class="muted">no line</td>'
-    elif over_hit is None:
-        result_cell = '<td class="muted">—</td>'
-    elif over_hit >= 1:
-        result_cell = '<td class="hit">OVER hit</td>'
-    else:
-        result_cell = '<td class="miss">UNDER hit</td>'
-
-    return f"""    <tr>
-      <td class="player">{html.escape(r.get('hitter', ''))}</td>
-      <td>{html.escape(r.get('team', ''))}</td>
-      <td class="num">{_dash(r.get('proj_ks'))}</td>
-      <td class="num">{int(actual) if actual is not None else '—'}</td>
-      <td class="num error {err_cls}">{err_str}</td>
-      <td class="num">{_dash(r.get('line'))}</td>
-      {result_cell}
-    </tr>"""
-
-
-# ---------- Settled-history loaders ----------
-
-
-def _load_recent_settled(prefix: str, days: int = 14) -> list[dict]:
-    cutoff = date.today() - timedelta(days=days)
-    rows = []
-    for path in sorted(OUTPUT_DIR.glob(f"{prefix}_*_settled.csv")):
-        try:
-            d = datetime.strptime(path.stem.split("_")[2], "%Y-%m-%d").date()
-        except (IndexError, ValueError):
-            continue
-        if d < cutoff:
-            continue
-        with path.open() as f:
-            for r in csv.DictReader(f):
-                if _f(r.get("actual_ks")) is None:
-                    continue
-                rows.append(r)
-    return rows
-
-
-def _load_most_recent_settled(prefix: str) -> tuple[date | None, list[dict]]:
-    candidates = []
-    for path in OUTPUT_DIR.glob(f"{prefix}_*_settled.csv"):
-        try:
-            d = datetime.strptime(path.stem.split("_")[2], "%Y-%m-%d").date()
-        except (IndexError, ValueError):
-            continue
-        candidates.append((d, path))
-    if not candidates:
-        return None, []
-    candidates.sort(key=lambda x: x[0], reverse=True)
-    d, path = candidates[0]
-    with path.open() as f:
-        rows = [r for r in csv.DictReader(f) if _f(r.get("actual_ks")) is not None]
-    return d, rows
-
-
-# ---------- Summary boxes ----------
-
-
-def _pitcher_summary_html(rows: list[dict]) -> str:
-    if not rows:
-        return (
-            "<p class='muted'>No settled history yet — run "
-            "<code>python -m bets.settle &lt;date&gt;</code> on past dates "
-            "once you have a few days of projections.</p>"
-        )
-
-    e2 = [x for x in (_f(r.get("error_v2")) for r in rows) if x is not None]
-    e1 = [x for x in (_f(r.get("error_v1")) for r in rows) if x is not None]
-    pnls = [x for x in (_f(r.get("over_pnl")) for r in rows) if x is not None]
-
-    parts = [f"<strong>{len(rows)}</strong> settled starts in last 14 days"]
-    if e2:
-        parts.append(f"v2 MAE <strong>{mean(abs(x) for x in e2):.2f}</strong>")
-        parts.append(f"bias <strong>{mean(e2):+.2f}</strong>")
-    elif e1:
-        parts.append(f"v1 MAE <strong>{mean(abs(x) for x in e1):.2f}</strong>")
-        parts.append(f"bias <strong>{mean(e1):+.2f}</strong>")
-    if pnls:
-        parts.append(
-            f"flat-bet over ROI <strong>{mean(pnls):+.3f}</strong>/$1 "
-            f"(n={len(pnls)})"
-        )
-    return "<p>" + " &middot; ".join(parts) + "</p>"
-
-
-def _hitter_summary_html(rows: list[dict]) -> str:
-    if not rows:
-        return (
-            "<p class='muted'>No settled hitter history yet — settle past dates "
-            "with <code>python -m bets.settle &lt;date&gt;</code> once you have "
-            "hitter projections.</p>"
-        )
-
-    errs = [x for x in (_f(r.get("error")) for r in rows) if x is not None]
-    pnls = [x for x in (_f(r.get("over_pnl")) for r in rows) if x is not None]
-
-    parts = [f"<strong>{len(rows)}</strong> settled batters in last 14 days"]
-    if errs:
-        parts.append(f"MAE <strong>{mean(abs(x) for x in errs):.2f}</strong>")
-        parts.append(f"bias <strong>{mean(errs):+.2f}</strong>")
-    if pnls:
-        parts.append(
-            f"flat-bet over ROI <strong>{mean(pnls):+.3f}</strong>/$1 "
-            f"(n={len(pnls)})"
-        )
-    return "<p>" + " &middot; ".join(parts) + "</p>"
-
-
-# ---------- Recent Results sections ----------
-
-
-def _pitcher_results_section(target_date: date) -> str:
-    settled_date, rows = _load_most_recent_settled("pitcher_ks")
-    if not rows:
-        return (
-            "<section class='results-section'>"
-            "<h2>Recent Results</h2>"
-            "<p class='muted'>No settled days yet. Click "
-            "<strong>Settle Yesterday</strong> after games finish to populate.</p>"
-            "</section>"
-        )
-
-    rows.sort(
-        key=lambda r: (_f(r.get("error_v2")) or _f(r.get("error_v1")) or 0),
-        reverse=True,
-    )
-
-    n = len(rows)
-    errs = [
-        x
-        for x in (
-            _f(r.get("error_v2")) or _f(r.get("error_v1")) for r in rows
-        )
-        if x is not None
-    ]
-    mae = (sum(abs(x) for x in errs) / len(errs)) if errs else 0
-    bias = (sum(errs) / len(errs)) if errs else 0
-    hits = [_f(r.get("over_hit")) for r in rows]
-    hits = [int(h) for h in hits if h is not None]
-    over_rate = (sum(hits) / len(hits)) if hits else None
-
-    summary_parts = [
-        f"<strong>{n}</strong> pitchers",
-        f"MAE <strong>{mae:.2f}</strong>",
-        f"bias <strong>{bias:+.2f}</strong>",
-    ]
-    if over_rate is not None:
-        summary_parts.append(
-            f"OVER hit <strong>{over_rate:.0%}</strong> "
-            f"({sum(hits)}/{len(hits)} lines)"
-        )
-
-    table_body = "\n".join(_pitcher_result_row_html(r) for r in rows)
-    title = _results_title("Results", target_date, settled_date)
-
-    return f"""<section class="results-section">
-  <h2>{title}</h2>
-  <p class="muted">{' &middot; '.join(summary_parts)}</p>
-  <table>
-    <thead>
-      <tr>
-        <th>Pitcher</th>
-        <th>Opponent</th>
-        <th class="num" title="Model projection">Proj</th>
-        <th class="num" title="Actual strikeouts">Actual</th>
-        <th class="num" title="Actual minus projected">Off By</th>
-        <th class="num" title="Sportsbook line that day">Line</th>
-        <th title="Whether OVER or UNDER hit">Result</th>
-      </tr>
-    </thead>
-    <tbody>
-{table_body}
-    </tbody>
-  </table>
-</section>"""
-
-
-def _hitter_results_section(target_date: date) -> str:
-    settled_date, rows = _load_most_recent_settled("hitter_ks")
-    if not rows:
-        return (
-            "<section class='results-section'>"
-            "<h2>Recent Results</h2>"
-            "<p class='muted'>No settled hitter days yet. Click "
-            "<strong>Settle Yesterday</strong> after games finish to populate.</p>"
-            "</section>"
-        )
-
-    # Sort by absolute error (largest misses first), keep top 30 to keep the
-    # section scannable — slate is much bigger than pitchers.
-    def _abs_err(r):
-        e = _f(r.get("error"))
-        return abs(e) if e is not None else -1
-    rows.sort(key=_abs_err, reverse=True)
-    rows = rows[:40]
-
-    errs = [x for x in (_f(r.get("error")) for r in rows) if x is not None]
-    mae = (sum(abs(x) for x in errs) / len(errs)) if errs else 0
-    bias = (sum(errs) / len(errs)) if errs else 0
-    hits = [_f(r.get("over_hit")) for r in rows]
-    hits = [int(h) for h in hits if h is not None]
-    over_rate = (sum(hits) / len(hits)) if hits else None
-
-    summary_parts = [
-        f"<strong>{len(rows)}</strong> top-error hitters",
-        f"MAE <strong>{mae:.2f}</strong>",
-        f"bias <strong>{bias:+.2f}</strong>",
-    ]
-    if over_rate is not None:
-        summary_parts.append(
-            f"OVER hit <strong>{over_rate:.0%}</strong> "
-            f"({sum(hits)}/{len(hits)} lines)"
-        )
-
-    table_body = "\n".join(_hitter_result_row_html(r) for r in rows)
-    title = _results_title("Results", target_date, settled_date)
-
-    return f"""<section class="results-section">
-  <h2>{title}</h2>
-  <p class="muted">{' &middot; '.join(summary_parts)}</p>
-  <table>
-    <thead>
-      <tr>
-        <th>Hitter</th>
-        <th>Team</th>
-        <th class="num" title="Model projection">Proj</th>
-        <th class="num" title="Actual strikeouts">Actual</th>
-        <th class="num" title="Actual minus projected">Off By</th>
-        <th class="num" title="Sportsbook line that day">Line</th>
-        <th title="Whether OVER or UNDER hit">Result</th>
-      </tr>
-    </thead>
-    <tbody>
-{table_body}
-    </tbody>
-  </table>
-</section>"""
-
-
-def _results_title(prefix: str, target_date: date, settled_date: date) -> str:
-    header_label = settled_date.strftime("%A, %B %d, %Y")
-    days_ago = (target_date - settled_date).days
-    if days_ago == 0:
-        return f"Today's {prefix} — {header_label}"
-    if days_ago == 1:
-        return f"Yesterday's {prefix} — {header_label}"
-    return f"Most Recent {prefix} — {header_label}"
-
-
-# ---------- Tab assembly ----------
-
-
-def _pitcher_tab(target_date: date) -> tuple[str, dict]:
-    proj_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}.csv"
-    counts = {"focus": 0, "investigate": 0, "noise": 0, "noline": 0}
-    if not proj_path.exists():
-        body = (
-            "<p class='muted'>No pitcher projections yet — run "
-            "<strong>Refresh Lines</strong> or "
-            "<code>python -m bets.main</code>.</p>"
-        )
-        return body, counts
-
-    with proj_path.open() as f:
-        rows = list(csv.DictReader(f))
-    if not rows:
-        return "<p class='muted'>Projection file is empty.</p>", counts
-
-    rows.sort(key=lambda r: _sort_key(r, "proj_ks_v2"))
-    for r in rows:
-        counts[_classify(_f(r.get("edge")))] += 1
-
-    settled = _load_recent_settled("pitcher_ks")
-    summary = _pitcher_summary_html(settled)
-    table_rows = "\n".join(_pitcher_row_html(r) for r in rows)
-    results_section = _pitcher_results_section(target_date)
-
-    body = f"""
-  <div class="summary">{summary}</div>
-
-  <div class="legend">
-    <div class="legend-row">
-      <span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span>
-      <span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span>
-      <span>moderate edge ({FOCUS_EDGE_MIN:.0%}–{FOCUS_EDGE_MAX:.0%}) — actionable pick</span>
-    </div>
-    <div class="legend-row">
-      <span class="tag tag-investigate">Verify <strong>OVER</strong>?</span>
-      <span class="tag tag-investigate">Verify <strong>UNDER</strong>?</span>
-      <span>extreme edge (&ge; {INVESTIGATE_EDGE:.0%}) — model probably wrong, do not bet</span>
-    </div>
-    <div class="legend-row">
-      <span class="tag tag-noline">No line</span>
-      <span>book hasn't posted, or game already started</span>
-    </div>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Pitcher</th>
-        <th>Opponent</th>
-        <th class="num" title="Model projection (v2)">Our Proj</th>
-        <th class="num" title="Sportsbook over/under line">Book Line</th>
-        <th class="num" title="Best OVER price across all US books">Over Odds</th>
-        <th class="num" title="Best UNDER price across all US books">Under Odds</th>
-        <th class="num" title="Our Poisson P(over)">Our Over %</th>
-        <th class="num" title="Median no-vig P(over) across books">Book Over %</th>
-        <th class="num" title="Our Over % minus Book Over %">Edge</th>
-        <th title="Pick recommendation">Pick</th>
-      </tr>
-    </thead>
-    <tbody>
-{table_rows}
-    </tbody>
-  </table>
-
-  {results_section}
-"""
-    return body, counts
-
-
-def _hitter_tab(target_date: date) -> tuple[str, dict]:
-    proj_path = OUTPUT_DIR / f"hitter_ks_{target_date.isoformat()}.csv"
-    counts = {"focus": 0, "investigate": 0, "noise": 0, "noline": 0}
-    if not proj_path.exists():
-        body = (
-            "<p class='muted'>No hitter projections yet — run "
-            "<strong>Refresh Lines</strong> or "
-            "<code>python -m bets.hitters</code>. "
-            "Hitter projections require confirmed lineups, which usually "
-            "post 2–3 hours before first pitch.</p>"
-        )
-        return body, counts
-
-    with proj_path.open() as f:
-        rows = list(csv.DictReader(f))
-    if not rows:
-        return "<p class='muted'>Hitter projection file is empty.</p>", counts
-
-    rows.sort(key=lambda r: _sort_key(r, "proj_ks"))
-    for r in rows:
-        counts[_classify(_f(r.get("edge")))] += 1
-
-    settled = _load_recent_settled("hitter_ks")
-    summary = _hitter_summary_html(settled)
-    table_rows = "\n".join(_hitter_row_html(r) for r in rows)
-    results_section = _hitter_results_section(target_date)
-
-    body = f"""
-  <div class="summary">{summary}</div>
-
-  <div class="legend">
-    <div class="legend-row">
-      <span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span>
-      <span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span>
-      <span>moderate edge ({FOCUS_EDGE_MIN:.0%}–{FOCUS_EDGE_MAX:.0%}) — actionable pick</span>
-    </div>
-    <div class="legend-row">
-      <span class="tag tag-investigate">Verify <strong>OVER</strong>?</span>
-      <span class="tag tag-investigate">Verify <strong>UNDER</strong>?</span>
-      <span>extreme edge (&ge; {INVESTIGATE_EDGE:.0%}) — model probably wrong, do not bet</span>
-    </div>
-    <div class="legend-row">
-      <span class="tag tag-noline">No line</span>
-      <span>book hasn't posted batter K market for this player</span>
-    </div>
-  </div>
-
-  <details class="howto">
-    <summary>How the hitter K projection works</summary>
-    <dl>
-      <dt>Projection</dt>
-      <dd>(Hitter K% × opposing starter K% / league K%) × park × expected PA. Expected PA comes from a static lineup-slot table (leadoff ≈ 4.65, #9 ≈ 3.85). v0 treats the whole game as if every PA were vs the starter — bullpen K% blending is a future improvement.</dd>
-      <dt>Lines</dt>
-      <dd>Hitter K lines are usually 0.5 or 1.5. Distribution is Poisson-like with low mean, so the same P(over) math from the pitcher model carries over.</dd>
-      <dt>Heads up</dt>
-      <dd>Hitter projections only render for batters whose lineup card is confirmed in the MLB API — typically 2–3 hours before first pitch.</dd>
-    </dl>
-  </details>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Hitter</th>
-        <th class="num" title="Batting-order slot">Slot</th>
-        <th>Team</th>
-        <th>Matchup</th>
-        <th class="num" title="Model projection">Our Proj</th>
-        <th class="num" title="Sportsbook line">Book Line</th>
-        <th class="num">Over Odds</th>
-        <th class="num">Under Odds</th>
-        <th class="num">Our Over %</th>
-        <th class="num">Book Over %</th>
-        <th class="num">Edge</th>
-        <th>Pick</th>
-      </tr>
-    </thead>
-    <tbody>
-{table_rows}
-    </tbody>
-  </table>
-
-  {results_section}
-"""
-    return body, counts
-
-
-# ---------- CSS / shell ----------
+def _is_static_mode() -> bool:
+    """When STATIC_MODE=1, the shell hides the local-server-only action
+    buttons (Refresh Lines / Settle Yesterday). The Refresh-data button
+    is always shown regardless."""
+    return os.environ.get("STATIC_MODE", "").strip() not in ("", "0", "false", "False")
 
 
 CSS = """
@@ -684,7 +76,7 @@ CSS = """
   }
   header h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
   header .date { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
-  .actions { display: flex; gap: 8px; padding-top: 4px; }
+  .actions { display: flex; gap: 8px; padding-top: 4px; align-items: center; flex-wrap: wrap; }
   .actions form { margin: 0; }
   .actions button {
     background: var(--panel);
@@ -707,15 +99,8 @@ CSS = """
   .actions button:disabled { opacity: 0.5; cursor: wait; }
   body.loading { cursor: progress; }
   body.loading .actions button { opacity: 0.5; cursor: wait; }
-  .static-meta {
-    align-self: center;
-    color: var(--muted);
-    font-size: 12px;
-    text-align: right;
-    line-height: 1.4;
-  }
-  .static-meta .last-refresh strong { color: var(--text); font-weight: 500; }
-  .static-meta .schedule { font-size: 11px; opacity: 0.8; }
+  .last-refresh { color: var(--muted); font-size: 12px; margin-left: 8px; }
+  .last-refresh strong { color: var(--text); font-weight: 500; }
   .tabs {
     display: flex;
     gap: 4px;
@@ -867,6 +252,7 @@ CSS = """
   .tag-noise { background: transparent; color: var(--muted); }
   .tag-noline { background: transparent; color: var(--muted); }
   .muted { color: var(--muted); }
+  .empty-msg { color: var(--muted); padding: 24px; text-align: center; }
   footer {
     padding: 16px 32px;
     color: var(--muted);
@@ -882,72 +268,557 @@ CSS = """
   }
 """
 
-# Tab toggle keeps state in URL hash so a refresh / settle round-trip stays
-# on the same tab.
-TAB_JS = """
-  function showTab(name) {
-    document.querySelectorAll('.tab-panel').forEach(p =>
-      p.classList.toggle('active', p.dataset.tab === name)
+
+def _action_buttons_html(static_mode: bool) -> str:
+    """The Refresh-data button is always visible. Local-only buttons
+    (Refresh Lines / Settle Yesterday) are hidden in STATIC_MODE."""
+    refresh_btn = (
+        '<button type="button" id="refresh-btn" class="primary">Refresh data</button>'
+        '<span class="last-refresh" id="last-refresh"></span>'
+    )
+    if static_mode:
+        return f'<div class="actions">{refresh_btn}</div>'
+    return f"""<div class="actions">
+    {refresh_btn}
+    <form action="/refresh" method="post" onsubmit="document.body.classList.add('loading');">
+      <button type="submit">Re-run pipeline</button>
+    </form>
+    <form action="/settle" method="post" onsubmit="document.body.classList.add('loading');">
+      <button type="submit">Settle yesterday</button>
+    </form>
+  </div>"""
+
+
+def _render_js() -> str:
+    """JavaScript that fetches CSVs, parses them, renders tables + Recent
+    Results. Mirrors the per-row classification + sort logic that used to
+    live in Python."""
+    raw_base = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/output/"
+    return f"""
+(() => {{
+  const FOCUS_MIN = {FOCUS_EDGE_MIN};
+  const FOCUS_MAX = {FOCUS_EDGE_MAX};
+  const INVESTIGATE = {INVESTIGATE_EDGE};
+  const RAW_BASE = "{raw_base}";
+
+  function baseUrl() {{
+    const h = location.hostname;
+    if (h === "localhost" || h === "127.0.0.1" || h === "") return "./";
+    return RAW_BASE;
+  }}
+
+  function dateInChicago(offsetDays = 0) {{
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + offsetDays);
+    const fmt = new Intl.DateTimeFormat("en-CA", {{
+      timeZone: "America/Chicago",
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }});
+    return fmt.format(d);
+  }}
+
+  async function fetchCSV(url) {{
+    const r = await fetch(url, {{ cache: "no-cache" }});
+    if (!r.ok) return null;
+    return await r.text();
+  }}
+
+  function parseCSV(text) {{
+    if (!text) return [];
+    const lines = text.replace(/\\r/g, "").split("\\n").filter(l => l.length);
+    if (lines.length < 1) return [];
+    const headers = lines[0].split(",");
+    return lines.slice(1).map(line => {{
+      const values = splitCSVLine(line);
+      const obj = {{}};
+      headers.forEach((h, i) => {{ obj[h] = values[i] !== undefined ? values[i] : ""; }});
+      return obj;
+    }});
+  }}
+
+  // Minimal RFC4180-ish split: handles quoted fields containing commas.
+  function splitCSVLine(line) {{
+    const out = [];
+    let cur = "";
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {{
+      const c = line[i];
+      if (c === '"') {{
+        if (inQ && line[i+1] === '"') {{ cur += '"'; i++; }}
+        else inQ = !inQ;
+      }} else if (c === "," && !inQ) {{
+        out.push(cur); cur = "";
+      }} else {{
+        cur += c;
+      }}
+    }}
+    out.push(cur);
+    return out;
+  }}
+
+  function f(v) {{
+    if (v === "" || v === null || v === undefined) return null;
+    const n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }}
+
+  function classify(edge) {{
+    if (edge === null) return "noline";
+    const a = Math.abs(edge);
+    if (a >= INVESTIGATE) return "investigate";
+    if (a >= FOCUS_MIN && a <= FOCUS_MAX) return "focus";
+    return "noise";
+  }}
+
+  function label(cls, dir) {{
+    if (cls === "focus" && dir) return `Bet <strong>${{dir.toUpperCase()}}</strong>`;
+    if (cls === "investigate" && dir) return `Verify <strong>${{dir.toUpperCase()}}</strong>?`;
+    if (cls === "noline") return "No line";
+    return "—";
+  }}
+
+  function dash(v) {{
+    if (v === "" || v === null || v === undefined) return "—";
+    return escapeHTML(String(v));
+  }}
+
+  function escapeHTML(s) {{
+    return s.replace(/[&<>"']/g, c => ({{ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }}[c]));
+  }}
+
+  function sortKey(r, projField) {{
+    const edge = f(r.edge);
+    const cls = classify(edge);
+    const clsRank = {{ focus: 0, investigate: 1, noise: 2, noline: 3 }}[cls];
+    const edgeRank = edge === null ? 0 : -Math.abs(edge);
+    const proj = -(f(r[projField]) || 0);
+    return [clsRank, edgeRank, proj];
+  }}
+
+  function sortRows(rows, projField) {{
+    return rows.slice().sort((a, b) => {{
+      const ka = sortKey(a, projField), kb = sortKey(b, projField);
+      for (let i = 0; i < ka.length; i++) {{
+        if (ka[i] !== kb[i]) return ka[i] - kb[i];
+      }}
+      return 0;
+    }});
+  }}
+
+  function pitcherRow(r) {{
+    const edge = f(r.edge);
+    const cls = classify(edge);
+    const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
+    const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + edge.toFixed(3);
+    const rowCls = `row-${{cls}}` + (dir ? ` dir-${{dir}}` : "");
+    const tagCls = `tag-${{cls}}` + (dir ? ` tag-dir-${{dir}}` : "");
+    const proj = r.proj_ks_v2 || r.proj_ks_v1 || "";
+    const overTitle = r.over_book ? ` title="Best price at ${{escapeHTML(r.over_book)}}"` : "";
+    const underTitle = r.under_book ? ` title="Best price at ${{escapeHTML(r.under_book)}}"` : "";
+    const novigTitle = r.n_books ? ` title="Median across ${{escapeHTML(r.n_books)}} books"` : "";
+    return `<tr class="${{rowCls}}">
+      <td class="player">${{escapeHTML(r.pitcher || "")}}</td>
+      <td>${{escapeHTML(r.opp || "")}}</td>
+      <td class="num">${{dash(proj)}}</td>
+      <td class="num">${{dash(r.line)}}</td>
+      <td class="num"${{overTitle}}>${{dash(r.over_odds)}}</td>
+      <td class="num"${{underTitle}}>${{dash(r.under_odds)}}</td>
+      <td class="num">${{dash(r.p_over)}}</td>
+      <td class="num"${{novigTitle}}>${{dash(r.novig_over)}}</td>
+      <td class="num edge ${{dir}}">${{edgeStr}}</td>
+      <td class="badge"><span class="tag ${{tagCls}}">${{label(cls, dir)}}</span></td>
+    </tr>`;
+  }}
+
+  function hitterRow(r) {{
+    const edge = f(r.edge);
+    const cls = classify(edge);
+    const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
+    const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + edge.toFixed(3);
+    const rowCls = `row-${{cls}}` + (dir ? ` dir-${{dir}}` : "");
+    const tagCls = `tag-${{cls}}` + (dir ? ` tag-dir-${{dir}}` : "");
+    const overTitle = r.over_book ? ` title="Best price at ${{escapeHTML(r.over_book)}}"` : "";
+    const underTitle = r.under_book ? ` title="Best price at ${{escapeHTML(r.under_book)}}"` : "";
+    const novigTitle = r.n_books ? ` title="Median across ${{escapeHTML(r.n_books)}} books"` : "";
+    return `<tr class="${{rowCls}}">
+      <td class="player">${{escapeHTML(r.hitter || "")}}</td>
+      <td class="num slot">${{dash(r.slot)}}</td>
+      <td>${{escapeHTML(r.team || "")}}</td>
+      <td>vs ${{escapeHTML(r.opp_pitcher || "")}}</td>
+      <td class="num">${{dash(r.proj_ks)}}</td>
+      <td class="num">${{dash(r.line)}}</td>
+      <td class="num"${{overTitle}}>${{dash(r.over_odds)}}</td>
+      <td class="num"${{underTitle}}>${{dash(r.under_odds)}}</td>
+      <td class="num">${{dash(r.p_over)}}</td>
+      <td class="num"${{novigTitle}}>${{dash(r.novig_over)}}</td>
+      <td class="num edge ${{dir}}">${{edgeStr}}</td>
+      <td class="badge"><span class="tag ${{tagCls}}">${{label(cls, dir)}}</span></td>
+    </tr>`;
+  }}
+
+  function pitcherResultRow(r) {{
+    const actual = f(r.actual_ks);
+    const proj = f(r.proj_ks_v2) || f(r.proj_ks_v1);
+    const line = f(r.line);
+    const overHit = f(r.over_hit);
+    let errCls = "zero", errStr = "—";
+    if (actual !== null && proj !== null) {{
+      const e = actual - proj;
+      if (e > 0.5) {{ errCls = "over"; errStr = `+${{e.toFixed(1)}}`; }}
+      else if (e < -0.5) {{ errCls = "under"; errStr = e.toFixed(1); }}
+      else {{ errCls = "zero"; errStr = (e >= 0 ? "+" : "") + e.toFixed(1); }}
+    }}
+    let resultCell = '<td class="muted">—</td>';
+    if (line === null) resultCell = '<td class="muted">no line</td>';
+    else if (overHit !== null) resultCell = overHit >= 1
+      ? '<td class="hit">OVER hit</td>'
+      : '<td class="miss">UNDER hit</td>';
+    const projCell = r.proj_ks_v2 || r.proj_ks_v1;
+    return `<tr>
+      <td class="player">${{escapeHTML(r.pitcher || "")}}</td>
+      <td>${{escapeHTML(r.opp || "")}}</td>
+      <td class="num">${{dash(projCell)}}</td>
+      <td class="num">${{actual !== null ? Math.round(actual) : "—"}}</td>
+      <td class="num error ${{errCls}}">${{errStr}}</td>
+      <td class="num">${{dash(r.line)}}</td>
+      ${{resultCell}}
+    </tr>`;
+  }}
+
+  function hitterResultRow(r) {{
+    const actual = f(r.actual_ks);
+    const proj = f(r.proj_ks);
+    const line = f(r.line);
+    const overHit = f(r.over_hit);
+    let errCls = "zero", errStr = "—";
+    if (actual !== null && proj !== null) {{
+      const e = actual - proj;
+      if (e > 0.3) {{ errCls = "over"; errStr = `+${{e.toFixed(1)}}`; }}
+      else if (e < -0.3) {{ errCls = "under"; errStr = e.toFixed(1); }}
+      else {{ errCls = "zero"; errStr = (e >= 0 ? "+" : "") + e.toFixed(1); }}
+    }}
+    let resultCell = '<td class="muted">—</td>';
+    if (line === null) resultCell = '<td class="muted">no line</td>';
+    else if (overHit !== null) resultCell = overHit >= 1
+      ? '<td class="hit">OVER hit</td>'
+      : '<td class="miss">UNDER hit</td>';
+    return `<tr>
+      <td class="player">${{escapeHTML(r.hitter || "")}}</td>
+      <td>${{escapeHTML(r.team || "")}}</td>
+      <td class="num">${{dash(r.proj_ks)}}</td>
+      <td class="num">${{actual !== null ? Math.round(actual) : "—"}}</td>
+      <td class="num error ${{errCls}}">${{errStr}}</td>
+      <td class="num">${{dash(r.line)}}</td>
+      ${{resultCell}}
+    </tr>`;
+  }}
+
+  // Try fetching today's CSV; fall back up to 3 days if not yet posted.
+  async function fetchTodaysCSV(prefix) {{
+    for (let i = 0; i <= 3; i++) {{
+      const d = dateInChicago(-i);
+      const text = await fetchCSV(baseUrl() + `${{prefix}}_${{d}}.csv`);
+      if (text) return {{ date: d, rows: parseCSV(text) }};
+    }}
+    return {{ date: null, rows: [] }};
+  }}
+
+  // Most recent settled CSV — yesterday or earlier.
+  async function fetchMostRecentSettled(prefix) {{
+    for (let i = 1; i <= 14; i++) {{
+      const d = dateInChicago(-i);
+      const text = await fetchCSV(baseUrl() + `${{prefix}}_${{d}}_settled.csv`);
+      if (text) {{
+        const rows = parseCSV(text).filter(r => f(r.actual_ks) !== null);
+        if (rows.length) return {{ date: d, rows }};
+      }}
+    }}
+    return {{ date: null, rows: [] }};
+  }}
+
+  function counts(rows) {{
+    const c = {{ focus: 0, investigate: 0, noise: 0, noline: 0 }};
+    for (const r of rows) c[classify(f(r.edge))]++;
+    return c;
+  }}
+
+  function settledTitle(d) {{
+    if (!d) return "Recent Results";
+    const today = dateInChicago(0);
+    const fmt = new Intl.DateTimeFormat("en-US", {{
+      timeZone: "America/Chicago",
+      weekday: "long", year: "numeric", month: "long", day: "numeric"
+    }});
+    // Parse YYYY-MM-DD safely (avoid local-tz off-by-one)
+    const [yy, mm, dd] = d.split("-").map(Number);
+    const dateObj = new Date(Date.UTC(yy, mm - 1, dd, 12));
+    const label = fmt.format(dateObj);
+    if (d === today) return `Today's Results — ${{label}}`;
+    // Yesterday in CT?
+    const yesterday = dateInChicago(-1);
+    if (d === yesterday) return `Yesterday's Results — ${{label}}`;
+    return `Most Recent Results — ${{label}}`;
+  }}
+
+  function avg(arr) {{ return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }}
+
+  function renderPitcherTab(target) {{
+    const slate = target.slate;
+    const settled = target.settled;
+    const hasRows = slate.rows.length > 0;
+    const sorted = hasRows ? sortRows(slate.rows, "proj_ks_v2") : [];
+    const cnt = counts(slate.rows);
+
+    const slateBody = hasRows
+      ? sorted.map(pitcherRow).join("")
+      : `<tr><td colspan="10" class="empty-msg">No pitcher projections yet — first cron runs at noon CT. <a href="https://github.com/{REPO}/actions" style="color: var(--green);">Trigger one manually</a> if needed.</td></tr>`;
+
+    let resultsSection = "";
+    if (settled.rows.length) {{
+      const errs = settled.rows
+        .map(r => f(r.error_v2) || f(r.error_v1))
+        .filter(x => x !== null);
+      const mae = errs.length ? avg(errs.map(Math.abs)) : 0;
+      const bias = errs.length ? avg(errs) : 0;
+      const hits = settled.rows.map(r => f(r.over_hit)).filter(h => h !== null);
+      const overHitCount = hits.filter(h => h >= 1).length;
+      const overRate = hits.length ? overHitCount / hits.length : null;
+      const sortedSettled = settled.rows.slice().sort((a, b) => {{
+        const ea = f(a.error_v2) || f(a.error_v1) || 0;
+        const eb = f(b.error_v2) || f(b.error_v1) || 0;
+        return Math.abs(eb) - Math.abs(ea);
+      }});
+      const summary = [
+        `<strong>${{settled.rows.length}}</strong> pitchers`,
+        `MAE <strong>${{mae.toFixed(2)}}</strong>`,
+        `bias <strong>${{(bias >= 0 ? "+" : "") + bias.toFixed(2)}}</strong>`,
+      ];
+      if (overRate !== null) {{
+        summary.push(`OVER hit <strong>${{(overRate * 100).toFixed(0)}}%</strong> (${{overHitCount}}/${{hits.length}} lines)`);
+      }}
+      resultsSection = `<section class="results-section">
+        <h2>${{settledTitle(settled.date)}}</h2>
+        <p class="muted">${{summary.join(" &middot; ")}}</p>
+        <table>
+          <thead><tr>
+            <th>Pitcher</th><th>Opponent</th>
+            <th class="num" title="Model projection">Proj</th>
+            <th class="num" title="Actual strikeouts">Actual</th>
+            <th class="num" title="Actual minus projected">Off By</th>
+            <th class="num" title="Sportsbook line that day">Line</th>
+            <th title="Whether OVER or UNDER hit">Result</th>
+          </tr></thead>
+          <tbody>${{sortedSettled.map(pitcherResultRow).join("")}}</tbody>
+        </table>
+      </section>`;
+    }} else {{
+      resultsSection = `<section class="results-section"><h2>Recent Results</h2><p class="muted">No settled days yet.</p></section>`;
+    }}
+
+    return {{ html: pitcherTabHTML(slateBody, resultsSection), cnt }};
+  }}
+
+  function renderHitterTab(target) {{
+    const slate = target.slate;
+    const settled = target.settled;
+    const hasRows = slate.rows.length > 0;
+    const sorted = hasRows ? sortRows(slate.rows, "proj_ks") : [];
+    const cnt = counts(slate.rows);
+
+    const slateBody = hasRows
+      ? sorted.map(hitterRow).join("")
+      : `<tr><td colspan="12" class="empty-msg">No hitter projections yet — needs confirmed lineups (typically posted 2–3 hrs before first pitch).</td></tr>`;
+
+    let resultsSection = "";
+    if (settled.rows.length) {{
+      const errs = settled.rows.map(r => f(r.error)).filter(x => x !== null);
+      const mae = errs.length ? avg(errs.map(Math.abs)) : 0;
+      const bias = errs.length ? avg(errs) : 0;
+      const hits = settled.rows.map(r => f(r.over_hit)).filter(h => h !== null);
+      const overHitCount = hits.filter(h => h >= 1).length;
+      const overRate = hits.length ? overHitCount / hits.length : null;
+      const sortedSettled = settled.rows.slice().sort((a, b) => {{
+        return Math.abs(f(b.error) || 0) - Math.abs(f(a.error) || 0);
+      }}).slice(0, 40);
+      const summary = [
+        `<strong>${{sortedSettled.length}}</strong> top-error hitters`,
+        `MAE <strong>${{mae.toFixed(2)}}</strong>`,
+        `bias <strong>${{(bias >= 0 ? "+" : "") + bias.toFixed(2)}}</strong>`,
+      ];
+      if (overRate !== null) {{
+        summary.push(`OVER hit <strong>${{(overRate * 100).toFixed(0)}}%</strong> (${{overHitCount}}/${{hits.length}} lines)`);
+      }}
+      resultsSection = `<section class="results-section">
+        <h2>${{settledTitle(settled.date)}}</h2>
+        <p class="muted">${{summary.join(" &middot; ")}}</p>
+        <table>
+          <thead><tr>
+            <th>Hitter</th><th>Team</th>
+            <th class="num">Proj</th><th class="num">Actual</th>
+            <th class="num">Off By</th><th class="num">Line</th>
+            <th>Result</th>
+          </tr></thead>
+          <tbody>${{sortedSettled.map(hitterResultRow).join("")}}</tbody>
+        </table>
+      </section>`;
+    }} else {{
+      resultsSection = `<section class="results-section"><h2>Recent Results</h2><p class="muted">No settled hitter days yet.</p></section>`;
+    }}
+
+    return {{ html: hitterTabHTML(slateBody, resultsSection), cnt }};
+  }}
+
+  function pitcherTabHTML(slateBody, resultsSection) {{
+    return `<div class="legend">
+      <div class="legend-row">
+        <span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span>
+        <span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span>
+        <span>moderate edge (5%–15%) — actionable pick</span>
+      </div>
+      <div class="legend-row">
+        <span class="tag tag-investigate">Verify <strong>OVER</strong>?</span>
+        <span class="tag tag-investigate">Verify <strong>UNDER</strong>?</span>
+        <span>extreme edge (≥ 20%) — model probably wrong</span>
+      </div>
+      <div class="legend-row">
+        <span class="tag tag-noline">No line</span>
+        <span>book hasn't posted, or game already started</span>
+      </div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Pitcher</th><th>Opponent</th>
+        <th class="num" title="Model projection (v2)">Our Proj</th>
+        <th class="num" title="Sportsbook over/under line">Book Line</th>
+        <th class="num" title="Best OVER price across all US books">Over Odds</th>
+        <th class="num" title="Best UNDER price across all US books">Under Odds</th>
+        <th class="num" title="Our Poisson P(over)">Our Over %</th>
+        <th class="num" title="Median no-vig P(over) across books">Book Over %</th>
+        <th class="num" title="Our Over % minus Book Over %">Edge</th>
+        <th title="Pick recommendation">Pick</th>
+      </tr></thead>
+      <tbody>${{slateBody}}</tbody>
+    </table>
+    ${{resultsSection}}`;
+  }}
+
+  function hitterTabHTML(slateBody, resultsSection) {{
+    return `<div class="legend">
+      <div class="legend-row">
+        <span class="tag tag-focus tag-dir-over">Bet <strong>OVER</strong></span>
+        <span class="tag tag-focus tag-dir-under">Bet <strong>UNDER</strong></span>
+        <span>moderate edge (5%–15%) — actionable pick</span>
+      </div>
+      <div class="legend-row">
+        <span class="tag tag-investigate">Verify <strong>OVER</strong>?</span>
+        <span class="tag tag-investigate">Verify <strong>UNDER</strong>?</span>
+        <span>extreme edge (≥ 20%) — model probably wrong</span>
+      </div>
+      <div class="legend-row">
+        <span class="tag tag-noline">No line</span>
+        <span>book hasn't posted batter K market for this player</span>
+      </div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Hitter</th>
+        <th class="num" title="Batting-order slot">Slot</th>
+        <th>Team</th><th>Matchup</th>
+        <th class="num">Our Proj</th>
+        <th class="num">Book Line</th>
+        <th class="num">Over Odds</th>
+        <th class="num">Under Odds</th>
+        <th class="num">Our Over %</th>
+        <th class="num">Book Over %</th>
+        <th class="num">Edge</th>
+        <th>Pick</th>
+      </tr></thead>
+      <tbody>${{slateBody}}</tbody>
+    </table>
+    ${{resultsSection}}`;
+  }}
+
+  async function loadAndRender() {{
+    const btn = document.getElementById("refresh-btn");
+    if (btn) {{ btn.disabled = true; btn.textContent = "Refreshing…"; }}
+    document.body.classList.add("loading");
+
+    try {{
+      const [pSlate, hSlate, pSettled, hSettled] = await Promise.all([
+        fetchTodaysCSV("pitcher_ks"),
+        fetchTodaysCSV("hitter_ks"),
+        fetchMostRecentSettled("pitcher_ks"),
+        fetchMostRecentSettled("hitter_ks"),
+      ]);
+
+      const pTab = renderPitcherTab({{ slate: pSlate, settled: pSettled }});
+      const hTab = renderHitterTab({{ slate: hSlate, settled: hSettled }});
+
+      document.getElementById("pitcher-panel").innerHTML = pTab.html;
+      document.getElementById("hitter-panel").innerHTML = hTab.html;
+      document.getElementById("pitcher-counts").textContent =
+        `(${{pTab.cnt.focus}} focus / ${{pTab.cnt.investigate}} verify)`;
+      document.getElementById("hitter-counts").textContent =
+        `(${{hTab.cnt.focus}} focus / ${{hTab.cnt.investigate}} verify)`;
+
+      const stamp = new Date().toLocaleString("en-US", {{
+        timeZone: "America/Chicago",
+        month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+      }});
+      const lr = document.getElementById("last-refresh");
+      if (lr) lr.innerHTML = `Last fetched <strong>${{stamp}} CT</strong>`;
+    }} catch (e) {{
+      console.error(e);
+      const lr = document.getElementById("last-refresh");
+      if (lr) lr.textContent = "Refresh failed — check your connection.";
+    }} finally {{
+      document.body.classList.remove("loading");
+      if (btn) {{ btn.disabled = false; btn.textContent = "Refresh data"; }}
+    }}
+  }}
+
+  function showTab(name) {{
+    document.querySelectorAll(".tab-panel").forEach(p =>
+      p.classList.toggle("active", p.dataset.tab === name)
     );
-    document.querySelectorAll('.tabs button').forEach(b =>
-      b.classList.toggle('active', b.dataset.tab === name)
+    document.querySelectorAll(".tabs button").forEach(b =>
+      b.classList.toggle("active", b.dataset.tab === name)
     );
-    if (location.hash !== '#' + name) {
-      history.replaceState(null, '', '#' + name);
-    }
-  }
-  document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.tabs button').forEach(b => {
-      b.addEventListener('click', () => showTab(b.dataset.tab));
-    });
-    const initial = (location.hash || '#pitchers').slice(1);
-    showTab(['pitchers','hitters'].includes(initial) ? initial : 'pitchers');
-  });
+    if (location.hash !== "#" + name) {{
+      history.replaceState(null, "", "#" + name);
+    }}
+  }}
+
+  document.addEventListener("DOMContentLoaded", () => {{
+    document.querySelectorAll(".tabs button").forEach(b => {{
+      b.addEventListener("click", () => showTab(b.dataset.tab));
+    }});
+    const initial = (location.hash || "#pitchers").slice(1);
+    showTab(["pitchers", "hitters"].includes(initial) ? initial : "pitchers");
+
+    const btn = document.getElementById("refresh-btn");
+    if (btn) btn.addEventListener("click", loadAndRender);
+
+    loadAndRender();
+  }});
+}})();
 """
 
 
 def generate(target_date: date | None = None) -> Path | None:
     target_date = target_date or date.today()
-
-    pitcher_body, p_counts = _pitcher_tab(target_date)
-    hitter_body, h_counts = _hitter_tab(target_date)
-
-    pitcher_label = (
-        f"Pitcher Ks <span class='count'>"
-        f"({p_counts['focus']} focus / {p_counts['investigate']} verify)</span>"
-    )
-    hitter_label = (
-        f"Hitter Ks <span class='count'>"
-        f"({h_counts['focus']} focus / {h_counts['investigate']} verify)</span>"
-    )
-
     static_mode = _is_static_mode()
-    refreshed_at = _generated_at_label()
-    if static_mode:
-        actions_block = (
-            f"<div class='actions static-meta'>"
-            f"<span class='last-refresh'>Last updated <strong>{refreshed_at}</strong>"
-            f"<br><span class='schedule'>Auto-refreshes daily ~12:00 PM CT</span>"
-            f"</span>"
-            f"</div>"
-        )
-    else:
-        actions_block = """<div class="actions">
-    <form action="/refresh" method="post" onsubmit="document.body.classList.add('loading');">
-      <button type="submit" class="primary">Refresh Lines</button>
-    </form>
-    <form action="/settle" method="post" onsubmit="document.body.classList.add('loading');">
-      <button type="submit">Settle Yesterday</button>
-    </form>
-  </div>"""
+
+    actions_block = _action_buttons_html(static_mode)
+    js = _render_js()
 
     doc = f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>MLB K Props — {target_date.isoformat()}</title>
+<title>MLB K Props</title>
 <style>{CSS}</style>
-<script>{TAB_JS}</script>
+<script>{js}</script>
 </head>
 <body>
 <header>
@@ -957,24 +828,22 @@ def generate(target_date: date | None = None) -> Path | None:
   </div>
   {actions_block}
   <nav class="tabs">
-    <button data-tab="pitchers" type="button">{pitcher_label}</button>
-    <button data-tab="hitters" type="button">{hitter_label}</button>
+    <button data-tab="pitchers" type="button">Pitcher Ks <span class="count" id="pitcher-counts"></span></button>
+    <button data-tab="hitters" type="button">Hitter Ks <span class="count" id="hitter-counts"></span></button>
   </nav>
 </header>
 <main>
-  <div class="tab-panel" data-tab="pitchers">
-{pitcher_body}
+  <div class="tab-panel" data-tab="pitchers" id="pitcher-panel">
+    <p class="muted">Loading…</p>
   </div>
-  <div class="tab-panel" data-tab="hitters">
-{hitter_body}
+  <div class="tab-panel" data-tab="hitters" id="hitter-panel">
+    <p class="muted">Loading…</p>
   </div>
 </main>
 <footer>
-  Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} &middot;
-  Pitchers: {p_counts['focus']} focus / {p_counts['investigate']} verify /
-  {p_counts['noise']} noise / {p_counts['noline']} no-line &middot;
-  Hitters: {h_counts['focus']} focus / {h_counts['investigate']} verify /
-  {h_counts['noise']} noise / {h_counts['noline']} no-line
+  Shell built {datetime.now().strftime('%Y-%m-%d %H:%M')} &middot;
+  Data fetched live from {REPO}/output on each load &middot;
+  <a href="https://github.com/{REPO}" style="color: var(--muted);">source</a>
 </footer>
 </body>
 </html>
@@ -982,7 +851,7 @@ def generate(target_date: date | None = None) -> Path | None:
 
     out_path = OUTPUT_DIR / "index.html"
     out_path.write_text(doc)
-    print(f"Wrote dashboard → {out_path}")
+    print(f"Wrote dashboard shell → {out_path}")
     return out_path
 
 
