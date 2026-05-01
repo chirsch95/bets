@@ -112,7 +112,7 @@ The 14-day calibration summary at the top (MAE, bias, flat-bet ROI) populates as
 
 The dashboard can be published to a public Netlify URL so you can read it from any device. The architecture:
 
-1. **GitHub Actions** runs the pipeline once a day (default: 13:30 UTC ≈ 9:30 AM ET) — see `.github/workflows/refresh.yml`.
+1. **GitHub Actions** runs the pipeline twice a day — 14:30 UTC (~10:30 AM ET, catches matinees + line settle) and 20:00 UTC (~4:00 PM ET, catches night-game lineups). See `.github/workflows/refresh.yml`.
 2. The Action regenerates `output/`, commits, and pushes.
 3. **Netlify** auto-deploys the new `output/` folder on every push.
 

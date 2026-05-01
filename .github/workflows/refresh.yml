@@ -1,13 +1,19 @@
 name: Refresh dashboard
 
-# Daily build of today's slate, then commit output/ so Netlify auto-deploys.
-# Schedule is in UTC. 13:30 UTC ≈ 9:30 AM ET (EDT) / 8:30 AM ET (EST).
-# Runs early enough to catch sportsbook lines before games start, late enough
-# that probable starters are settled. Adjust as you like.
+# Build today's slate twice a day so the dashboard catches both the
+# matinee lineups (10:30 AM ET) and the night-game lineups (4:00 PM ET).
+# Crons are in UTC. During EDT the times are exact; during EST they shift
+# back by an hour (which is fine — MLB season is mostly EDT anyway).
+#
+#   14:30 UTC = 10:30 AM EDT / 9:30 AM EST  → matinees + line settle
+#   20:00 UTC = 4:00 PM EDT  / 3:00 PM EST  → night-game lineups + line moves
+#
+# Adjust either cron as you like; the manual trigger is always available.
 
 on:
   schedule:
-    - cron: "30 13 * * *"
+    - cron: "30 14 * * *"
+    - cron: "0 20 * * *"
   workflow_dispatch: {}    # manual trigger from the Actions tab
 
 permissions:

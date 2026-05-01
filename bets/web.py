@@ -711,8 +711,11 @@ CSS = """
     align-self: center;
     color: var(--muted);
     font-size: 12px;
+    text-align: right;
+    line-height: 1.4;
   }
   .static-meta .last-refresh strong { color: var(--text); font-weight: 500; }
+  .static-meta .schedule { font-size: 11px; opacity: 0.8; }
   .tabs {
     display: flex;
     gap: 4px;
@@ -923,8 +926,9 @@ def generate(target_date: date | None = None) -> Path | None:
     if static_mode:
         actions_block = (
             f"<div class='actions static-meta'>"
-            f"<span class='last-refresh'>Auto-refreshed daily &middot; "
-            f"<strong>{refreshed_at}</strong></span>"
+            f"<span class='last-refresh'>Last updated <strong>{refreshed_at}</strong>"
+            f"<br><span class='schedule'>Auto-refreshes 10:30 AM &amp; 4:00 PM ET daily</span>"
+            f"</span>"
             f"</div>"
         )
     else:
