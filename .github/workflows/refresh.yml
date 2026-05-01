@@ -27,7 +27,6 @@ jobs:
     timeout-minutes: 10
     env:
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-      STATIC_MODE: "1"
       TZ: America/New_York
 
     steps:

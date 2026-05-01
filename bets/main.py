@@ -7,6 +7,7 @@ Run with:
 from __future__ import annotations
 
 import csv
+import shutil
 from datetime import date
 
 from dotenv import load_dotenv
@@ -196,6 +197,15 @@ def run(target_date: date | None = None) -> None:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
+
+    # Freeze the first run of the day as the canonical "slate" — the
+    # state we'd actually have bet on. Later runs overwrite out_path as
+    # lines move, but the slate file stays put so settle.py can grade
+    # picks against the morning state, not whatever survived to gametime.
+    slate_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}_slate.csv"
+    if not slate_path.exists():
+        shutil.copy2(out_path, slate_path)
+        print(f"Wrote slate snapshot → {slate_path}")
 
     if any(r["line"] is not None for r in rows):
         display_cols = [

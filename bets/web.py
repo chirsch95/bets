@@ -19,7 +19,6 @@ Run with:
 
 from __future__ import annotations
 
-import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -41,13 +40,6 @@ SHOW_HITTERS = False
 FOCUS_EDGE_MIN = 0.05
 FOCUS_EDGE_MAX = 0.15
 INVESTIGATE_EDGE = 0.20
-
-
-def _is_static_mode() -> bool:
-    """When STATIC_MODE=1, the shell hides the local-server-only action
-    buttons (Refresh Lines / Settle Yesterday). The Refresh-data button
-    is always shown regardless."""
-    return os.environ.get("STATIC_MODE", "").strip() not in ("", "0", "false", "False")
 
 
 CSS = """
@@ -107,6 +99,10 @@ CSS = """
   .actions button:disabled { opacity: 0.5; cursor: wait; }
   body.loading { cursor: progress; }
   body.loading .actions button { opacity: 0.5; cursor: wait; }
+  /* Hidden by default; revealed only on localhost (see head script). The
+     Re-run/Settle buttons POST to Flask routes that exist only locally. */
+  .local-only { display: none; }
+  html.is-local .local-only { display: revert; }
   .last-refresh { color: var(--muted); font-size: 12px; margin-left: 8px; }
   .last-refresh strong { color: var(--text); font-weight: 500; }
   .tabs {
@@ -151,6 +147,32 @@ CSS = """
   }
   td.hit { color: var(--green); font-weight: 500; }
   td.miss { color: var(--red); font-weight: 500; }
+  td.num.pos { color: var(--green); }
+  td.num.neg { color: var(--red); }
+  .track-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .track-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .track-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .track-val { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .track-val.pos { color: var(--green); }
+  .track-val.neg { color: var(--red); }
   td.error.over { color: var(--green); }
   td.error.under { color: var(--red); }
   td.error.zero { color: var(--muted); }
@@ -277,21 +299,19 @@ CSS = """
 """
 
 
-def _action_buttons_html(static_mode: bool) -> str:
-    """The Refresh-data button is always visible. Local-only buttons
-    (Refresh Lines / Settle Yesterday) are hidden in STATIC_MODE."""
-    refresh_btn = (
-        '<button type="button" id="refresh-btn" class="primary">Refresh data</button>'
-        '<span class="last-refresh" id="last-refresh"></span>'
-    )
-    if static_mode:
-        return f'<div class="actions">{refresh_btn}</div>'
-    return f"""<div class="actions">
-    {refresh_btn}
-    <form action="/refresh" method="post" onsubmit="document.body.classList.add('loading');">
+def _action_buttons_html() -> str:
+    """All three buttons always present in the HTML. The two POST forms
+    target Flask routes that only exist on the local server, so they're
+    wrapped in `.local-only` (see CSS + head script — revealed only when
+    the page is loaded from localhost). Same HTML works on Netlify and
+    locally without environment-dependent generation."""
+    return """<div class="actions">
+    <button type="button" id="refresh-btn" class="primary">Refresh data</button>
+    <span class="last-refresh" id="last-refresh"></span>
+    <form class="local-only" action="/refresh" method="post" onsubmit="document.body.classList.add('loading');">
       <button type="submit">Re-run pipeline</button>
     </form>
-    <form action="/settle" method="post" onsubmit="document.body.classList.add('loading');">
+    <form class="local-only" action="/settle" method="post" onsubmit="document.body.classList.add('loading');">
       <button type="submit">Settle yesterday</button>
     </form>
   </div>"""
@@ -466,11 +486,26 @@ def _render_js() -> str:
     </tr>`;
   }}
 
+  // Prefer slate-time field when present (frozen first-cron snapshot)
+  // and fall back to the live/final-state field for older rows that
+  // pre-date slate snapshotting.
+  function slateOrLive(r, slateKey, liveKey) {{
+    const s = r[slateKey];
+    if (s !== undefined && s !== "" && s !== null) return s;
+    return r[liveKey];
+  }}
+
   function pitcherResultRow(r) {{
     const actual = f(r.actual_ks);
     const proj = f(r.proj_ks_v2) || f(r.proj_ks_v1);
-    const line = f(r.line);
-    const overHit = f(r.over_hit);
+    // Grade against slate-time line + edge — that's what we'd actually
+    // have bet at. Fall back to live values for pre-snapshot history.
+    const lineRaw = slateOrLive(r, "slate_line", "line");
+    const line = f(lineRaw);
+    const overHit = f(slateOrLive(r, "slate_over_hit", "over_hit"));
+    const edge = f(slateOrLive(r, "slate_edge", "edge"));
+    const cls = classify(edge);
+    const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
     let errCls = "zero", errStr = "—";
     if (actual !== null && proj !== null) {{
       const e = actual - proj;
@@ -478,11 +513,30 @@ def _render_js() -> str:
       else if (e < -0.5) {{ errCls = "under"; errStr = e.toFixed(1); }}
       else {{ errCls = "zero"; errStr = (e >= 0 ? "+" : "") + e.toFixed(1); }}
     }}
+
+    // "Our Pick" cell — mirrors slate-table tag styling so the user can
+    // see at a glance what we recommended yesterday morning.
+    const pickTagCls = `tag-${{cls}}` + (dir ? ` tag-dir-${{dir}}` : "");
+    const pickCell = `<td><span class="tag ${{pickTagCls}}">${{label(cls, dir)}}</span></td>`;
+
+    // "Result" cell — verdict for focus picks (HIT/MISS), informational
+    // OVER hit/UNDER hit for everything else. No-line stays muted.
     let resultCell = '<td class="muted">—</td>';
-    if (line === null) resultCell = '<td class="muted">no line</td>';
-    else if (overHit !== null) resultCell = overHit >= 1
-      ? '<td class="hit">OVER hit</td>'
-      : '<td class="miss">UNDER hit</td>';
+    if (line === null) {{
+      resultCell = '<td class="muted">no line</td>';
+    }} else if (overHit !== null) {{
+      const overWon = overHit >= 1;
+      if (cls === "focus" && dir) {{
+        const hit = (dir === "over" && overWon) || (dir === "under" && !overWon);
+        resultCell = hit
+          ? '<td class="hit">HIT</td>'
+          : '<td class="miss">MISS</td>';
+      }} else {{
+        resultCell = overWon
+          ? '<td class="muted">OVER hit</td>'
+          : '<td class="muted">UNDER hit</td>';
+      }}
+    }}
     const projCell = r.proj_ks_v2 || r.proj_ks_v1;
     return `<tr>
       <td class="player">${{escapeHTML(r.pitcher || "")}}</td>
@@ -490,7 +544,8 @@ def _render_js() -> str:
       <td class="num">${{dash(projCell)}}</td>
       <td class="num">${{actual !== null ? Math.round(actual) : "—"}}</td>
       <td class="num error ${{errCls}}">${{errStr}}</td>
-      <td class="num">${{dash(r.line)}}</td>
+      <td class="num">${{dash(lineRaw)}}</td>
+      ${{pickCell}}
       ${{resultCell}}
     </tr>`;
   }}
@@ -546,6 +601,112 @@ def _render_js() -> str:
     return {{ date: null, rows: [] }};
   }}
 
+  // Track record: pull last N days of settled CSVs in parallel and
+  // distill each focus pick (the ones we actually recommended) into
+  // {{date, dir, won, pnl}}. Slate-time fields preferred — they reflect
+  // the line/odds we'd actually have bet. Falls back to live fields for
+  // any pre-snapshot history.
+  async function fetchTrackRecord(maxDays = 14) {{
+    const fetches = [];
+    for (let i = 1; i <= maxDays; i++) {{
+      const d = dateInChicago(-i);
+      fetches.push(
+        fetchCSV(baseUrl() + `pitcher_ks_${{d}}_settled.csv`)
+          .then(text => ({{ d, text }}))
+      );
+    }}
+    const results = await Promise.all(fetches);
+    const picks = [];
+    for (const {{ d, text }} of results) {{
+      if (!text) continue;
+      const rows = parseCSV(text);
+      for (const r of rows) {{
+        if (f(r.actual_ks) === null) continue;
+        const edge = f(slateOrLive(r, "slate_edge", "edge"));
+        if (edge === null) continue;
+        if (classify(edge) !== "focus") continue;
+        const dir = edge > 0 ? "over" : "under";
+        const overHit = f(slateOrLive(r, "slate_over_hit", "over_hit"));
+        if (overHit === null) continue;
+        const won = (dir === "over" && overHit >= 1) ||
+                    (dir === "under" && overHit < 1);
+        const pnlField = dir === "over"
+          ? slateOrLive(r, "slate_over_pnl", "over_pnl")
+          : slateOrLive(r, "slate_under_pnl", "under_pnl");
+        const pnl = f(pnlField);
+        picks.push({{
+          date: d, pitcher: r.pitcher || "", dir, won,
+          pnl: pnl === null ? 0 : pnl,
+        }});
+      }}
+    }}
+    return picks;
+  }}
+
+  function renderTrackRecord(picks, maxDays) {{
+    if (!picks.length) {{
+      return `<section class="results-section">
+        <h2>Track Record — last ${{maxDays}} days</h2>
+        <p class="muted">No graded picks yet. The slate snapshot was added 2026-05-01, so the tracker will fill in starting tomorrow's settled file.</p>
+      </section>`;
+    }}
+    const total = picks.length;
+    const hits = picks.filter(p => p.won).length;
+    const hitRate = hits / total;
+    const units = picks.reduce((s, p) => s + p.pnl, 0);
+    const roi = units / total;
+
+    const overs = picks.filter(p => p.dir === "over");
+    const overHits = overs.filter(p => p.won).length;
+    const unders = picks.filter(p => p.dir === "under");
+    const underHits = unders.filter(p => p.won).length;
+
+    const summaryHTML = `
+      <div class="track-summary">
+        <div class="track-stat"><span class="track-label">Picks</span><span class="track-val">${{total}}</span></div>
+        <div class="track-stat"><span class="track-label">Hit rate</span><span class="track-val">${{(hitRate * 100).toFixed(0)}}% (${{hits}}/${{total}})</span></div>
+        <div class="track-stat"><span class="track-label">Units (1u flat)</span><span class="track-val ${{units >= 0 ? 'pos' : 'neg'}}">${{units >= 0 ? '+' : ''}}${{units.toFixed(2)}}</span></div>
+        <div class="track-stat"><span class="track-label">ROI</span><span class="track-val ${{roi >= 0 ? 'pos' : 'neg'}}">${{roi >= 0 ? '+' : ''}}${{(roi * 100).toFixed(1)}}%</span></div>
+        <div class="track-stat"><span class="track-label">OVER picks</span><span class="track-val">${{overs.length}} (${{overHits}}–${{overs.length - overHits}})</span></div>
+        <div class="track-stat"><span class="track-label">UNDER picks</span><span class="track-val">${{unders.length}} (${{underHits}}–${{unders.length - underHits}})</span></div>
+      </div>`;
+
+    // Per-day breakdown
+    const byDate = {{}};
+    for (const p of picks) {{
+      if (!byDate[p.date]) byDate[p.date] = [];
+      byDate[p.date].push(p);
+    }}
+    const sortedDates = Object.keys(byDate).sort().reverse();
+    const dayRows = sortedDates.map(d => {{
+      const ps = byDate[d];
+      const h = ps.filter(p => p.won).length;
+      const u = ps.reduce((s, p) => s + p.pnl, 0);
+      const uCls = u >= 0 ? 'pos' : 'neg';
+      const uStr = (u >= 0 ? '+' : '') + u.toFixed(2);
+      return `<tr>
+        <td>${{escapeHTML(d)}}</td>
+        <td class="num">${{ps.length}}</td>
+        <td class="num">${{h}}</td>
+        <td class="num ${{uCls}}">${{uStr}}</td>
+      </tr>`;
+    }}).join("");
+
+    return `<section class="results-section">
+      <h2>Track Record — last ${{maxDays}} days</h2>
+      ${{summaryHTML}}
+      <table style="margin-top: 12px;">
+        <thead><tr>
+          <th>Date</th>
+          <th class="num">Picks</th>
+          <th class="num">Hits</th>
+          <th class="num">Units</th>
+        </tr></thead>
+        <tbody>${{dayRows}}</tbody>
+      </table>
+    </section>`;
+  }}
+
   function counts(rows) {{
     const c = {{ focus: 0, investigate: 0, noise: 0, noline: 0 }};
     for (const r of rows) c[classify(f(r.edge))]++;
@@ -575,6 +736,8 @@ def _render_js() -> str:
   function renderPitcherTab(target) {{
     const slate = target.slate;
     const settled = target.settled;
+    const trackPicks = target.trackPicks || [];
+    const trackDays = target.trackDays || 14;
     const hasRows = slate.rows.length > 0;
     const sorted = hasRows ? sortRows(slate.rows, "proj_ks_v2") : [];
     const cnt = counts(slate.rows);
@@ -616,7 +779,8 @@ def _render_js() -> str:
             <th class="num" title="Actual strikeouts">Actual</th>
             <th class="num" title="Actual minus projected">Off By</th>
             <th class="num" title="Sportsbook line that day">Line</th>
-            <th title="Whether OVER or UNDER hit">Result</th>
+            <th title="What our model recommended at slate time">Our Pick</th>
+            <th title="HIT/MISS shown for actionable picks; otherwise just which side won">Result</th>
           </tr></thead>
           <tbody>${{sortedSettled.map(pitcherResultRow).join("")}}</tbody>
         </table>
@@ -625,7 +789,8 @@ def _render_js() -> str:
       resultsSection = `<section class="results-section"><h2>Recent Results</h2><p class="muted">No settled days yet.</p></section>`;
     }}
 
-    return {{ html: pitcherTabHTML(slateBody, resultsSection), cnt }};
+    const trackSection = renderTrackRecord(trackPicks, trackDays);
+    return {{ html: pitcherTabHTML(slateBody, resultsSection + trackSection), cnt }};
   }}
 
   function renderHitterTab(target) {{
@@ -753,10 +918,12 @@ def _render_js() -> str:
     if (btn) {{ btn.disabled = true; btn.textContent = "Refreshing…"; }}
     document.body.classList.add("loading");
 
+    const TRACK_DAYS = 14;
     try {{
       const fetches = [
         fetchTodaysCSV("pitcher_ks"),
         fetchMostRecentSettled("pitcher_ks"),
+        fetchTrackRecord(TRACK_DAYS),
       ];
       if (SHOW_HITTERS) {{
         fetches.push(
@@ -765,9 +932,12 @@ def _render_js() -> str:
         );
       }}
       const results = await Promise.all(fetches);
-      const [pSlate, pSettled, hSlate, hSettled] = results;
+      const [pSlate, pSettled, pTrack, hSlate, hSettled] = results;
 
-      const pTab = renderPitcherTab({{ slate: pSlate, settled: pSettled }});
+      const pTab = renderPitcherTab({{
+        slate: pSlate, settled: pSettled,
+        trackPicks: pTrack, trackDays: TRACK_DAYS,
+      }});
       const pPanel = document.getElementById("pitcher-panel");
       if (pPanel) pPanel.innerHTML = pTab.html;
       const pCounts = document.getElementById("pitcher-counts");
@@ -841,9 +1011,8 @@ def _render_js() -> str:
 
 def generate(target_date: date | None = None) -> Path | None:
     target_date = target_date or date.today()
-    static_mode = _is_static_mode()
 
-    actions_block = _action_buttons_html(static_mode)
+    actions_block = _action_buttons_html()
     js = _render_js()
 
     if SHOW_HITTERS:
@@ -867,11 +1036,22 @@ def generate(target_date: date | None = None) -> Path | None:
     # side by JS so the shell stays byte-identical across cron regens.
     # Otherwise every daily run would change index.html and trigger a
     # Netlify redeploy, defeating the credit-saving design.
+    # Synchronous head script: tags <html> as local-only-buttons-eligible
+    # before first paint, so .local-only buttons stay hidden on Netlify
+    # and reveal cleanly on localhost (no flash). The same hostname check
+    # is mirrored later in baseUrl() to pick the CSV source.
+    local_check = (
+        "(function(){var h=location.hostname;"
+        "if(h===''||h==='localhost'||h==='127.0.0.1')"
+        "document.documentElement.classList.add('is-local');})();"
+    )
+
     doc = f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>MLB K Props</title>
+<script>{local_check}</script>
 <style>{CSS}</style>
 <script>{js}</script>
 </head>

@@ -98,6 +98,40 @@ def _maybe_float(value) -> float | None:
         return None
 
 
+SLATE_FIELDS = [
+    "slate_line",
+    "slate_over_odds",
+    "slate_under_odds",
+    "slate_p_over",
+    "slate_novig_over",
+    "slate_edge",
+    "slate_over_hit",
+    "slate_over_pnl",
+    "slate_under_pnl",
+]
+
+
+def _load_slate(target_date: date) -> dict[int, dict]:
+    """Load the morning's frozen projection snapshot keyed by pitcher_id.
+
+    The slate is whatever the first main.py run of the day wrote — i.e.
+    the line/odds/edge state we'd actually have bet on. Empty dict if the
+    snapshot doesn't exist (older days written before this feature).
+    """
+    slate_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}_slate.csv"
+    if not slate_path.exists():
+        return {}
+    out: dict[int, dict] = {}
+    with slate_path.open() as f:
+        for r in csv.DictReader(f):
+            try:
+                pid = int(r["pitcher_id"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            out[pid] = r
+    return out
+
+
 def settle_date(target_date: date) -> Path | None:
     proj_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}.csv"
     if not proj_path.exists():
@@ -116,8 +150,13 @@ def settle_date(target_date: date) -> Path | None:
         )
         return None
 
+    slate_by_id = _load_slate(target_date)
     settled_count = 0
     for row in rows:
+        # Pre-populate every row with empty slate fields so DictWriter has
+        # a stable header even when some pitchers were missing from slate.
+        for k in SLATE_FIELDS:
+            row.setdefault(k, "")
         actual = actual_ks_for(int(row["pitcher_id"]), target_date)
         if actual is None:
             row.update(
@@ -149,23 +188,49 @@ def settle_date(target_date: date) -> Path | None:
         line = _maybe_float(row.get("line"))
         if line is None:
             row.update(over_hit="", over_pnl="", under_pnl="")
-            continue
+        else:
+            over_hit = ks > line
+            row["over_hit"] = int(over_hit)
 
-        over_hit = ks > line
-        row["over_hit"] = int(over_hit)
+            over_odds = _maybe_float(row.get("over_odds"))
+            under_odds = _maybe_float(row.get("under_odds"))
+            row["over_pnl"] = (
+                round(_pnl(int(over_odds), over_hit), 3)
+                if over_odds is not None
+                else ""
+            )
+            row["under_pnl"] = (
+                round(_pnl(int(under_odds), not over_hit), 3)
+                if under_odds is not None
+                else ""
+            )
 
-        over_odds = _maybe_float(row.get("over_odds"))
-        under_odds = _maybe_float(row.get("under_odds"))
-        row["over_pnl"] = (
-            round(_pnl(int(over_odds), over_hit), 3)
-            if over_odds is not None
-            else ""
-        )
-        row["under_pnl"] = (
-            round(_pnl(int(under_odds), not over_hit), 3)
-            if under_odds is not None
-            else ""
-        )
+        # Slate-time grading: use the morning's frozen line + odds, since
+        # that's what the user would actually have bet at. Lines move, so
+        # final-state edge can disagree with the pick we surfaced earlier.
+        slate = slate_by_id.get(int(row["pitcher_id"]))
+        if slate:
+            row["slate_line"] = slate.get("line", "")
+            row["slate_over_odds"] = slate.get("over_odds", "")
+            row["slate_under_odds"] = slate.get("under_odds", "")
+            row["slate_p_over"] = slate.get("p_over", "")
+            row["slate_novig_over"] = slate.get("novig_over", "")
+            row["slate_edge"] = slate.get("edge", "")
+
+            slate_line = _maybe_float(slate.get("line"))
+            if slate_line is not None:
+                slate_over_hit = ks > slate_line
+                row["slate_over_hit"] = int(slate_over_hit)
+                slate_over_odds = _maybe_float(slate.get("over_odds"))
+                slate_under_odds = _maybe_float(slate.get("under_odds"))
+                if slate_over_odds is not None:
+                    row["slate_over_pnl"] = round(
+                        _pnl(int(slate_over_odds), slate_over_hit), 3
+                    )
+                if slate_under_odds is not None:
+                    row["slate_under_pnl"] = round(
+                        _pnl(int(slate_under_odds), not slate_over_hit), 3
+                    )
 
     out_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}_settled.csv"
     with out_path.open("w", newline="") as f:
