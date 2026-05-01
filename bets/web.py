@@ -789,7 +789,18 @@ def _render_js() -> str:
     }}
   }}
 
+  function updateHeaderDate() {{
+    const fmt = new Intl.DateTimeFormat("en-US", {{
+      timeZone: "America/Chicago",
+      weekday: "long", year: "numeric", month: "long", day: "numeric"
+    }});
+    const el = document.getElementById("header-date");
+    if (el) el.textContent = fmt.format(new Date());
+  }}
+
   document.addEventListener("DOMContentLoaded", () => {{
+    updateHeaderDate();
+
     document.querySelectorAll(".tabs button").forEach(b => {{
       b.addEventListener("click", () => showTab(b.dataset.tab));
     }});
@@ -812,6 +823,10 @@ def generate(target_date: date | None = None) -> Path | None:
     actions_block = _action_buttons_html(static_mode)
     js = _render_js()
 
+    # Note: NO date or timestamp in the shell — those are rendered client-
+    # side by JS so the shell stays byte-identical across cron regens.
+    # Otherwise every daily run would change index.html and trigger a
+    # Netlify redeploy, defeating the credit-saving design.
     doc = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -824,7 +839,7 @@ def generate(target_date: date | None = None) -> Path | None:
 <header>
   <div>
     <h1>MLB K Prop Projections</h1>
-    <div class="date">{target_date.strftime('%A, %B %d, %Y')}</div>
+    <div class="date" id="header-date"></div>
   </div>
   {actions_block}
   <nav class="tabs">
@@ -841,7 +856,6 @@ def generate(target_date: date | None = None) -> Path | None:
   </div>
 </main>
 <footer>
-  Shell built {datetime.now().strftime('%Y-%m-%d %H:%M')} &middot;
   Data fetched live from {REPO}/output on each load &middot;
   <a href="https://github.com/{REPO}" style="color: var(--muted);">source</a>
 </footer>

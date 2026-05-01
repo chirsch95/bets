@@ -723,7 +723,18 @@
     }
   }
 
+  function updateHeaderDate() {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago",
+      weekday: "long", year: "numeric", month: "long", day: "numeric"
+    });
+    const el = document.getElementById("header-date");
+    if (el) el.textContent = fmt.format(new Date());
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
+    updateHeaderDate();
+
     document.querySelectorAll(".tabs button").forEach(b => {
       b.addEventListener("click", () => showTab(b.dataset.tab));
     });
@@ -742,7 +753,7 @@
 <header>
   <div>
     <h1>MLB K Prop Projections</h1>
-    <div class="date">Friday, May 01, 2026</div>
+    <div class="date" id="header-date"></div>
   </div>
   <div class="actions">
     <button type="button" id="refresh-btn" class="primary">Refresh data</button><span class="last-refresh" id="last-refresh"></span>
@@ -767,7 +778,6 @@
   </div>
 </main>
 <footer>
-  Shell built 2026-05-01 11:44 &middot;
   Data fetched live from chirsch95/bets/output on each load &middot;
   <a href="https://github.com/chirsch95/bets" style="color: var(--muted);">source</a>
 </footer>
