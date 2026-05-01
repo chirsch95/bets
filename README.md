@@ -11,7 +11,7 @@ cd ~/bets
 .venv/bin/python -m bets.server
 ```
 
-Then open <http://127.0.0.1:5000> in a browser. The dashboard has two buttons in the header:
+Then open <http://127.0.0.1:8000> in a browser (override with `BETS_PORT=5050 python -m bets.server` if you need a different port — 5000 conflicts with macOS AirPlay Receiver). The dashboard has two buttons in the header:
 
 - **Refresh Lines** — re-pulls odds and recomputes today's projections (~30s, costs ~16 of 500 monthly Odds API requests)
 - **Settle Yesterday** — fetches actual K outcomes for yesterday's slate and updates the Recent Results section
@@ -82,7 +82,7 @@ bets/
 
 | Command | When | Writes |
 |---|---|---|
-| `python -m bets.server` | Once per session — runs in foreground | Serves dashboard at http://127.0.0.1:5000 |
+| `python -m bets.server` | Once per session — runs in foreground | Serves dashboard at http://127.0.0.1:8000 |
 | `python -m bets.main` | Every morning (CLI flow) | `output/pitcher_ks_<today>.csv`, `output/index.html` |
 | `python -m bets.hitters` | Every morning, after lineups post (~2–3 hrs before first pitch) | `output/hitter_ks_<today>.csv` |
 | `python -m bets.settle` | Every morning (settles yesterday — both pitchers and hitters) | `output/{pitcher,hitter}_ks_<yesterday>_settled.csv` |

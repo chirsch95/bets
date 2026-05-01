@@ -3,19 +3,19 @@
 Run with:
     python -m bets.server
 
-Then open http://127.0.0.1:5000 in a browser.
+Default URL: http://127.0.0.1:8000 (port 5000 is taken by macOS AirPlay
+Receiver out of the box — change the port via the BETS_PORT env var if
+you want a different one, e.g. BETS_PORT=5050 python -m bets.server).
 
 Endpoints:
     GET  /          serves output/index.html (regenerates if missing)
-    POST /refresh   runs bets.main (re-fetches odds, recomputes), redirects /
-    POST /settle    settles yesterday's projections, redirects /
-
-Both POSTs are synchronous — the browser waits while the run completes
-(typically 10–30s for /refresh, 5–15s for /settle).
+    POST /refresh   runs bets.main + bets.hitters, redirects /
+    POST /settle    settles yesterday's projections (both), redirects /
 """
 
 from __future__ import annotations
 
+import os
 from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
@@ -102,11 +102,12 @@ def _today() -> date:
 
 
 def main() -> None:
-    print("Starting dashboard server at http://127.0.0.1:5000")
+    port = int(os.environ.get("BETS_PORT", "8000"))
+    print(f"Starting dashboard server at http://127.0.0.1:{port}")
     print("  GET  /         — view dashboard")
     print("  POST /refresh  — re-pull odds and recompute")
     print("  POST /settle   — settle yesterday")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host="127.0.0.1", port=port, debug=False)
 
 
 if __name__ == "__main__":
