@@ -4,35 +4,17 @@ A data pipeline and modeling system for identifying +EV prop bets on daily fanta
 
 ## Daily Routine
 
-The simplest workflow is the **local dashboard server** — start it once, click buttons in your browser the rest of the morning.
+Open **https://winningbets.netlify.app/** in any browser. That's it. A GitHub Action regenerates the dashboard once a day at noon CT and Netlify auto-deploys; the page shows a "Last updated" timestamp so you know it's fresh.
+
+For an off-schedule refresh (e.g. before a big night slate, or when news drops):
 
 ```sh
-cd ~/bets
-.venv/bin/python -m bets.server
+gh workflow run "Refresh dashboard" -R chirsch95/bets
 ```
 
-Then open <http://127.0.0.1:8000> in a browser (override with `BETS_PORT=5050 python -m bets.server` if you need a different port — 5000 conflicts with macOS AirPlay Receiver). The dashboard has two buttons in the header:
+Wait ~3 minutes and reload. The local Flask server isn't part of the daily routine anymore — it's reserved for code-change testing (see [Local Development](#local-development)).
 
-- **Refresh Lines** — re-pulls odds and recomputes today's projections (~30s, costs ~16 of 500 monthly Odds API requests)
-- **Settle Yesterday** — fetches actual K outcomes for yesterday's slate and updates the Recent Results section
-
-Recommended morning order: click **Settle Yesterday** first (cheap, fast), then **Refresh Lines** once.
-
-**Pure CLI alternative** (no server, ideally before noon ET):
-
-```sh
-.venv/bin/python -m bets.main && .venv/bin/python -m bets.settle
-open output/index.html   # static dashboard, no buttons
-```
-
-That's it. The chained command does two things:
-
-1. `bets.main` — projects today's slate and captures sportsbook lines from The Odds API. Writes `output/pitcher_ks_<today>.csv` and regenerates `output/index.html`.
-2. `bets.settle` — settles **yesterday's** projections against actual K outcomes from MLB. Writes `output/pitcher_ks_<yesterday>_settled.csv`, which feeds the calibration harness.
-
-**Run early.** Sportsbooks pull pitcher prop lines once games start, so a late run captures fewer comparisons and overwrites the morning's CSV with a worse snapshot.
-
-**Periodic (whenever, weekly is fine):**
+**Periodic (weekly is fine):**
 
 ```sh
 .venv/bin/python -m bets.analyze
@@ -55,27 +37,34 @@ Get a free Odds API key at https://the-odds-api.com (500 requests / month). With
 
 ```
 bets/
-├── README.md                  this file
+├── README.md                       this file
 ├── requirements.txt
-├── .env                       ODDS_API_KEY (gitignored, chmod 600)
+├── netlify.toml                    publish dir = output/, ignore rule skips no-data deploys
+├── .github/
+│   └── workflows/
+│       └── refresh.yml             daily 17:00 UTC cron + workflow_dispatch
+├── .env                            ODDS_API_KEY (gitignored, chmod 600)
 ├── .env.example
-├── .venv/                     virtualenv (gitignored)
-├── bets/                      package
+├── .venv/                          virtualenv (gitignored)
+├── bets/                           package
 │   ├── __init__.py
-│   ├── config.py              constants: blend weights, park factors, paths, league averages
-│   ├── fetch.py               MLB Stats API: probable starters + lineups, pitcher stats, team K%, batched lineup K%; Baseball Savant: SwStr% with 12h disk cache
-│   ├── odds.py                The Odds API: multi-book aggregation (median line, best odds, median consensus P(over))
-│   ├── model.py               v0 / v1 / v2 projection functions; Poisson P(over); American odds + no-vig + EV math
-│   ├── main.py                CLI entry: fetch slate → project all 3 models → match lines → write CSV → regenerate dashboard
-│   ├── settle.py              Fetch actual K outcomes from MLB gameLog; write *_settled.csv with errors and PnL
-│   ├── analyze.py             Aggregate every settled CSV: MAE / RMSE / bias for v0/v1/v2, P(over) buckets, edge-threshold ROI
-│   ├── web.py                 Static HTML dashboard generator (focus tags, recent results section, tooltips)
-│   └── server.py              Flask server: GET / serves dashboard, POST /refresh runs main, POST /settle settles yesterday
-├── data/                      caches (gitignored): swstr_<season>.json
-└── output/                    daily artifacts (gitignored except .gitkeep):
-    ├── pitcher_ks_<date>.csv          one per day of projections
-    ├── pitcher_ks_<date>_settled.csv  one per settled day
-    └── index.html                     latest dashboard
+│   ├── config.py                   constants: blend weights, park factors, lineup PA, paths
+│   ├── fetch.py                    MLB Stats API (starters + lineups + pitcher/hitter stats); Baseball Savant SwStr% (12h disk cache)
+│   ├── odds.py                     The Odds API: pitcher_strikeouts + batter_strikeouts, multi-book aggregation, line preservation across reruns
+│   ├── model.py                    v0/v1/v2 pitcher projections + v0 hitter projection; Poisson P(over); odds + EV math
+│   ├── main.py                     CLI: project today's pitcher slate
+│   ├── hitters.py                  CLI: project today's hitter slate (separate runner for clarity)
+│   ├── settle.py                   Settle yesterday's pitchers + hitters with actuals
+│   ├── analyze.py                  Aggregate settled history (pitcher only so far)
+│   ├── web.py                      Tabbed HTML dashboard (pitchers + hitters); STATIC_MODE=1 hides action buttons
+│   └── server.py                   Local Flask server (port 8000 default; override with BETS_PORT)
+├── data/                           caches (gitignored): swstr_<season>.json
+└── output/                         tracked — Netlify publishes from here:
+    ├── pitcher_ks_<date>.csv
+    ├── pitcher_ks_<date>_settled.csv
+    ├── hitter_ks_<date>.csv
+    ├── hitter_ks_<date>_settled.csv
+    └── index.html                  latest dashboard
 ```
 
 ## Command Reference
@@ -91,6 +80,27 @@ bets/
 | `python -m bets.web` | Regenerate dashboard without re-running projections | `output/index.html` |
 
 The Flask server's **Refresh Lines** button runs both pitcher and hitter pipelines back-to-back; **Settle Yesterday** settles both. The dashboard has two tabs: `#pitchers` (default) and `#hitters`.
+
+## Local Development
+
+The local Flask server is for **testing code changes before they hit Netlify** — each push to `main` consumes ~15 of your monthly Netlify build credits, so iterate locally first.
+
+```sh
+cd ~/bets
+.venv/bin/python -m bets.server   # http://127.0.0.1:8000
+```
+
+Override the port if 8000 is taken: `BETS_PORT=5050 python -m bets.server`. macOS reserves 5000 for AirPlay Receiver, which is why 8000 is the default.
+
+**Workflow:**
+
+1. Edit code in `~/bets/bets/`
+2. Restart the server (Ctrl+C, then re-run) to pick up Python changes — browser hard-refresh (Cmd+Shift+R) is enough for HTML/CSS only
+3. Verify the change at `http://127.0.0.1:8000`
+4. Commit + push **only when satisfied** — that's the action that costs credits
+5. Netlify auto-deploys on push (subject to the `output/*.csv`-changed ignore rule)
+
+Local data and Netlify data drift because they're independent disks. To pull whatever the cron last produced into your local copy: `git pull origin main`.
 
 ## Dashboard
 
@@ -143,18 +153,27 @@ To change the refresh time, edit the cron in `.github/workflows/refresh.yml` —
 
 ## Status
 
+**Pitcher Ks**
 - ✅ v0 model: blended K% × flat expected BF
 - ✅ v1 model: per-pitcher expected BF + log5 matchup vs opposing team K%
-- ✅ v2 model: SwStr%-blended pitcher K% (via Baseball Savant, cached 12h), lineup-level opp K% (with team K% fallback when lineup not posted), park K factors
-- ✅ The Odds API integration with Poisson `P(over)`, no-vig fair probability, per-side EV
-- ✅ Calibration harness: settle vs actual K outcomes, MAE / RMSE / bias for v0 / v1 / v2 head-to-head, P(over) buckets, edge-threshold ROI
-- ✅ Static HTML dashboard with focus highlighting and explicit OVER / UNDER recommendations
-- ✅ Multi-book line aggregation: median consensus line, best odds with sourcing book, median no-vig probability across books
-- ✅ Local Flask server with Refresh Lines / Settle Yesterday buttons + same-page Recent Results section
-- ✅ Hitter K v0 model: log5(hitter K%, opp starter K%) × park × lineup-slot PA — separate dashboard tab + own settle path
-- ⏳ Hitter K v1: bullpen K% blending (currently treats all PAs as vs starter), platoon splits, lineup-slot PA from per-player history
+- ✅ v2 model: SwStr%-blended pitcher K% (Baseball Savant CSV, 12h cache), lineup-level opp K% (team K% fallback), park K factors
+
+**Hitter Ks**
+- ✅ v0 model: log5(hitter K%, opp starter K%) × park × lineup-slot PA — own dashboard tab, own settle path
+- ⏳ v1: bullpen K% blending (currently treats whole game as vs starter), platoon splits, per-player PA history
+
+**Pipeline + UI**
+- ✅ The Odds API integration with multi-book aggregation: median line, best odds per side with sourcing book, median no-vig P(over)
+- ✅ Line preservation across same-day reruns (`load_previous_*_lines` + `merge_lines`) so a late run doesn't wipe morning lines when books pull markets
+- ✅ Calibration harness: settle vs actual outcomes, MAE / RMSE / bias for v0 / v1 / v2 head-to-head, P(over) buckets, edge-threshold ROI
+- ✅ Tabbed HTML dashboard (pitchers / hitters) with focus highlighting, OVER / UNDER recommendations, Recent Results section per tab; tab state in URL hash
+- ✅ Local Flask server (port 8000) with Refresh Lines / Settle Yesterday buttons — dev/test only
+- ✅ Public Netlify deploy at https://winningbets.netlify.app/ with once-daily cron + `output/*.csv`-change-only deploy ignore rule for credit conservation
+
+**Future**
 - ⏳ Empirical-Bayes shrinkage, catcher framing, umpire tendencies
 - ⏳ Bankroll / Kelly sizing
+- ⏳ Isotonic / Platt calibration of P(over) once ~30 days of settled data accumulate
 
 ---
 
