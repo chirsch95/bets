@@ -294,6 +294,25 @@ CSS = """
   .pick-card-stat { display: flex; flex-direction: column; gap: 1px; }
   .pick-card-stat-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
   .pick-card-stat-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+  /* Live cell on each hero card. Mirrors the table-row time-cell
+     palette so the same color cues read consistently in both places. */
+  .pick-card-stat-val.live-pending { color: var(--muted); font-weight: 500; }
+  .pick-card-stat-val.live-now { color: var(--text); }
+  .pick-card-stat-val.live-now .live-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--red);
+    margin-right: 5px;
+    vertical-align: middle;
+    animation: live-pulse 1.6s ease-in-out infinite;
+  }
+  .pick-card-stat-val.live-now .live-ks { color: var(--green); margin-left: 4px; }
+  .pick-card-stat-val.live-final { color: var(--muted); }
+  .pick-card-stat-val.live-final .live-ks { color: var(--green); margin-left: 4px; }
+  /* Once a game has started or finished, dim the surrounding stats so
+     the live cell carries the eye. Edge / proj are no longer actionable. */
+  .pick-card.locked .pick-card-stat:not(:last-child) { opacity: 0.55; }
   .picks-empty {
     background: var(--panel);
     border: 1px dashed var(--border);
@@ -1436,10 +1455,11 @@ def _render_js() -> str:
     return out;
   }}
 
-  // Walk every gametime cell in the rendered pitcher table and refresh
-  // its content + row-locked class. Pure DOM read/write, no fetches —
-  // can be called every minute by a setInterval to keep "in NN min"
-  // counting down + flip rows to "started" once first pitch passes.
+  // Walk the rendered pitcher tab and refresh every live-aware cell
+  // (table-row time cells + hero-card live stats). Pure DOM read/write,
+  // no fetches — called once when fetchLiveKsPublic resolves and again
+  // on a 60s tick so countdowns stay accurate and rows flip locked the
+  // moment first pitch passes.
   let _liveByPid = new Map();
   function repaintGameTimeCells() {{
     document.querySelectorAll("td.gametime[data-game-iso]").forEach(td => {{
@@ -1450,6 +1470,21 @@ def _render_js() -> str:
       td.innerHTML = cell.html;
       const tr = td.closest("tr");
       if (tr) tr.classList.toggle("row-locked", cell.locked);
+    }});
+    document.querySelectorAll(".pick-card[data-pitcher-id]").forEach(card => {{
+      const iso = card.dataset.gameIso || "";
+      const pid = parseInt(card.dataset.pitcherId, 10);
+      const line = card.dataset.line || "";
+      const live = isNaN(pid) ? null : _liveByPid.get(pid);
+      const cell = renderHeroLive(iso, live, line);
+      const valEl = card.querySelector(".card-live-val");
+      const labelEl = card.querySelector(".card-live-label");
+      if (valEl) {{
+        valEl.className = `pick-card-stat-val card-live-val ${{cell.cls}}`;
+        valEl.innerHTML = cell.html;
+      }}
+      if (labelEl) labelEl.textContent = cell.label;
+      card.classList.toggle("locked", cell.locked);
     }});
   }}
 
@@ -1509,6 +1544,54 @@ def _render_js() -> str:
     </tr>`;
   }}
 
+  // Live cell content for a hero card. Mirrors the time-cell logic in
+  // renderGameTimeCell but shorter — the matchup line above already
+  // shows the scheduled clock time, so the live cell just adds the
+  // status delta ("in 47m", "● Top 5 4K", "Final · 7K"). Returns
+  // {{html, label, cls, locked}}.
+  function renderHeroLive(iso, live, line) {{
+    const lineNum = parseFloat(line);
+    if (live && live.status === "Live") {{
+      const inning = live.current_inning
+        ? `${{escapeHTML(live.inning_state || "")}} ${{escapeHTML(live.current_inning)}}`.trim()
+        : "in progress";
+      const ksHTML = (live.ks !== null && live.ks !== undefined)
+        ? `<span class="live-ks">${{live.ks}}K</span>` : "";
+      // "vs 6.5" pace cue when we know both line + ks.
+      const paceLabel = (!isNaN(lineNum) && live.ks !== null && live.ks !== undefined)
+        ? `${{live.ks}} of ${{lineNum.toFixed(1)}}` : "Live";
+      return {{
+        html: `<span class="live-dot"></span>${{inning}}${{ksHTML}}`,
+        label: paceLabel,
+        cls: "live-now",
+        locked: true,
+      }};
+    }}
+    if (live && live.status === "Final") {{
+      const ksHTML = (live.ks !== null && live.ks !== undefined)
+        ? `<span class="live-ks">${{live.ks}}K</span>` : "—";
+      return {{ html: `Final · ${{ksHTML}}`, label: "Final", cls: "live-final", locked: true }};
+    }}
+    // Pre-game: relative time (matchup line above already has the clock).
+    const d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d.getTime())) {{
+      return {{ html: "—", label: "Status", cls: "live-pending", locked: false }};
+    }}
+    const diffMs = d.getTime() - Date.now();
+    if (diffMs < 0) {{
+      return {{ html: "started", label: "Status", cls: "live-pending", locked: true }};
+    }}
+    const diffMin = Math.round(diffMs / 60000);
+    let rel;
+    if (diffMin < 60) rel = `in ${{diffMin}}m`;
+    else if (diffMin < 60 * 24) {{
+      const h = Math.floor(diffMin / 60);
+      const m = diffMin % 60;
+      rel = m ? `in ${{h}}h ${{m}}m` : `in ${{h}}h`;
+    }} else rel = "scheduled";
+    return {{ html: rel, label: "Starts", cls: "live-pending", locked: false }};
+  }}
+
   // Hero card for a single focus pick — surfaces the actionable info
   // (pick direction, line, edge) above the dense table.
   function renderHeroPickCard(r) {{
@@ -1517,7 +1600,16 @@ def _render_js() -> str:
     const dir = edge > 0 ? "over" : "under";
     const edgeStr = (edge > 0 ? "+" : "") + (edge * 100).toFixed(1) + "%";
     const proj = r.proj_ks_v2 || r.proj_ks_v1 || "";
-    return `<div class="pick-card ${{dir}}">
+    const iso = r.game_datetime_utc || "";
+    const pidNum = parseInt(r.pitcher_id, 10);
+    const live = isNaN(pidNum) ? null : _liveByPid.get(pidNum);
+    const liveCell = renderHeroLive(iso, live, r.line);
+    const cardCls = `pick-card ${{dir}}` + (liveCell.locked ? " locked" : "");
+    const isoAttr = iso ? ` data-game-iso="${{escapeHTML(iso)}}"` : "";
+    const pidAttr = !isNaN(pidNum) ? ` data-pitcher-id="${{pidNum}}"` : "";
+    const lineAttr = (r.line !== null && r.line !== undefined && r.line !== "")
+      ? ` data-line="${{escapeHTML(String(r.line))}}"` : "";
+    return `<div class="${{cardCls}}"${{isoAttr}}${{pidAttr}}${{lineAttr}}>
       <div class="pick-card-header">
         <span class="pick-card-badge ${{dir}}">BET ${{dir.toUpperCase()}} ${{escapeHTML(r.line || "")}}</span>
         <span class="pick-card-edge ${{dir}}">${{edgeStr}} edge</span>
@@ -1532,6 +1624,10 @@ def _render_js() -> str:
         <div class="pick-card-stat">
           <span class="pick-card-stat-label">Our %</span>
           <span class="pick-card-stat-val">${{dash(r.p_over)}}</span>
+        </div>
+        <div class="pick-card-stat">
+          <span class="pick-card-stat-label card-live-label">${{escapeHTML(liveCell.label)}}</span>
+          <span class="pick-card-stat-val card-live-val ${{liveCell.cls}}">${{liveCell.html}}</span>
         </div>
       </div>
     </div>`;
