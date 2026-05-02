@@ -125,6 +125,8 @@ The dashboard sorts pitchers into tiers based on the model's edge versus the no-
 
 By default only **focus + investigate** rows are shown. A "Show N noise / no-line" toggle above the table reveals the rest; preference persists in `localStorage`.
 
+The Opponent column prefixes the team name with **`vs`** when the pitcher is the home team and **`@`** when away, so you can tell at a glance whether the pitcher is on the mound for the top or bottom of each inning. The same convention applies in the hero cards, the Bets-tab pitcher dropdown, and the Yesterday's Results table.
+
 ### Time + live status column
 
 Each row's Time cell does triple duty depending on game state:
@@ -139,7 +141,7 @@ Once first pitch passes the row dims to 55% opacity (it's locked from the bet wi
 
 Each focus pick gets a card at the top with `BET OVER 6.5` (or UNDER), the model edge, our projection, our %, and a **live status box** showing the same data as the row's time cell. While the game is in progress the live box also surfaces a `5 of 6.5` pace label.
 
-**Outcome coloring**: once a card's pick is mathematically settled — mid-game (`ks > line` permanently locks the verdict) or at Final — the card's border + background flip to **green for HIT** or **red for MISS** regardless of the original direction, and a HIT/MISS chip appears in the header. The original `BET OVER 6.5` badge stays visible so you can see the bet you placed.
+**Outcome coloring**: once a card's pick is mathematically settled — mid-game (`ks > line` permanently locks the verdict) or at Final — the card flips to a **solid saturated fill** (deep green for HIT, deep red for MISS) with white text and a **full-width HIT/MISS banner** across the top, regardless of the original direction. Pre-settle cards keep the subtle pale tint, so the flip is unmistakable on a slate of mostly-pending cards. The original `BET OVER 6.5` pill stays visible in the header so you can see the bet you placed.
 
 ### Parlay Suggestions
 
