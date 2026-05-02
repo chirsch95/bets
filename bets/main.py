@@ -7,6 +7,7 @@ Run with:
 from __future__ import annotations
 
 import csv
+import json
 import os
 from datetime import date
 
@@ -151,6 +152,11 @@ def run(target_date: date | None = None) -> None:
             league_k_pct=LEAGUE_K_PCT,
         )
 
+        # Persisted as JSON so we can later join against batter handedness /
+        # splits without re-fetching the lineup card. Empty list when the
+        # lineup wasn't posted yet at slate time.
+        opp_lineup_json = json.dumps(s.get("opp_lineup") or [], ensure_ascii=False)
+
         row: dict = {
             "date": target_date.isoformat(),
             "game_pk": s["game_pk"],
@@ -170,6 +176,7 @@ def run(target_date: date | None = None) -> None:
             "proj_ks_v0": round(v0, 2),
             "proj_ks_v1": round(v1["proj_ks"], 2),
             "proj_ks_v2": round(v2["proj_ks"], 2),
+            "opp_lineup_json": opp_lineup_json,
         }
 
         line_data = match_line(s["pitcher_name"], lines)
