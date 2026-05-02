@@ -959,6 +959,80 @@ CSS = """
   td.player { font-weight: 500; }
   td.slot { color: var(--muted); }
   td.gametime { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* Pitcher Ks tab — live status injected into the time cell. */
+  td.gametime .time-rel { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  td.gametime .time-rel.urgent { color: var(--yellow); font-weight: 600; }
+  td.gametime .time-started { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  td.gametime .live-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--red);
+    margin-right: 5px;
+    vertical-align: middle;
+    animation: live-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes live-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  td.gametime .live-text { color: var(--text); font-weight: 500; }
+  td.gametime .live-ks { color: var(--green); font-weight: 600; margin-left: 4px; }
+  td.gametime .final-text { color: var(--muted); }
+  /* Locked-out: game has started, bet window closed. Demote the row
+     visually but keep it readable so you can still see the model number. */
+  tr.row-locked { opacity: 0.55; }
+  tr.row-locked td.gametime { color: var(--text); opacity: 1; }
+  /* Noise/no-line filter toggle: hide noise rows by default; show on toggle. */
+  .slate-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 12px 0 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .slate-toolbar button {
+    background: var(--panel);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .slate-toolbar button:hover { color: var(--text); border-color: var(--text); }
+  .slate-toolbar button.active { color: var(--text); border-color: var(--text); }
+  body.hide-noise tr.row-noise,
+  body.hide-noise tr.row-noline { display: none; }
+  /* Sparkline tooltip overlay — absolutely positioned over the SVG. */
+  .sparkline-wrap { position: relative; }
+  .sparkline-tip {
+    position: absolute;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 6px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+    margin-top: -8px;
+    white-space: nowrap;
+    z-index: 5;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  }
+  .sparkline-tip strong { color: var(--text); }
+  .sparkline-tip .tip-units.pos { color: var(--green); }
+  .sparkline-tip .tip-units.neg { color: var(--red); }
+  .sparkline-hover-target {
+    fill: transparent;
+    stroke: transparent;
+    cursor: pointer;
+  }
+  .sparkline-hover-target:hover ~ .sparkline-dot,
+  .sparkline-svg circle.sparkline-dot.sparkline-dot-hover { fill: var(--green); }
   td.edge.over { color: var(--green); font-weight: 500; }
   td.edge.under { color: var(--red); font-weight: 500; }
   tr.row-focus.dir-over { background: var(--green-bg); }
@@ -1215,6 +1289,170 @@ def _render_js() -> str:
     return _CT_FMT.format(d) + " CT";
   }}
 
+  // Render the time-cell HTML for one slate row. Returns {{html, locked}}.
+  // Three states:
+  //   1) Live  — "● Top 5 · 4K"  (game in progress, K count if known)
+  //   2) Final — "Final · 7K"    (game over, K count if known)
+  //   3) Sched — "7:10 PM CT (in 47m)" + "urgent" class under 30 min
+  // 'locked' = bet window is closed (game started); caller adds a CSS
+  // class to demote the whole row.
+  function renderGameTimeCell(iso, live) {{
+    if (!iso) return {{ html: "—", locked: false }};
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return {{ html: "—", locked: false }};
+    const timeStr = _CT_FMT.format(d) + " CT";
+
+    if (live && live.status === "Live") {{
+      const inning = live.current_inning
+        ? `${{escapeHTML(live.inning_state || "")}} ${{escapeHTML(live.current_inning)}}`.trim()
+        : "in progress";
+      const ksStr = (live.ks !== null && live.ks !== undefined)
+        ? `<span class="live-ks">${{live.ks}}K</span>` : "";
+      return {{
+        html: `<span class="live-dot" title="${{escapeHTML(live.detailed || "Live")}}"></span><span class="live-text">${{inning}}</span>${{ksStr}}`,
+        locked: true,
+      }};
+    }}
+    if (live && live.status === "Final") {{
+      const ksStr = (live.ks !== null && live.ks !== undefined) ? `${{live.ks}}K` : "—";
+      return {{
+        html: `<span class="final-text">Final</span> · <span class="live-ks">${{ksStr}}</span>`,
+        locked: true,
+      }};
+    }}
+
+    const diffMs = d.getTime() - Date.now();
+    if (diffMs < 0) {{
+      // Past first pitch but no live data yet (delayed status update,
+      // or pre-game scheduled-vs-actual lag). Treat as locked.
+      return {{
+        html: `${{timeStr}} <span class="time-started">(started)</span>`,
+        locked: true,
+      }};
+    }}
+    const diffMin = Math.round(diffMs / 60000);
+    let rel = "";
+    if (diffMin < 60) rel = `in ${{diffMin}}m`;
+    else if (diffMin < 60 * 24) {{
+      const h = Math.floor(diffMin / 60);
+      const m = diffMin % 60;
+      rel = m ? `in ${{h}}h ${{m}}m` : `in ${{h}}h`;
+    }}
+    const urgent = diffMin <= 30 ? " urgent" : "";
+    const relHTML = rel ? `<span class="time-rel${{urgent}}">${{rel}}</span>` : "";
+    return {{ html: `${{timeStr}} ${{relHTML}}`, locked: false }};
+  }}
+
+  // Fetch live K + game status for the slate's pitchers directly from
+  // the public MLB Stats API. No auth, no proxy needed — works on
+  // Netlify and locally. Returns Map<pitcher_id, liveData>.
+  // One /schedule call + one /boxscore per in-progress-or-final game.
+  async function fetchLiveKsPublic(slateRows, dateISO) {{
+    const byPid = new Map();
+    const gameIds = new Set();
+    for (const r of slateRows) {{
+      const pid = parseInt(r.pitcher_id, 10);
+      const gpk = parseInt(r.game_pk, 10);
+      if (isNaN(pid) || isNaN(gpk)) continue;
+      byPid.set(pid, gpk);
+      gameIds.add(gpk);
+    }}
+    if (!gameIds.size) return new Map();
+
+    let schedJson;
+    try {{
+      const r = await fetch(
+        `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${{dateISO}}&hydrate=linescore`,
+        {{ cache: "no-cache" }},
+      );
+      if (!r.ok) return new Map();
+      schedJson = await r.json();
+    }} catch (e) {{
+      return new Map();
+    }}
+
+    const statusByGpk = new Map();
+    for (const dateBlock of (schedJson.dates || [])) {{
+      for (const game of (dateBlock.games || [])) {{
+        const gpk = game.gamePk;
+        if (!gpk) continue;
+        const status = game.status || {{}};
+        const ls = game.linescore || {{}};
+        statusByGpk.set(gpk, {{
+          status: status.abstractGameState || "Preview",
+          detailed: status.detailedState || "",
+          current_inning: ls.currentInningOrdinal || null,
+          inning_state: ls.inningState || null,
+        }});
+      }}
+    }}
+
+    // Boxscore only for games that aren't Preview — saves traffic and
+    // dodges 404s on games that haven't begun yet.
+    const interesting = [...gameIds].filter(gpk => {{
+      const s = statusByGpk.get(gpk);
+      return s && s.status !== "Preview";
+    }});
+    const boxes = await Promise.all(interesting.map(async gpk => {{
+      try {{
+        const r = await fetch(
+          `https://statsapi.mlb.com/api/v1/game/${{gpk}}/boxscore`,
+          {{ cache: "no-cache" }},
+        );
+        if (!r.ok) return [gpk, null];
+        return [gpk, await r.json()];
+      }} catch (e) {{ return [gpk, null]; }}
+    }}));
+    const boxByGpk = new Map(boxes);
+
+    const out = new Map();
+    for (const [pid, gpk] of byPid) {{
+      const status = statusByGpk.get(gpk) || {{ status: "Preview" }};
+      const result = {{
+        ks: null,
+        status: status.status,
+        detailed: status.detailed || "",
+        current_inning: status.current_inning,
+        inning_state: status.inning_state,
+      }};
+      const box = boxByGpk.get(gpk);
+      if (box) {{
+        const key = `ID${{pid}}`;
+        for (const side of ["home", "away"]) {{
+          const players = (box.teams && box.teams[side] && box.teams[side].players) || {{}};
+          if (players[key]) {{
+            const stats = players[key].stats && players[key].stats.pitching;
+            const ks = stats && stats.strikeOuts;
+            if (ks !== undefined && ks !== null && ks !== "") {{
+              const n = parseInt(ks, 10);
+              if (!isNaN(n)) result.ks = n;
+            }}
+            break;
+          }}
+        }}
+      }}
+      out.set(pid, result);
+    }}
+    return out;
+  }}
+
+  // Walk every gametime cell in the rendered pitcher table and refresh
+  // its content + row-locked class. Pure DOM read/write, no fetches —
+  // can be called every minute by a setInterval to keep "in NN min"
+  // counting down + flip rows to "started" once first pitch passes.
+  let _liveByPid = new Map();
+  function repaintGameTimeCells() {{
+    document.querySelectorAll("td.gametime[data-game-iso]").forEach(td => {{
+      const iso = td.dataset.gameIso || "";
+      const pid = parseInt(td.dataset.pitcherId, 10);
+      const live = isNaN(pid) ? null : _liveByPid.get(pid);
+      const cell = renderGameTimeCell(iso, live);
+      td.innerHTML = cell.html;
+      const tr = td.closest("tr");
+      if (tr) tr.classList.toggle("row-locked", cell.locked);
+    }});
+  }}
+
   function sortKey(r, projField) {{
     const edge = f(r.edge);
     const cls = classify(edge);
@@ -1239,16 +1477,27 @@ def _render_js() -> str:
     const cls = classify(edge);
     const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
     const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + edge.toFixed(3);
-    const rowCls = `row-${{cls}}` + (dir ? ` dir-${{dir}}` : "");
-    const tagCls = `tag-${{cls}}` + (dir ? ` tag-dir-${{dir}}` : "");
     const proj = r.proj_ks_v2 || r.proj_ks_v1 || "";
     const overTitle = r.over_book ? ` title="Best price at ${{escapeHTML(r.over_book)}}"` : "";
     const underTitle = r.under_book ? ` title="Best price at ${{escapeHTML(r.under_book)}}"` : "";
     const novigTitle = r.n_books ? ` title="Median across ${{escapeHTML(r.n_books)}} books"` : "";
+
+    // Time cell renders + decides locked-out for the row. _liveByPid is
+    // empty on first render — repainted in place once fetchLiveKsPublic
+    // resolves and again on every 60s tick.
+    const iso = r.game_datetime_utc || "";
+    const pidNum = parseInt(r.pitcher_id, 10);
+    const live = isNaN(pidNum) ? null : _liveByPid.get(pidNum);
+    const cell = renderGameTimeCell(iso, live);
+    const rowCls = `row-${{cls}}` + (dir ? ` dir-${{dir}}` : "") + (cell.locked ? " row-locked" : "");
+    const tagCls = `tag-${{cls}}` + (dir ? ` tag-dir-${{dir}}` : "");
+    const isoAttr = iso ? ` data-game-iso="${{escapeHTML(iso)}}"` : "";
+    const pidAttr = !isNaN(pidNum) ? ` data-pitcher-id="${{pidNum}}"` : "";
+
     return `<tr class="${{rowCls}}">
       <td class="player">${{escapeHTML(r.pitcher || "")}}</td>
       <td>${{escapeHTML(r.opp || "")}}</td>
-      <td class="gametime">${{formatGameTime(r.game_datetime_utc)}}</td>
+      <td class="gametime"${{isoAttr}}${{pidAttr}}>${{cell.html}}</td>
       <td class="num">${{dash(proj)}}</td>
       <td class="num">${{dash(r.line)}}</td>
       <td class="num"${{overTitle}}>${{dash(r.over_odds)}}</td>
@@ -1597,7 +1846,13 @@ def _render_js() -> str:
     let running = 0;
     for (const u of dailyUnits) {{
       running += u.units;
-      cum.push({{ date: u.date, cum: running }});
+      cum.push({{
+        date: u.date,
+        cum: running,
+        units: u.units,
+        picks: u.picks || 0,
+        hits: u.hits || 0,
+      }});
     }}
     const w = 600, h = 60, pad = 4;
     const maxV = Math.max(0, ...cum.map(p => p.cum));
@@ -1613,20 +1868,74 @@ def _render_js() -> str:
       ? `${{pathD}} L${{xFor(cum.length - 1).toFixed(1)}},${{zeroY.toFixed(1)}} L${{xFor(0).toFixed(1)}},${{zeroY.toFixed(1)}} Z`
       : "";
     const finalCls = running >= 0 ? "pos" : "neg";
-    const lastIdx = cum.length - 1;
-    const lastDot = `<circle class="sparkline-dot" cx="${{xFor(lastIdx).toFixed(1)}}" cy="${{yFor(cum[lastIdx].cum).toFixed(1)}}" r="3" />`;
     const finalLabel = `${{running >= 0 ? "+" : ""}}${{running.toFixed(2)}}u total`;
 
-    return `<div class="sparkline-wrap">
+    // Per-day visible dot + invisible larger hover target. Tooltip is
+    // a single absolutely-positioned div toggled on mouseover. JSON
+    // payload sits in data attrs so the handler doesn't need a closure.
+    const dots = cum.map((p, i) => {{
+      const cx = xFor(i).toFixed(1);
+      const cy = yFor(p.cum).toFixed(1);
+      const losses = p.picks - p.hits;
+      const dataAttrs = `data-spark-date="${{escapeHTML(p.date)}}" `
+        + `data-spark-cum="${{p.cum.toFixed(2)}}" `
+        + `data-spark-units="${{p.units.toFixed(2)}}" `
+        + `data-spark-hits="${{p.hits}}" `
+        + `data-spark-losses="${{losses}}" `
+        + `data-spark-picks="${{p.picks}}"`;
+      return `<circle class="sparkline-dot" cx="${{cx}}" cy="${{cy}}" r="2.5" />`
+        + `<circle class="sparkline-hover-target" cx="${{cx}}" cy="${{cy}}" r="10" ${{dataAttrs}}></circle>`;
+    }}).join("");
+
+    return `<div class="sparkline-wrap" id="track-sparkline">
       <div class="sparkline-title">Cumulative units (${{cum.length}} day${{cum.length === 1 ? "" : "s"}}) — ${{finalLabel}}</div>
       <svg class="sparkline-svg" viewBox="0 0 ${{w}} ${{h}}" preserveAspectRatio="none">
         <line class="sparkline-axis" x1="${{pad}}" y1="${{zeroY.toFixed(1)}}" x2="${{w - pad}}" y2="${{zeroY.toFixed(1)}}" />
         ${{areaD ? `<path class="sparkline-area ${{finalCls}}" d="${{areaD}}" />` : ""}}
         <path class="sparkline-line ${{finalCls}}" d="${{pathD}}" />
-        ${{lastDot}}
+        ${{dots}}
       </svg>
+      <div class="sparkline-tip" id="sparkline-tip" style="display:none;"></div>
     </div>`;
   }}
+
+  // Bind hover targets the first time the sparkline appears on screen
+  // after each render. Uses event delegation so re-renders just keep
+  // working without re-binding.
+  document.addEventListener("mouseover", (e) => {{
+    const t = e.target.closest(".sparkline-hover-target");
+    if (!t) return;
+    const wrap = t.closest(".sparkline-wrap");
+    const tip = wrap && wrap.querySelector(".sparkline-tip");
+    if (!wrap || !tip) return;
+    const date = t.dataset.sparkDate;
+    const cum = parseFloat(t.dataset.sparkCum);
+    const units = parseFloat(t.dataset.sparkUnits);
+    const hits = parseInt(t.dataset.sparkHits, 10);
+    const losses = parseInt(t.dataset.sparkLosses, 10);
+    const picks = parseInt(t.dataset.sparkPicks, 10);
+    const dayCls = units > 0 ? "pos" : units < 0 ? "neg" : "";
+    const cumCls = cum > 0 ? "pos" : cum < 0 ? "neg" : "";
+    const dayStr = `${{units >= 0 ? "+" : ""}}${{units.toFixed(2)}}u`;
+    const cumStr = `${{cum >= 0 ? "+" : ""}}${{cum.toFixed(2)}}u`;
+    tip.innerHTML = `<strong>${{date}}</strong><br>`
+      + `<span class="tip-units ${{dayCls}}">${{dayStr}}</span> · ${{hits}}W–${{losses}}L (${{picks}})<br>`
+      + `Cumulative: <span class="tip-units ${{cumCls}}">${{cumStr}}</span>`;
+    // Position over the hovered point (SVG uses viewBox so we read its
+    // bounding rect to map back to page pixels).
+    const wrapRect = wrap.getBoundingClientRect();
+    const dotRect = t.getBoundingClientRect();
+    tip.style.left = (dotRect.left - wrapRect.left + dotRect.width / 2) + "px";
+    tip.style.top = (dotRect.top - wrapRect.top) + "px";
+    tip.style.display = "block";
+  }});
+  document.addEventListener("mouseout", (e) => {{
+    const t = e.target.closest(".sparkline-hover-target");
+    if (!t) return;
+    const wrap = t.closest(".sparkline-wrap");
+    const tip = wrap && wrap.querySelector(".sparkline-tip");
+    if (tip) tip.style.display = "none";
+  }});
 
   // Trend arrow comparing the most-recent half of the window to the
   // older half. Only meaningful with ~7+ picks; below that we just show
@@ -1687,7 +1996,7 @@ def _render_js() -> str:
       </div>`;
 
     // Per-day aggregation drives both the sparkline and the breakdown
-    // table — compute once.
+    // table — compute once. Sparkline tooltips read picks/hits too.
     const byDate = {{}};
     for (const p of picks) {{
       if (!byDate[p.date]) byDate[p.date] = [];
@@ -1697,6 +2006,8 @@ def _render_js() -> str:
     const dailyUnits = sortedAsc.map(d => ({{
       date: d,
       units: byDate[d].reduce((s, p) => s + p.pnl, 0),
+      picks: byDate[d].length,
+      hits: byDate[d].filter(p => p.won).length,
     }}));
     const sparkHTML = renderSparkline(dailyUnits);
 
@@ -3033,7 +3344,7 @@ def _render_js() -> str:
     }}
 
     const trackSection = renderTrackRecord(trackPicks, trackDays);
-    return {{ html: pitcherTabHTML(heroSection, parlaySection, slateBody, resultsSection + trackSection), cnt }};
+    return {{ html: pitcherTabHTML(heroSection, parlaySection, slateBody, resultsSection + trackSection, cnt), cnt }};
   }}
 
   function renderHitterTab(target) {{
@@ -3086,7 +3397,17 @@ def _render_js() -> str:
     return {{ html: hitterTabHTML(slateBody, resultsSection), cnt }};
   }}
 
-  function pitcherTabHTML(heroSection, parlaySection, slateBody, resultsSection) {{
+  function pitcherTabHTML(heroSection, parlaySection, slateBody, resultsSection, cnt) {{
+    const hiddenCount = (cnt && (cnt.noise + cnt.noline)) || 0;
+    const visibleCount = (cnt && (cnt.focus + cnt.investigate)) || 0;
+    // Toggle button is hidden when there are no noise/noline rows to
+    // toggle — avoids a "Show 0 more" no-op control.
+    const toolbar = hiddenCount
+      ? `<div class="slate-toolbar">
+          <span>Showing <strong>${{visibleCount}}</strong> actionable pitcher${{visibleCount === 1 ? "" : "s"}}.</span>
+          <button type="button" id="noise-toggle">Show ${{hiddenCount}} noise / no-line</button>
+        </div>`
+      : "";
     return `${{heroSection}}
     ${{parlaySection}}
     <details class="tag-help">
@@ -3106,6 +3427,7 @@ def _render_js() -> str:
         <span>book hasn't posted, or game already started</span>
       </div>
     </details>
+    ${{toolbar}}
     <table>
       <thead><tr>
         <th>Pitcher</th><th>Opponent</th>
@@ -3187,9 +3509,23 @@ def _render_js() -> str:
       }});
       const pPanel = document.getElementById("pitcher-panel");
       if (pPanel) pPanel.innerHTML = pTab.html;
+      // Wire noise toggle (and apply persisted preference) immediately
+      // after the toolbar lands in the DOM. Must run before any await
+      // so the initial paint already reflects the user's default.
+      wireNoiseToggle();
       const pCounts = document.getElementById("pitcher-counts");
       if (pCounts) pCounts.textContent =
         `(${{pTab.cnt.focus}} focus / ${{pTab.cnt.investigate}} verify)`;
+
+      // Live K + game-status overlay — fires after the table is on
+      // screen so the initial paint isn't blocked on the MLB API. Once
+      // the data arrives, repaintGameTimeCells() patches each row in
+      // place (no full re-render).
+      if (pSlate.rows.length && pSlate.date) {{
+        fetchLiveKsPublic(pSlate.rows, pSlate.date)
+          .then(byPid => {{ _liveByPid = byPid; repaintGameTimeCells(); }})
+          .catch(() => {{}});
+      }}
 
       if (SHOW_HITTERS && hSlate) {{
         const hTab = renderHitterTab({{ slate: hSlate, settled: hSettled }});
@@ -3240,6 +3576,39 @@ def _render_js() -> str:
     return h === "" || h === "localhost" || h === "127.0.0.1";
   }}
 
+  // Default-hide the noise + no-line rows so the eye lands on focus
+  // picks first. Persist the preference via localStorage so a power
+  // user who wants the full table doesn't have to click every visit.
+  const _NOISE_KEY = "bets:hide-noise";
+  function applyNoisePreference() {{
+    let hide = true;
+    try {{
+      const v = localStorage.getItem(_NOISE_KEY);
+      if (v === "0") hide = false;
+    }} catch (e) {{ /* private mode etc. — fall back to default */ }}
+    document.body.classList.toggle("hide-noise", hide);
+  }}
+  function wireNoiseToggle() {{
+    const btn = document.getElementById("noise-toggle");
+    if (!btn) return;
+    const updateLabel = () => {{
+      const hidden = document.body.classList.contains("hide-noise");
+      const n = btn.dataset.count || (btn.textContent.match(/\\d+/) || [""])[0];
+      btn.dataset.count = n;
+      btn.textContent = hidden
+        ? `Show ${{n}} noise / no-line`
+        : `Hide ${{n}} noise / no-line`;
+      btn.classList.toggle("active", !hidden);
+    }};
+    updateLabel();
+    btn.addEventListener("click", () => {{
+      const willHide = !document.body.classList.contains("hide-noise");
+      document.body.classList.toggle("hide-noise", willHide);
+      try {{ localStorage.setItem(_NOISE_KEY, willHide ? "1" : "0"); }} catch (e) {{}}
+      updateLabel();
+    }});
+  }}
+
   function updateHeaderDate() {{
     const fmt = new Intl.DateTimeFormat("en-US", {{
       timeZone: "America/Chicago",
@@ -3275,6 +3644,7 @@ def _render_js() -> str:
 
   document.addEventListener("DOMContentLoaded", () => {{
     updateHeaderDate();
+    applyNoisePreference();
 
     // Single delegated handler for "+ Add to bets" buttons rendered on
     // parlay-suggester cards (those cards live in the pitcher tab and
@@ -3299,6 +3669,11 @@ def _render_js() -> str:
     if (btn) btn.addEventListener("click", loadAndRender);
 
     loadAndRender();
+
+    // Tick the gametime cells every minute so "in NN min" stays
+    // accurate and a row flips to row-locked the moment first pitch
+    // passes — no full re-render or refetch.
+    setInterval(repaintGameTimeCells, 60000);
   }});
 }})();
 """
