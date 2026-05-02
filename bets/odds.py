@@ -139,12 +139,17 @@ def _fetch_player_prop_lines(
     ]
 
     # Skip games whose two teams were both already priced in a prior
-    # run today — saves one credit per such game on Re-runs.
+    # run today — saves one credit per such game on Re-runs. Caller
+    # passes pairs already canonicalized via canonical_team_name; we
+    # canonicalize the event side too so the frozenset compare hits.
     if skip_team_pairs:
         events = [
             e
             for e in events
-            if frozenset({e.get("home_team", ""), e.get("away_team", "")})
+            if frozenset({
+                canonical_team_name(e.get("home_team", "")),
+                canonical_team_name(e.get("away_team", "")),
+            })
             not in skip_team_pairs
         ]
 
@@ -199,10 +204,14 @@ def _parse_player_outcomes(bookmaker: dict, market_key: str) -> list[dict]:
                 entry["over_odds"] = price
             elif side == "under":
                 entry["under_odds"] = price
+    # A book occasionally returns price: null for one side; drop those
+    # rows so _aggregate_player doesn't crash on max() with a None.
     return [
         e
         for e in by_player.values()
-        if "line" in e and "over_odds" in e and "under_odds" in e
+        if e.get("line") is not None
+        and isinstance(e.get("over_odds"), int)
+        and isinstance(e.get("under_odds"), int)
     ]
 
 
@@ -236,6 +245,26 @@ def _normalize_name(name: str) -> str:
 # Public alias so callers (main.py) can reuse the same accent/case
 # rules when matching preserved-line names against starter names.
 normalize_name = _normalize_name
+
+
+# Known MLB / Odds API team-name divergences. Keys are the canonical
+# (lowercase, collapsed) form from one side; values map to the other
+# side's form. Matching collapses both sides to the same key so the
+# skip-already-covered-game filter doesn't silently miss every event.
+_TEAM_ALIASES = {
+    # The team rebranded to just "Athletics" (no city) in late 2024;
+    # The Odds API still uses "Oakland Athletics" in some payloads.
+    "athletics": "oakland athletics",
+}
+
+
+def canonical_team_name(name: str) -> str:
+    """Lower-case, whitespace-collapse, and apply alias swaps so an MLB
+    Stats API team name compares equal to its The Odds API counterpart."""
+    if not name:
+        return ""
+    n = " ".join(name.lower().split())
+    return _TEAM_ALIASES.get(n, n)
 
 
 def match_line(pitcher_name: str, lines: list[dict]) -> dict | None:

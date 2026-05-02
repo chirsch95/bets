@@ -256,8 +256,16 @@ def live_ks(pitcher_ids: list[int], target_date: date | None = None) -> dict:
             out[pid] = result
             continue
         gpk = info["game_pk"]
-        gs = statuses.get(gpk, {})
-        result["status"] = gs.get("abstract", "Unknown")
+        gs = statuses.get(gpk)
+        if gs is None:
+            # Game isn't in today's schedule (postponement, slate file
+            # stale, doubleheader resolved differently). Don't fall
+            # through to a 404 boxscore call — short-circuit cleanly.
+            result["status"] = "NotFound"
+            result["detailed"] = "Game not in today's schedule"
+            out[pid] = result
+            continue
+        result["status"] = gs.get("abstract", "Preview")
         result["detailed"] = gs.get("detailed", "")
         result["current_inning"] = gs.get("current_inning")
         result["inning_state"] = gs.get("inning_state")

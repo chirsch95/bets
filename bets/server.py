@@ -16,6 +16,7 @@ Endpoints:
 from __future__ import annotations
 
 import os
+import threading
 from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
@@ -31,6 +32,11 @@ from .web import generate as generate_dashboard
 load_dotenv(PROJECT_ROOT / ".env")
 
 app = Flask(__name__)
+
+# Serialize pipeline runs. Two simultaneous /refresh clicks would each
+# burn ~16 Odds API credits and race to overwrite the same CSV (last
+# writer wins, slate snapshot too because of TOCTOU). One run at a time.
+_pipeline_lock = threading.Lock()
 
 
 @app.get("/")
@@ -62,25 +68,30 @@ def output_file(filename: str):
 
 @app.post("/refresh")
 def refresh():
-    errors: list[str] = []
+    if not _pipeline_lock.acquire(blocking=False):
+        return "<pre>A refresh is already running. Wait for it to finish.</pre>", 409
     try:
-        run_projections()
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"pitcher refresh failed: {e}")
-    # Hitter pipeline paused — re-enable by un-commenting once the
-    # pitcher model is validated and you've flipped SHOW_HITTERS in web.py.
-    # try:
-    #     run_hitter_projections()
-    # except Exception as e:  # noqa: BLE001
-    #     errors.append(f"hitter refresh failed: {e}")
-    try:
-        generate_dashboard(_today())
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"dashboard regen failed: {e}")
-    if errors:
-        body = "<pre>" + "\n".join(errors) + "</pre>"
-        return body, 500
-    return redirect("/")
+        errors: list[str] = []
+        try:
+            run_projections()
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"pitcher refresh failed: {e}")
+        # Hitter pipeline paused — re-enable by un-commenting once the
+        # pitcher model is validated and you've flipped SHOW_HITTERS in web.py.
+        # try:
+        #     run_hitter_projections()
+        # except Exception as e:  # noqa: BLE001
+        #     errors.append(f"hitter refresh failed: {e}")
+        try:
+            generate_dashboard(_today())
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"dashboard regen failed: {e}")
+        if errors:
+            body = "<pre>" + "\n".join(errors) + "</pre>"
+            return body, 500
+        return redirect("/")
+    finally:
+        _pipeline_lock.release()
 
 
 @app.post("/settle")
@@ -93,23 +104,28 @@ def settle():
             return f"<pre>Bad date: {target_str}</pre>", 400
     else:
         target = _today() - timedelta(days=1)
-    errors: list[str] = []
+    if not _pipeline_lock.acquire(blocking=False):
+        return "<pre>A pipeline run is already in progress. Wait for it to finish.</pre>", 409
     try:
-        settle_date(target)
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"pitcher settle failed: {e}")
-    try:
-        settle_hitters_date(target)
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"hitter settle failed: {e}")
-    try:
-        generate_dashboard(_today())
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"dashboard regen failed: {e}")
-    if errors:
-        body = "<pre>" + "\n".join(errors) + "</pre>"
-        return body, 500
-    return redirect("/")
+        errors: list[str] = []
+        try:
+            settle_date(target)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"pitcher settle failed: {e}")
+        try:
+            settle_hitters_date(target)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"hitter settle failed: {e}")
+        try:
+            generate_dashboard(_today())
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"dashboard regen failed: {e}")
+        if errors:
+            body = "<pre>" + "\n".join(errors) + "</pre>"
+            return body, 500
+        return redirect("/")
+    finally:
+        _pipeline_lock.release()
 
 
 @app.get("/api/bets")

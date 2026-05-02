@@ -138,7 +138,15 @@ def _normalize(bet: dict) -> dict:
     legacy file) hands data over."""
     bet = _migrate_legacy(bet)
     legs_raw = bet.get("legs") or []
-    legs = [_normalize_leg(l) for l in legs_raw if (l.get("pitcher") if isinstance(l, dict) else l)]
+    # Keep a leg if it identifies a pitcher in any way: name OR id (the
+    # JS form may post a leg with pitcher_id set but the display name
+    # still pending a slate-lookup round-trip). For non-dict legacy
+    # entries (a stray string), keep any truthy value.
+    def _has_identity(l):
+        if isinstance(l, dict):
+            return bool(l.get("pitcher")) or l.get("pitcher_id") not in ("", None)
+        return bool(l)
+    legs = [_normalize_leg(l) for l in legs_raw if _has_identity(l)]
     boost = (bet.get("boost") or "").strip()
     # Auto-detect free_entry from legacy boost text on first migration.
     # Once an explicit free_entry is set (true or false), trust it.

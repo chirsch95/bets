@@ -1127,10 +1127,13 @@ def _render_js() -> str:
   // is a fine assumption for K props.
   function americanToDecimal(odds) {{
     const o = f(odds);
-    if (o === null) return null;
+    // o === 0 is meaningless ("0 American") — bad CSV, treat as no price.
+    if (o === null || o === 0) return null;
     return o > 0 ? o / 100 + 1 : 100 / Math.abs(o) + 1;
   }}
   function decimalToAmerican(dec) {{
+    // dec === 1 (no payout) would divide by zero in the underdog branch.
+    if (dec === null || !isFinite(dec) || dec <= 1) return null;
     if (dec >= 2) return Math.round((dec - 1) * 100);
     return Math.round(-100 / (dec - 1));
   }}
@@ -1324,7 +1327,9 @@ def _render_js() -> str:
     }}).join("");
     const evCls = p.ev > 0.02 ? "pos" : p.ev < -0.02 ? "neg" : "flat";
     const edgeCls = p.combinedEdge === null ? "" : (p.combinedEdge > 0 ? "pos" : p.combinedEdge < 0 ? "neg" : "flat");
-    const amerStr = (p.combinedAmer >= 0 ? "+" : "") + p.combinedAmer;
+    const amerStr = p.combinedAmer === null
+      ? "—"
+      : (p.combinedAmer >= 0 ? "+" : "") + p.combinedAmer;
     const evStr = (p.ev >= 0 ? "+" : "") + p.ev.toFixed(2);
     const edgePct = p.combinedEdge === null
       ? "—"
@@ -2417,9 +2422,17 @@ def _render_js() -> str:
           .map(u => `${{u.legs}} → ${{u.verdict}}`)
           .join(", ");
         if (stampEl) stampEl.textContent = `auto-settled: ${{summary}}`;
-        // Re-render the bets table + totals; the panel-level click
-        // handler stays attached (one-time guard), so expand still works.
-        await loadBetsTab();
+        // Defer the full re-render if the user is mid-edit in the bets
+        // form — loadBetsTab() blows away the form's DOM and would
+        // wipe whatever they're typing. The next refreshLiveKs tick
+        // will retry, and once focus leaves the form the rerender lands.
+        const form = document.getElementById("bets-form");
+        const editing = form && form.contains(document.activeElement);
+        if (!editing) {{
+          await loadBetsTab();
+        }} else if (stampEl) {{
+          stampEl.textContent += " (refresh deferred — form in use)";
+        }}
       }}
     }} finally {{
       autoSettleInFlight = false;
@@ -2561,7 +2574,12 @@ def _render_js() -> str:
     if (evCls === "pos") panel.classList.add("pos");
     else if (evCls === "neg") panel.classList.add("neg");
 
-    setVal("bfc-payout", (p.combinedAmer >= 0 ? "+" : "") + p.combinedAmer);
+    setVal(
+      "bfc-payout",
+      p.combinedAmer === null
+        ? "—"
+        : (p.combinedAmer >= 0 ? "+" : "") + p.combinedAmer,
+    );
     setVal("bfc-hit", (p.combinedHit * 100).toFixed(1) + "%");
     setVal(
       "bfc-edge",

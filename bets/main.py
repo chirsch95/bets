@@ -7,7 +7,7 @@ Run with:
 from __future__ import annotations
 
 import csv
-import shutil
+import os
 from datetime import date
 
 from dotenv import load_dotenv
@@ -35,6 +35,7 @@ from .model import (
     project_pitcher_ks_v2,
 )
 from .odds import (
+    canonical_team_name,
     fetch_pitcher_k_lines,
     has_api_key,
     load_previous_pitcher_lines,
@@ -75,7 +76,10 @@ def run(target_date: date | None = None) -> None:
                 normalize_name(g["pitcher_name"]) in covered for g in game_starters
             ):
                 first = game_starters[0]
-                skip_pairs.add(frozenset({first["home_team"], first["away_team"]}))
+                skip_pairs.add(frozenset({
+                    canonical_team_name(first["home_team"]),
+                    canonical_team_name(first["away_team"]),
+                }))
 
     if has_api_key():
         try:
@@ -227,9 +231,16 @@ def run(target_date: date | None = None) -> None:
     # state we'd actually have bet on. Later runs overwrite out_path as
     # lines move, but the slate file stays put so settle.py can grade
     # picks against the morning state, not whatever survived to gametime.
+    # O_CREAT|O_EXCL races atomically against any concurrent run (CLI
+    # vs server vs GH Actions), so we never overwrite an existing snapshot.
     slate_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}_slate.csv"
-    if not slate_path.exists():
-        shutil.copy2(out_path, slate_path)
+    try:
+        fd = os.open(slate_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(fd, "wb") as dst, out_path.open("rb") as src:
+            dst.write(src.read())
         print(f"Wrote slate snapshot → {slate_path}")
 
     if any(r["line"] is not None for r in rows):

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timezone
-from functools import lru_cache
 from pathlib import Path
 
 import requests
@@ -135,12 +134,16 @@ def pitcher_stats(pitcher_id: int, season: int | None = None) -> dict:
                     season_bf_per_start = bf / gs
 
         elif type_name == "gameLog":
-            # Only consider games the pitcher started.
+            # Only consider games the pitcher started. Sort by date so
+            # "recent" really is the last 5 chronologically; the API
+            # usually returns in order but doesn't guarantee it
+            # (e.g. mid-season trades shuffle the response).
             started = [
                 s
                 for s in splits
                 if int(s.get("stat", {}).get("gamesStarted", 0) or 0) == 1
             ]
+            started.sort(key=lambda s: s.get("date", ""))
             recent = started[-5:]
             ks = sum(int(s.get("stat", {}).get("strikeOuts", 0) or 0) for s in recent)
             bf = sum(int(s.get("stat", {}).get("battersFaced", 0) or 0) for s in recent)
@@ -160,13 +163,24 @@ def pitcher_stats(pitcher_id: int, season: int | None = None) -> dict:
     }
 
 
-@lru_cache(maxsize=64)
+# Per-process cache. We cache only successful lookups — a transient HTTP
+# failure or empty payload would otherwise pin the team's K% to 0.0 for
+# the rest of the process, silently downgrading every projection that
+# uses that team. Keys are (team_id, season).
+_TEAM_K_CACHE: dict[tuple[int, int], float] = {}
+
+
 def team_k_rate(team_id: int, season: int) -> float:
     """Return team-level batting K% (strikeOuts / plateAppearances) for the season.
 
-    Cached per run to avoid duplicate calls for the same team.
-    Returns 0.0 if data is unavailable.
+    Cached per process across runs. Failures are NOT cached — a fresh
+    fetch is attempted next call so a transient blip can't poison the
+    rate to 0.0 for the rest of the process. Returns 0.0 only when the
+    current call itself fails or returns empty data.
     """
+    cached = _TEAM_K_CACHE.get((team_id, season))
+    if cached is not None:
+        return cached
     url = (
         f"{MLB_STATS_BASE}/teams/{team_id}/stats"
         f"?stats=season&group=hitting&season={season}"
@@ -181,7 +195,9 @@ def team_k_rate(team_id: int, season: int) -> float:
             ks = int(stat.get("strikeOuts", 0) or 0)
             pa = int(stat.get("plateAppearances", 0) or 0)
             if pa:
-                return ks / pa
+                rate = ks / pa
+                _TEAM_K_CACHE[(team_id, season)] = rate
+                return rate
     return 0.0
 
 
@@ -237,7 +253,9 @@ def hitter_stats_batch(player_ids: list[int], season: int) -> dict[int, dict]:
                         season_pa = pa
                     break
             elif type_name == "gameLog":
-                recent = splits[-15:]  # last ~15 games of action
+                # Sort by date before slicing — see pitcher_stats() above.
+                ordered = sorted(splits, key=lambda s: s.get("date", ""))
+                recent = ordered[-15:]  # last ~15 games of action
                 ks = sum(
                     int(s.get("stat", {}).get("strikeOuts", 0) or 0)
                     for s in recent
