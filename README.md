@@ -123,7 +123,23 @@ The dashboard sorts pitchers into tiers based on the model's edge versus the no-
 - **Investigate** (yellow, ≥ 20% edge): edge too large to trust — almost always indicates a model gap (sample size, role change, missing context). Worth understanding *why* the model disagrees, not bet on directly.
 - **No line** (gray): no sportsbook line available, either because the book hasn't posted or the game has already started. Projection only.
 
-Each row shows the **first-pitch time in Central** alongside the pitcher and opponent, so you can see at a glance which games still have time before lock.
+By default only **focus + investigate** rows are shown. A "Show N noise / no-line" toggle above the table reveals the rest; preference persists in `localStorage`.
+
+### Time + live status column
+
+Each row's Time cell does triple duty depending on game state:
+
+- **Pre-game**: `7:10 PM CT (in 47m)`. The relative countdown updates every minute; the suffix turns yellow/bold under 30 minutes.
+- **Live**: `● B5 4K` — pulsing red dot, compact half-inning (`B5` = bottom 5th, `T3` = top 3rd, etc.), running K count.
+- **Final**: `Final · 7K`.
+
+Once first pitch passes the row dims to 55% opacity (it's locked from the bet window). Live K + game status are pulled directly from the public MLB Stats API in JS — works on Netlify and locally without a proxy.
+
+### Today's Picks hero cards
+
+Each focus pick gets a card at the top with `BET OVER 6.5` (or UNDER), the model edge, our projection, our %, and a **live status box** showing the same data as the row's time cell. While the game is in progress the live box also surfaces a `5 of 6.5` pace label.
+
+**Outcome coloring**: once a card's pick is mathematically settled — mid-game (`ks > line` permanently locks the verdict) or at Final — the card's border + background flip to **green for HIT** or **red for MISS** regardless of the original direction, and a HIT/MISS chip appears in the header. The original `BET OVER 6.5` badge stays visible so you can see the bet you placed.
 
 ### Parlay Suggestions
 
@@ -141,7 +157,7 @@ A summary card sits above the per-pitcher results table showing **W–L record o
 
 A rolling-window section below Yesterday's Results aggregates focus picks across the available settled days:
 - Top stats: Picks · Hit rate · Units · ROI (with week-over-week trend arrows once 8+ picks accumulate)
-- SVG sparkline of cumulative units (auto-scales, fills green/red below the zero line)
+- SVG sparkline of cumulative units (auto-scales, fills green/red below the zero line). **Hover any day** for a tooltip with date, day units (signed/colored), W–L, and cumulative total to that point.
 - OVER/UNDER split panel showing share + per-side W-L + units
 - Per-day breakdown table
 
