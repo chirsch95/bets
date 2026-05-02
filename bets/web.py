@@ -295,7 +295,12 @@ CSS = """
   .pick-card-stat-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
   .pick-card-stat-val { font-weight: 600; font-variant-numeric: tabular-nums; }
   /* Live cell on each hero card. Mirrors the table-row time-cell
-     palette so the same color cues read consistently in both places. */
+     palette so the same color cues read consistently in both places.
+     nowrap on every variant — the stat box is narrow and an extra
+     line of "Bottom 5th 4K" wraps and looks broken. */
+  .pick-card-stat-val.live-pending,
+  .pick-card-stat-val.live-now,
+  .pick-card-stat-val.live-final { white-space: nowrap; }
   .pick-card-stat-val.live-pending { color: var(--muted); font-weight: 500; }
   .pick-card-stat-val.live-now { color: var(--text); }
   .pick-card-stat-val.live-now .live-dot {
@@ -313,6 +318,25 @@ CSS = """
   /* Once a game has started or finished, dim the surrounding stats so
      the live cell carries the eye. Edge / proj are no longer actionable. */
   .pick-card.locked .pick-card-stat:not(:last-child) { opacity: 0.55; }
+  /* Outcome takes over the card's color theme once the bet is settled
+     (mid-game lock or final). Green = pick HIT, red = pick MISS, no
+     matter which direction the bet was — the badge text still reads
+     "BET OVER 6.5" so the user can see what they bet. Specificity (3
+     classes) wins over the direction-based .pick-card.over/under. */
+  .pick-card.hit { border-left: 3px solid var(--green); background: var(--green-bg); }
+  .pick-card.miss { border-left: 3px solid var(--red); background: var(--red-bg); }
+  .pick-card-outcome {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    vertical-align: middle;
+  }
+  .pick-card-outcome.hit { background: var(--green); color: #001a00; }
+  .pick-card-outcome.miss { background: var(--red); color: #2a0000; }
   .picks-empty {
     background: var(--panel);
     border: 1px dashed var(--border);
@@ -1308,6 +1332,22 @@ def _render_js() -> str:
     return _CT_FMT.format(d) + " CT";
   }}
 
+  // Compact "Bottom 5th" → "B5" for narrow live-cell slots. Strips the
+  // ordinal suffix off the inning ("5th" → "5") and replaces the verbose
+  // half-inning state with one letter ("Top"→T, "Bottom"→B). "Mid"/"End"
+  // keep three letters since they're rare and need to be readable.
+  function compactInning(state, ord) {{
+    if (!ord) return "Live";
+    const m = String(ord).match(/^(\\d+)/);
+    const num = m ? m[1] : ord;
+    let prefix = "";
+    if (state === "Top") prefix = "T";
+    else if (state === "Bottom") prefix = "B";
+    else if (state === "Middle") prefix = "Mid ";
+    else if (state === "End") prefix = "End ";
+    return prefix + num;
+  }}
+
   // Render the time-cell HTML for one slate row. Returns {{html, locked}}.
   // Three states:
   //   1) Live  — "● Top 5 · 4K"  (game in progress, K count if known)
@@ -1323,8 +1363,8 @@ def _render_js() -> str:
 
     if (live && live.status === "Live") {{
       const inning = live.current_inning
-        ? `${{escapeHTML(live.inning_state || "")}} ${{escapeHTML(live.current_inning)}}`.trim()
-        : "in progress";
+        ? escapeHTML(compactInning(live.inning_state, live.current_inning))
+        : "Live";
       const ksStr = (live.ks !== null && live.ks !== undefined)
         ? `<span class="live-ks">${{live.ks}}K</span>` : "";
       return {{
@@ -1475,8 +1515,9 @@ def _render_js() -> str:
       const iso = card.dataset.gameIso || "";
       const pid = parseInt(card.dataset.pitcherId, 10);
       const line = card.dataset.line || "";
+      const dir = card.dataset.dir || "";
       const live = isNaN(pid) ? null : _liveByPid.get(pid);
-      const cell = renderHeroLive(iso, live, line);
+      const cell = renderHeroLive(iso, live, line, dir);
       const valEl = card.querySelector(".card-live-val");
       const labelEl = card.querySelector(".card-live-label");
       if (valEl) {{
@@ -1485,6 +1526,21 @@ def _render_js() -> str:
       }}
       if (labelEl) labelEl.textContent = cell.label;
       card.classList.toggle("locked", cell.locked);
+      // Outcome flips border / bg color + reveals the HIT/MISS chip.
+      // Toggle both classes off first so we never end up with both.
+      card.classList.remove("hit", "miss");
+      if (cell.outcome) card.classList.add(cell.outcome);
+      const chip = card.querySelector("[data-outcome-chip]");
+      if (chip) {{
+        if (cell.outcome) {{
+          chip.className = `pick-card-outcome ${{cell.outcome}}`;
+          chip.textContent = cell.outcome.toUpperCase();
+          chip.style.display = "";
+        }} else {{
+          chip.style.display = "none";
+          chip.textContent = "";
+        }}
+      }}
     }});
   }}
 
@@ -1544,20 +1600,33 @@ def _render_js() -> str:
     </tr>`;
   }}
 
+  // Outcome of a card's pick given current K count + line + game state.
+  // Mirrors legHitState() on the bets tab. Returns "hit" | "miss" | null.
+  // dir is "over" | "under" (the model's recommendation for this card).
+  function pickOutcome(ks, line, dir, status) {{
+    if (ks === null || ks === undefined) return null;
+    const lineNum = parseFloat(line);
+    if (isNaN(lineNum)) return null;
+    if (ks > lineNum) return dir === "over" ? "hit" : "miss";
+    if (status === "Final") return dir === "under" ? "hit" : "miss";
+    return null;
+  }}
+
   // Live cell content for a hero card. Mirrors the time-cell logic in
   // renderGameTimeCell but shorter — the matchup line above already
   // shows the scheduled clock time, so the live cell just adds the
-  // status delta ("in 47m", "● Top 5 4K", "Final · 7K"). Returns
-  // {{html, label, cls, locked}}.
-  function renderHeroLive(iso, live, line) {{
+  // status delta ("in 47m", "● B5 4K", "Final · 7K"). Returns
+  // {{html, label, cls, locked, outcome}} where outcome is "hit"/"miss"/null.
+  function renderHeroLive(iso, live, line, dir) {{
     const lineNum = parseFloat(line);
+    const outcome = live ? pickOutcome(live.ks, line, dir, live.status) : null;
     if (live && live.status === "Live") {{
       const inning = live.current_inning
-        ? `${{escapeHTML(live.inning_state || "")}} ${{escapeHTML(live.current_inning)}}`.trim()
-        : "in progress";
+        ? escapeHTML(compactInning(live.inning_state, live.current_inning))
+        : "Live";
       const ksHTML = (live.ks !== null && live.ks !== undefined)
         ? `<span class="live-ks">${{live.ks}}K</span>` : "";
-      // "vs 6.5" pace cue when we know both line + ks.
+      // "5 of 6.5" pace cue under the value when we know both line + ks.
       const paceLabel = (!isNaN(lineNum) && live.ks !== null && live.ks !== undefined)
         ? `${{live.ks}} of ${{lineNum.toFixed(1)}}` : "Live";
       return {{
@@ -1565,21 +1634,28 @@ def _render_js() -> str:
         label: paceLabel,
         cls: "live-now",
         locked: true,
+        outcome,
       }};
     }}
     if (live && live.status === "Final") {{
       const ksHTML = (live.ks !== null && live.ks !== undefined)
         ? `<span class="live-ks">${{live.ks}}K</span>` : "—";
-      return {{ html: `Final · ${{ksHTML}}`, label: "Final", cls: "live-final", locked: true }};
+      return {{
+        html: `Final · ${{ksHTML}}`,
+        label: "Final",
+        cls: "live-final",
+        locked: true,
+        outcome,
+      }};
     }}
     // Pre-game: relative time (matchup line above already has the clock).
     const d = iso ? new Date(iso) : null;
     if (!d || isNaN(d.getTime())) {{
-      return {{ html: "—", label: "Status", cls: "live-pending", locked: false }};
+      return {{ html: "—", label: "Status", cls: "live-pending", locked: false, outcome: null }};
     }}
     const diffMs = d.getTime() - Date.now();
     if (diffMs < 0) {{
-      return {{ html: "started", label: "Status", cls: "live-pending", locked: true }};
+      return {{ html: "started", label: "Status", cls: "live-pending", locked: true, outcome: null }};
     }}
     const diffMin = Math.round(diffMs / 60000);
     let rel;
@@ -1589,7 +1665,7 @@ def _render_js() -> str:
       const m = diffMin % 60;
       rel = m ? `in ${{h}}h ${{m}}m` : `in ${{h}}h`;
     }} else rel = "scheduled";
-    return {{ html: rel, label: "Starts", cls: "live-pending", locked: false }};
+    return {{ html: rel, label: "Starts", cls: "live-pending", locked: false, outcome: null }};
   }}
 
   // Hero card for a single focus pick — surfaces the actionable info
@@ -1603,15 +1679,20 @@ def _render_js() -> str:
     const iso = r.game_datetime_utc || "";
     const pidNum = parseInt(r.pitcher_id, 10);
     const live = isNaN(pidNum) ? null : _liveByPid.get(pidNum);
-    const liveCell = renderHeroLive(iso, live, r.line);
-    const cardCls = `pick-card ${{dir}}` + (liveCell.locked ? " locked" : "");
+    const liveCell = renderHeroLive(iso, live, r.line, dir);
+    const outcomeCls = liveCell.outcome ? ` ${{liveCell.outcome}}` : "";
+    const cardCls = `pick-card ${{dir}}` + (liveCell.locked ? " locked" : "") + outcomeCls;
     const isoAttr = iso ? ` data-game-iso="${{escapeHTML(iso)}}"` : "";
     const pidAttr = !isNaN(pidNum) ? ` data-pitcher-id="${{pidNum}}"` : "";
     const lineAttr = (r.line !== null && r.line !== undefined && r.line !== "")
       ? ` data-line="${{escapeHTML(String(r.line))}}"` : "";
-    return `<div class="${{cardCls}}"${{isoAttr}}${{pidAttr}}${{lineAttr}}>
+    const dirAttr = ` data-dir="${{dir}}"`;
+    const outcomeChip = liveCell.outcome
+      ? `<span class="pick-card-outcome ${{liveCell.outcome}}" data-outcome-chip>${{liveCell.outcome.toUpperCase()}}</span>`
+      : `<span class="pick-card-outcome" data-outcome-chip style="display:none;"></span>`;
+    return `<div class="${{cardCls}}"${{isoAttr}}${{pidAttr}}${{lineAttr}}${{dirAttr}}>
       <div class="pick-card-header">
-        <span class="pick-card-badge ${{dir}}">BET ${{dir.toUpperCase()}} ${{escapeHTML(r.line || "")}}</span>
+        <span class="pick-card-badge ${{dir}}">BET ${{dir.toUpperCase()}} ${{escapeHTML(r.line || "")}}${{outcomeChip}}</span>
         <span class="pick-card-edge ${{dir}}">${{edgeStr}} edge</span>
       </div>
       <div class="pick-card-pitcher">${{escapeHTML(r.pitcher || "")}}</div>
