@@ -56,6 +56,19 @@ def _safe_float(v):
         return None
 
 
+def _parse_is_home(v) -> bool | None:
+    """CSVs store bools as 'True'/'False' strings via DictWriter; tolerate
+    legacy rows missing the column by returning None."""
+    if v in ("", None):
+        return None
+    s = str(v).strip().lower()
+    if s in ("true", "1", "yes"):
+        return True
+    if s in ("false", "0", "no"):
+        return False
+    return None
+
+
 def _safe_int(v):
     if v in ("", None):
         return None
@@ -110,6 +123,7 @@ def slate_pitchers(target_date: date | None = None) -> list[dict]:
                 "pitcher_id": _safe_int(r.get("pitcher_id")),
                 "pitcher": (r.get("pitcher") or "").strip(),
                 "opp": (r.get("opp") or "").strip(),
+                "is_home": _parse_is_home(r.get("is_home")),
                 "game_pk": _safe_int(r.get("game_pk")),
                 "line": _safe_float(r.get("line")),
                 "edge": edge,
@@ -163,6 +177,7 @@ def _slate_lookup(target_date: date) -> dict[int, dict]:
             out[pid] = {
                 "pitcher": (r.get("pitcher") or "").strip(),
                 "opp": (r.get("opp") or "").strip(),
+                "is_home": _parse_is_home(r.get("is_home")),
                 "game_pk": gpk,
                 "line": _safe_float(r.get("line")),
             }
@@ -242,6 +257,7 @@ def live_ks(pitcher_ids: list[int], target_date: date | None = None) -> dict:
             "pitcher_id": pid,
             "pitcher": info["pitcher"] if info else None,
             "opp": info["opp"] if info else None,
+            "is_home": info["is_home"] if info else None,
             "ks": None,
             "line": info["line"] if info else None,
             "status": "NotFound",

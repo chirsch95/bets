@@ -51,8 +51,10 @@ CSS = """
     --border: #232734;
     --green: #4ade80;
     --green-bg: rgba(74, 222, 128, 0.1);
+    --green-solid: #15803d;
     --red: #f87171;
     --red-bg: rgba(248, 113, 113, 0.1);
+    --red-solid: #b91c1c;
     --yellow: #fbbf24;
     --yellow-bg: rgba(251, 191, 36, 0.1);
   }
@@ -318,25 +320,59 @@ CSS = """
   /* Once a game has started or finished, dim the surrounding stats so
      the live cell carries the eye. Edge / proj are no longer actionable. */
   .pick-card.locked .pick-card-stat:not(:last-child) { opacity: 0.55; }
-  /* Outcome takes over the card's color theme once the bet is settled
-     (mid-game lock or final). Green = pick HIT, red = pick MISS, no
-     matter which direction the bet was — the badge text still reads
-     "BET OVER 6.5" so the user can see what they bet. Specificity (3
-     classes) wins over the direction-based .pick-card.over/under. */
-  .pick-card.hit { border-left: 3px solid var(--green); background: var(--green-bg); }
-  .pick-card.miss { border-left: 3px solid var(--red); background: var(--red-bg); }
-  .pick-card-outcome {
-    display: inline-block;
-    margin-left: 6px;
-    padding: 2px 7px;
-    border-radius: 10px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    vertical-align: middle;
+  /* Settled state: card flips from the pre-settle pale tint to a solid
+     saturated fill so the change is impossible to miss on a slate of
+     mostly-pending cards. Green = HIT, red = MISS, regardless of bet
+     direction — the original "BET OVER 6.5" pill stays visible but
+     dimmed + struck-through so you can still see what you bet on.
+     Specificity (3 classes) wins over .pick-card.over/under. */
+  .pick-card.hit, .pick-card.miss { border-left: none; color: #fff; }
+  .pick-card.hit { background: var(--green-solid); }
+  .pick-card.miss { background: var(--red-solid); }
+  .pick-card.hit .pick-card-pitcher,
+  .pick-card.miss .pick-card-pitcher,
+  .pick-card.hit .pick-card-stat-val,
+  .pick-card.miss .pick-card-stat-val { color: #fff; }
+  .pick-card.hit .pick-card-matchup,
+  .pick-card.miss .pick-card-matchup,
+  .pick-card.hit .pick-card-stat-label,
+  .pick-card.miss .pick-card-stat-label { color: rgba(255,255,255,0.78); }
+  .pick-card.hit .pick-card-stats,
+  .pick-card.miss .pick-card-stats { border-top-color: rgba(255,255,255,0.22); }
+  .pick-card.hit .pick-card-edge,
+  .pick-card.miss .pick-card-edge { color: rgba(255,255,255,0.9); }
+  /* Live cell readability on saturated bg. */
+  .pick-card.hit .pick-card-stat-val.live-pending,
+  .pick-card.miss .pick-card-stat-val.live-pending,
+  .pick-card.hit .pick-card-stat-val.live-now,
+  .pick-card.miss .pick-card-stat-val.live-now,
+  .pick-card.hit .pick-card-stat-val.live-final,
+  .pick-card.miss .pick-card-stat-val.live-final { color: #fff; }
+  .pick-card.hit .live-ks,
+  .pick-card.miss .live-ks { color: #fff; }
+  /* Full-bleed banner across the top of a settled card. Replaces the
+     small inline chip — the bigger letterform + edge-to-edge background
+     is the unmistakable cue that the card just flipped. */
+  .pick-card-banner {
+    display: none;
+    margin: -10px -12px 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.20em;
+    text-align: center;
+    text-transform: uppercase;
   }
-  .pick-card-outcome.hit { background: var(--green); color: #001a00; }
-  .pick-card-outcome.miss { background: var(--red); color: #2a0000; }
+  .pick-card-banner.hit {
+    display: block;
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+  }
+  .pick-card-banner.miss {
+    display: block;
+    background: rgba(0,0,0,0.32);
+    color: #fff;
+  }
   .picks-empty {
     background: var(--panel);
     border: 1px dashed var(--border);
@@ -1332,6 +1368,17 @@ def _render_js() -> str:
     return _CT_FMT.format(d) + " CT";
   }}
 
+  // "vs Opp" when the pitcher is the home team (opp bats top of innings),
+  // "@ Opp" when away (opp bats bottom). Lets the user infer whether the
+  // pitcher is on the mound in top vs bottom of each inning at a glance.
+  // Falls back to "vs " for legacy rows missing is_home so older settled
+  // CSVs render unchanged.
+  function oppPrefix(r) {{
+    const v = r ? r.is_home : null;
+    if (v === false || v === "False" || v === "false" || v === 0 || v === "0") return "@ ";
+    return "vs ";
+  }}
+
   // Compact "Bottom 5th" → "B5" for narrow live-cell slots. Strips the
   // ordinal suffix off the inning ("5th" → "5") and replaces the verbose
   // half-inning state with one letter ("Top"→T, "Bottom"→B). "Mid"/"End"
@@ -1526,17 +1573,19 @@ def _render_js() -> str:
       }}
       if (labelEl) labelEl.textContent = cell.label;
       card.classList.toggle("locked", cell.locked);
-      // Outcome flips border / bg color + reveals the HIT/MISS chip.
-      // Toggle both classes off first so we never end up with both.
+      // Outcome flips the card to its solid HIT/MISS fill + shows the
+      // top banner. Toggle both classes off first so we never end up
+      // with both.
       card.classList.remove("hit", "miss");
       if (cell.outcome) card.classList.add(cell.outcome);
       const chip = card.querySelector("[data-outcome-chip]");
       if (chip) {{
         if (cell.outcome) {{
-          chip.className = `pick-card-outcome ${{cell.outcome}}`;
+          chip.className = `pick-card-banner ${{cell.outcome}}`;
           chip.textContent = cell.outcome.toUpperCase();
           chip.style.display = "";
         }} else {{
+          chip.className = "pick-card-banner";
           chip.style.display = "none";
           chip.textContent = "";
         }}
@@ -1587,7 +1636,7 @@ def _render_js() -> str:
 
     return `<tr class="${{rowCls}}">
       <td class="player">${{escapeHTML(r.pitcher || "")}}</td>
-      <td>${{escapeHTML(r.opp || "")}}</td>
+      <td>${{oppPrefix(r)}}${{escapeHTML(r.opp || "")}}</td>
       <td class="gametime"${{isoAttr}}${{pidAttr}}>${{cell.html}}</td>
       <td class="num">${{dash(proj)}}</td>
       <td class="num">${{dash(r.line)}}</td>
@@ -1687,16 +1736,17 @@ def _render_js() -> str:
     const lineAttr = (r.line !== null && r.line !== undefined && r.line !== "")
       ? ` data-line="${{escapeHTML(String(r.line))}}"` : "";
     const dirAttr = ` data-dir="${{dir}}"`;
-    const outcomeChip = liveCell.outcome
-      ? `<span class="pick-card-outcome ${{liveCell.outcome}}" data-outcome-chip>${{liveCell.outcome.toUpperCase()}}</span>`
-      : `<span class="pick-card-outcome" data-outcome-chip style="display:none;"></span>`;
+    const banner = liveCell.outcome
+      ? `<div class="pick-card-banner ${{liveCell.outcome}}" data-outcome-chip>${{liveCell.outcome.toUpperCase()}}</div>`
+      : `<div class="pick-card-banner" data-outcome-chip style="display:none;"></div>`;
     return `<div class="${{cardCls}}"${{isoAttr}}${{pidAttr}}${{lineAttr}}${{dirAttr}}>
+      ${{banner}}
       <div class="pick-card-header">
-        <span class="pick-card-badge ${{dir}}">BET ${{dir.toUpperCase()}} ${{escapeHTML(r.line || "")}}${{outcomeChip}}</span>
+        <span class="pick-card-badge ${{dir}}">BET ${{dir.toUpperCase()}} ${{escapeHTML(r.line || "")}}</span>
         <span class="pick-card-edge ${{dir}}">${{edgeStr}} edge</span>
       </div>
       <div class="pick-card-pitcher">${{escapeHTML(r.pitcher || "")}}</div>
-      <div class="pick-card-matchup">vs ${{escapeHTML(r.opp || "")}} · ${{formatGameTime(r.game_datetime_utc)}}</div>
+      <div class="pick-card-matchup">${{oppPrefix(r)}}${{escapeHTML(r.opp || "")}} · ${{formatGameTime(r.game_datetime_utc)}}</div>
       <div class="pick-card-stats">
         <div class="pick-card-stat">
           <span class="pick-card-stat-label">Our Proj</span>
@@ -1909,7 +1959,7 @@ def _render_js() -> str:
     const projCell = r.proj_ks_v2 || r.proj_ks_v1;
     return `<tr>
       <td class="player">${{escapeHTML(r.pitcher || "")}}</td>
-      <td>${{escapeHTML(r.opp || "")}}</td>
+      <td>${{oppPrefix(r)}}${{escapeHTML(r.opp || "")}}</td>
       <td class="num">${{dash(projCell)}}</td>
       <td class="num">${{actual !== null ? Math.round(actual) : "—"}}</td>
       <td class="num error ${{errCls}}">${{errStr}}</td>
@@ -2450,7 +2500,7 @@ def _render_js() -> str:
     if (p.line !== null) ctxBits.push(`L ${{p.line}}`);
     if (p.our_pick_label && p.our_pick_label !== "—") ctxBits.push(p.our_pick_label);
     const ctx = ctxBits.length ? ` — ${{ctxBits.join(" · ")}}` : "";
-    return `<option value="${{p.pitcher_id}}" data-line="${{p.line === null ? "" : p.line}}" data-pick-class="${{escapeHTML(p.our_pick_class || "")}}" data-pick-dir="${{escapeHTML(p.our_pick_dir || "")}}" data-pick-label="${{escapeHTML(p.our_pick_label || "")}}" data-name="${{escapeHTML(p.pitcher)}}"${{sel}}>${{escapeHTML(p.pitcher)}} vs ${{escapeHTML(p.opp)}}${{escapeHTML(ctx)}}</option>`;
+    return `<option value="${{p.pitcher_id}}" data-line="${{p.line === null ? "" : p.line}}" data-pick-class="${{escapeHTML(p.our_pick_class || "")}}" data-pick-dir="${{escapeHTML(p.our_pick_dir || "")}}" data-pick-label="${{escapeHTML(p.our_pick_label || "")}}" data-name="${{escapeHTML(p.pitcher)}}"${{sel}}>${{escapeHTML(p.pitcher)}} ${{oppPrefix(p)}}${{escapeHTML(p.opp)}}${{escapeHTML(ctx)}}</option>`;
   }}
 
   // Renders the leg-input rows inside the form. Called whenever the

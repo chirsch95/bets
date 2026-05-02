@@ -158,6 +158,7 @@ def run(target_date: date | None = None) -> None:
             "pitcher_id": s["pitcher_id"],
             "pitcher": s["pitcher_name"],
             "opp": s["opp_team_name"],
+            "is_home": s["is_home"],
             "season_k_pct": round(ps["season_k_pct"], 3),
             "recent_k_pct": round(ps["recent_k_pct"], 3),
             "swstr_pct": round(swstr, 3),
