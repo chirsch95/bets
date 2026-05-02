@@ -15,7 +15,7 @@ Schema for one bet (one row in the spreadsheet ≈ one parlay ticket):
       "stake":      10.0,                  # dollars (notional, may be free)
       "odds":       2.29,                  # decimal odds
       "boost":      "Free entry",          # freeform note
-      "free_entry": false,                 # if true, excluded from staked/ROI
+      "free_entry": false,                 # if true, excluded from staked only
       "result":     "W" | "L" | null,      # null = pending
       "payout":     14.6 | 0 | null,       # null = pending; winnings count
                                             # toward returned even if free
@@ -200,11 +200,11 @@ def delete_bet(bet_id: str) -> bool:
 def totals(state: dict | None = None) -> dict:
     """Aggregate stats across all bets — drives the totals strip.
 
-    Free-entry bets are excluded from staked, settled_staked, and ROI
-    (they cost nothing to enter). Their winnings DO count toward
-    `returned` and `net` since they're still real money won. Counts of
-    wins / losses / pending include free entries. Bonus winnings from
-    free entries are also reported separately for visibility.
+    Free-entry bets are excluded from staked / settled_staked (no money
+    put up), but their winnings DO count toward returned, net, and ROI
+    — a winning free entry is pure upside and shows up in P/L.
+    Counts of wins / losses / pending include free entries. Bonus
+    winnings from free entries are also reported separately for visibility.
     """
     state = state or load_bets()
     bets = state["bets"]
@@ -223,15 +223,18 @@ def totals(state: dict | None = None) -> dict:
     paid_returned = sum(
         b.get("payout") or 0.0 for b in paid if b.get("result") == "W"
     )
-    net = paid_returned - settled_staked
+    free_winnings = sum(
+        b.get("payout") or 0.0 for b in free if b.get("result") == "W"
+    )
+    # Free wins are pure upside — payout flows into net, no stake to subtract.
+    # Free losses contribute 0 (no money risked). Denominator (staked) stays
+    # paid-only so ROI still reflects return on actual capital deployed.
+    net = paid_returned + free_winnings - settled_staked
     roi = (net / settled_staked) if settled_staked else None
 
     free_wins = sum(1 for b in free if b.get("result") == "W")
     free_losses = sum(1 for b in free if b.get("result") == "L")
     free_pending = sum(1 for b in free if b.get("result") is None)
-    free_winnings = sum(
-        b.get("payout") or 0.0 for b in free if b.get("result") == "W"
-    )
 
     return {
         "count": len(bets),

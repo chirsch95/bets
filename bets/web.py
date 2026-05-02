@@ -1159,6 +1159,46 @@ CSS = """
     border-radius: 3px;
     font-size: 12px;
   }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  @media (max-width: 768px) {
+    .table-scroll > table { min-width: max-content; }
+    .table-scroll > table th, .table-scroll > table td { white-space: nowrap; }
+    body { font-size: 13px; }
+    header { padding: 16px 14px 0; }
+    main { padding: 16px 14px; }
+    footer { padding: 12px 14px; }
+    header h1 { font-size: 16px; }
+    .actions { width: 100%; }
+    .tabs button { padding: 10px 12px; }
+    .results-section { margin-top: 24px; }
+    th, td { padding: 7px 8px; }
+    th { font-size: 10px; }
+    .picks-grid { grid-template-columns: 1fr; }
+    .parlay-grid { grid-template-columns: 1fr; }
+    .track-summary { grid-template-columns: repeat(2, 1fr); }
+    .report-card { grid-template-columns: repeat(2, 1fr); }
+    .bets-totals-card { grid-template-columns: repeat(2, 1fr); }
+    .bets-form-grid { grid-template-columns: 1fr 1fr; }
+    .bets-form-grid > .bets-field { grid-column: span 2; }
+    .bets-form-grid > .bets-field:nth-child(n+3):nth-child(-n+5) { grid-column: span 1; }
+    .bets-form-bottom { grid-template-columns: 1fr 1fr; }
+    .bets-form-bottom > :last-child { grid-column: span 2; }
+    .bets-leg-row { grid-template-columns: auto 1fr 80px; gap: 6px; }
+    .bets-leg-row .leg-picker { grid-column: span 3; }
+    .bets-leg-label { font-size: 10px; }
+    .split-row { grid-template-columns: 50px 1fr 100px; gap: 8px; }
+    .split-stats { font-size: 11px; }
+    .parlay-leg { grid-template-columns: auto 1fr; }
+    .parlay-leg-time { grid-column: 2; padding-left: 0; }
+    table.bets-ledger { min-width: 720px; }
+    .pick-card-pitcher { font-size: 14px; }
+    .report-val { font-size: 18px; }
+  }
+  @media (max-width: 480px) {
+    .track-summary { grid-template-columns: 1fr 1fr; }
+    .report-card { grid-template-columns: 1fr 1fr; }
+    .actions button { flex: 1; min-width: 0; }
+  }
 """
 
 
@@ -2286,7 +2326,7 @@ def _render_js() -> str:
       ${{summaryHTML}}
       ${{sparkHTML}}
       ${{splitHTML}}
-      <table style="margin-top: 12px;">
+      <div class="table-scroll" style="margin-top: 12px;"><table>
         <thead><tr>
           <th>Date</th>
           <th class="num">Picks</th>
@@ -2294,7 +2334,7 @@ def _render_js() -> str:
           <th class="num">Units</th>
         </tr></thead>
         <tbody>${{dayRows}}</tbody>
-      </table>
+      </table></div>
     </section>`;
   }}
 
@@ -2392,7 +2432,7 @@ def _render_js() -> str:
         : "";
       freeLine = `<div class="totals-card-secondary">
         <strong>Free entries:</strong> ${{t.free_count}} ticket${{t.free_count === 1 ? "" : "s"}} · ${{wlpBits.join("–") || "all pending"}}${{winningsBit}}
-        <span class="muted">(excluded from staked / ROI above)</span>
+        <span class="muted">(not counted toward staked; winnings flow into Net / ROI)</span>
       </div>`;
     }}
     return `<div class="bets-totals-card">
@@ -2447,7 +2487,7 @@ def _render_js() -> str:
     }}
     const legCount = (b.legs || []).length;
     const legsLabel = `${{legCount}}-leg`;
-    const freeBadge = b.free_entry ? '<span class="free-badge" title="Free entry — excluded from staked / ROI">FREE</span>' : "";
+    const freeBadge = b.free_entry ? '<span class="free-badge" title="Free entry — not counted toward staked; winnings still flow into Net / ROI">FREE</span>' : "";
     const stakeDisplay = b.free_entry
       ? `<span class="muted" title="Free entry — not counted toward staked">${{fmtMoney(b.stake)}}</span>`
       : fmtMoney(b.stake);
@@ -2648,9 +2688,9 @@ def _render_js() -> str:
       <div class="bets-form-actions">
         <button id="bf-save" type="button">Save bet</button>
         <button id="bf-cancel" type="button" style="background: transparent; color: var(--muted); border: 1px solid var(--border); display: none;">Cancel edit</button>
-        <label title="Excludes this bet from staked / ROI calculations. Winnings still count toward returned.">
+        <label title="No money put up — bet won't add to Staked. Winnings (if it hits) still count toward Net / ROI.">
           <input type="checkbox" id="bf-free-entry">
-          Free entry (don't count toward staked / ROI)
+          Free entry (no stake; winnings still count)
         </label>
         <span id="bf-msg" class="bets-form-msg"></span>
       </div>
@@ -3553,7 +3593,7 @@ def _render_js() -> str:
         <h2>${{settledTitle(settled.date)}}</h2>
         ${{reportCardHTML}}
         <p class="results-aux">${{auxLine}}</p>
-        <table>
+        <div class="table-scroll"><table>
           <thead><tr>
             <th>Pitcher</th><th>Opponent</th>
             <th class="num" title="Model projection">Proj</th>
@@ -3564,7 +3604,7 @@ def _render_js() -> str:
             <th title="HIT/MISS shown for actionable picks; otherwise just which side won">Result</th>
           </tr></thead>
           <tbody>${{sortedSettled.map(pitcherResultRow).join("")}}</tbody>
-        </table>
+        </table></div>
       </section>`;
     }} else {{
       resultsSection = `<section class="results-section"><h2>Recent Results</h2><p class="muted">No settled days yet.</p></section>`;
@@ -3607,7 +3647,7 @@ def _render_js() -> str:
       resultsSection = `<section class="results-section">
         <h2>${{settledTitle(settled.date)}}</h2>
         <p class="muted">${{summary.join(" &middot; ")}}</p>
-        <table>
+        <div class="table-scroll"><table>
           <thead><tr>
             <th>Hitter</th><th>Team</th>
             <th class="num">Proj</th><th class="num">Actual</th>
@@ -3615,7 +3655,7 @@ def _render_js() -> str:
             <th>Result</th>
           </tr></thead>
           <tbody>${{sortedSettled.map(hitterResultRow).join("")}}</tbody>
-        </table>
+        </table></div>
       </section>`;
     }} else {{
       resultsSection = `<section class="results-section"><h2>Recent Results</h2><p class="muted">No settled hitter days yet.</p></section>`;
@@ -3655,7 +3695,7 @@ def _render_js() -> str:
       </div>
     </details>
     ${{toolbar}}
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr>
         <th>Pitcher</th><th>Opponent</th>
         <th title="First pitch in Central time">Time</th>
@@ -3669,7 +3709,7 @@ def _render_js() -> str:
         <th title="Pick recommendation">Pick</th>
       </tr></thead>
       <tbody>${{slateBody}}</tbody>
-    </table>
+    </table></div>
     ${{resultsSection}}`;
   }}
 
@@ -3690,7 +3730,7 @@ def _render_js() -> str:
         <span>book hasn't posted batter K market for this player</span>
       </div>
     </div>
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr>
         <th>Hitter</th>
         <th class="num" title="Batting-order slot">Slot</th>
@@ -3705,7 +3745,7 @@ def _render_js() -> str:
         <th>Pick</th>
       </tr></thead>
       <tbody>${{slateBody}}</tbody>
-    </table>
+    </table></div>
     ${{resultsSection}}`;
   }}
 
@@ -3944,6 +3984,7 @@ def generate(target_date: date | None = None) -> Path | None:
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MLB K Props</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315803d'/%3E%3Ctext x='16' y='24' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='900' font-size='24' fill='white'%3E%24%3C/text%3E%3C/svg%3E">
 <script>{local_check}</script>
