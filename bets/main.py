@@ -40,6 +40,7 @@ from .odds import (
     load_previous_pitcher_lines,
     match_line,
     merge_lines,
+    normalize_name,
 )
 from .web import generate as generate_dashboard
 
@@ -54,10 +55,35 @@ def run(target_date: date | None = None) -> None:
         print(f"No probable starters listed for {target_date.isoformat()}.")
         return
 
+    # Load preserved lines first so we can tell the fetcher which games
+    # are already fully covered — those events get skipped (one Odds API
+    # credit each) and the existing data flows through merge_lines below.
+    out_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}.csv"
+    preserved = load_previous_pitcher_lines(out_path)
+
+    skip_pairs: set[frozenset[str]] = set()
+    if preserved:
+        covered = {normalize_name(p["pitcher_name"]) for p in preserved}
+        # Group starters by game and skip a game only if BOTH starters
+        # are already covered (otherwise we still need the event call to
+        # pick up the missing side).
+        by_game: dict[int, list[dict]] = {}
+        for s in starters:
+            by_game.setdefault(s["game_pk"], []).append(s)
+        for game_starters in by_game.values():
+            if len(game_starters) == 2 and all(
+                normalize_name(g["pitcher_name"]) in covered for g in game_starters
+            ):
+                first = game_starters[0]
+                skip_pairs.add(frozenset({first["home_team"], first["away_team"]}))
+
     if has_api_key():
         try:
-            lines = fetch_pitcher_k_lines(target_date)
-            print(f"Fetched {len(lines)} pitcher K lines from sportsbook.\n")
+            lines = fetch_pitcher_k_lines(target_date, skip_team_pairs=skip_pairs)
+            print(f"Fetched {len(lines)} pitcher K lines from sportsbook.")
+            if skip_pairs:
+                print(f"Skipped {len(skip_pairs)} game(s) already covered by earlier run today.")
+            print()
         except Exception as e:  # noqa: BLE001
             print(f"Failed to fetch lines: {e}\n")
             lines = []
@@ -68,11 +94,9 @@ def run(target_date: date | None = None) -> None:
             "See README for setup.\n"
         )
 
-    # Preserve any lines captured by an earlier run today. Books pull
-    # markets once games start, so a later run otherwise wipes the morning
-    # capture. Fresh fetches still win on overlap.
-    out_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}.csv"
-    preserved = load_previous_pitcher_lines(out_path)
+    # Books pull markets once games start, so a later run otherwise wipes
+    # the morning capture. Fresh fetches still win on overlap; preserved
+    # fills the gaps for skipped games + games that didn't return data.
     if preserved:
         merged = merge_lines(lines, preserved, "pitcher_name")
         added = len(merged) - len(lines)
@@ -126,6 +150,7 @@ def run(target_date: date | None = None) -> None:
         row: dict = {
             "date": target_date.isoformat(),
             "game_pk": s["game_pk"],
+            "game_datetime_utc": s.get("game_datetime_utc") or "",
             "pitcher_id": s["pitcher_id"],
             "pitcher": s["pitcher_name"],
             "opp": s["opp_team_name"],

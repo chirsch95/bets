@@ -19,8 +19,9 @@ import os
 from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, request, send_file, send_from_directory
+from flask import Flask, jsonify, redirect, request, send_file, send_from_directory
 
+from . import live, wagers
 from .config import OUTPUT_DIR, PROJECT_ROOT
 from .hitters import run as run_hitter_projections
 from .main import run as run_projections
@@ -111,6 +112,80 @@ def settle():
     return redirect("/")
 
 
+@app.get("/api/bets")
+def api_list_bets():
+    state = wagers.load_bets()
+    return jsonify({"bets": state["bets"], "totals": wagers.totals(state)})
+
+
+@app.post("/api/bets")
+def api_add_bet():
+    payload = request.get_json(silent=True) or {}
+    bet = wagers.add_bet(payload)
+    return jsonify({"bet": bet, "totals": wagers.totals()})
+
+
+@app.put("/api/bets/<bet_id>")
+def api_update_bet(bet_id: str):
+    payload = request.get_json(silent=True) or {}
+    updated = wagers.update_bet(bet_id, payload)
+    if updated is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"bet": updated, "totals": wagers.totals()})
+
+
+@app.delete("/api/bets/<bet_id>")
+def api_delete_bet(bet_id: str):
+    if not wagers.delete_bet(bet_id):
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"ok": True, "totals": wagers.totals()})
+
+
+@app.get("/api/slate-pitchers")
+def api_slate_pitchers():
+    """Returns today's pitchers as the Bets-tab dropdown source. Date
+    overridable via ?date=YYYY-MM-DD for testing/historical entry."""
+    target_str = request.args.get("date", "").strip()
+    if target_str:
+        try:
+            target = datetime.strptime(target_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": f"bad date: {target_str}"}), 400
+    else:
+        target = _today()
+    return jsonify({"date": target.isoformat(), "pitchers": live.slate_pitchers(target)})
+
+
+@app.get("/api/live-ks")
+def api_live_ks():
+    """Look up live K + game status for ?ids=<csv of pitcher_ids>.
+    60s in-memory cache shields the MLB API from refresh-button mash."""
+    ids_raw = request.args.get("ids", "").strip()
+    if not ids_raw:
+        return jsonify({"results": {}})
+    pitcher_ids: list[int] = []
+    for part in ids_raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            pitcher_ids.append(int(part))
+        except ValueError:
+            return jsonify({"error": f"bad pitcher id: {part}"}), 400
+    target_str = request.args.get("date", "").strip()
+    if target_str:
+        try:
+            target = datetime.strptime(target_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": f"bad date: {target_str}"}), 400
+    else:
+        target = _today()
+    return jsonify({
+        "date": target.isoformat(),
+        "results": live.live_ks(pitcher_ids, target),
+    })
+
+
 def _today() -> date:
     return date.today()
 
@@ -121,6 +196,9 @@ def main() -> None:
     print("  GET  /         — view dashboard")
     print("  POST /refresh  — re-pull odds and recompute")
     print("  POST /settle   — settle yesterday")
+    print("  *    /api/bets — local-only bet ledger CRUD")
+    print("  GET  /api/slate-pitchers — today's pitcher list for picker")
+    print("  GET  /api/live-ks?ids=… — live K + game status, 60s cache")
     app.run(host="127.0.0.1", port=port, debug=False)
 
 

@@ -18,7 +18,7 @@ import csv
 import os
 import unicodedata
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -64,17 +64,24 @@ def _median(values: list[float]) -> float:
 def fetch_pitcher_k_lines(
     target_date: date | None = None,
     sport: str = "baseball_mlb",
+    skip_team_pairs: set[frozenset[str]] | None = None,
 ) -> list[dict]:
     """Return aggregated pitcher_strikeouts O/U lines across all US books.
 
     Each entry: pitcher_name, line, over_odds, over_book, under_odds,
     under_book, consensus_p_over, n_books, books.
+
+    skip_team_pairs: optional set of frozenset({home_team, away_team})
+    pairs whose per-event odds call should be skipped (one credit per
+    skipped game). Caller is responsible for deciding the game's
+    pitchers are already covered by a previous run's preserved lines.
     """
     return _fetch_player_prop_lines(
         market_key="pitcher_strikeouts",
         name_key="pitcher_name",
         target_date=target_date,
         sport=sport,
+        skip_team_pairs=skip_team_pairs,
     )
 
 
@@ -100,6 +107,7 @@ def _fetch_player_prop_lines(
     name_key: str,
     target_date: date | None,
     sport: str,
+    skip_team_pairs: set[frozenset[str]] | None = None,
 ) -> list[dict]:
     """Generic over/under prop fetcher across every US book on the API."""
     key = os.environ.get("ODDS_API_KEY")
@@ -107,7 +115,16 @@ def _fetch_player_prop_lines(
         return []
 
     target_date = target_date or date.today()
-    target_iso = target_date.isoformat()
+
+    # Filter events by US-local "today," not UTC. A 7 PM PT first pitch on
+    # target_date has commence_time = (target_date+1) 02:00 UTC, which a
+    # naive UTC-prefix check would drop. Window: 10:00 UTC of target →
+    # 10:00 UTC of target+1 covers any plausible US start (5 AM ET earliest,
+    # 1 AM ET next-day cushion for late West Coast first pitches).
+    window_start = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=10)
+    window_end = window_start + timedelta(hours=24)
+    window_start_iso = window_start.isoformat().replace("+00:00", "Z")
+    window_end_iso = window_end.isoformat().replace("+00:00", "Z")
 
     events_resp = requests.get(
         f"{THE_ODDS_API_BASE}/sports/{sport}/events",
@@ -118,8 +135,18 @@ def _fetch_player_prop_lines(
     events = [
         e
         for e in events_resp.json()
-        if e.get("commence_time", "").startswith(target_iso)
+        if window_start_iso <= e.get("commence_time", "") < window_end_iso
     ]
+
+    # Skip games whose two teams were both already priced in a prior
+    # run today — saves one credit per such game on Re-runs.
+    if skip_team_pairs:
+        events = [
+            e
+            for e in events
+            if frozenset({e.get("home_team", ""), e.get("away_team", "")})
+            not in skip_team_pairs
+        ]
 
     per_player: dict[str, list[dict]] = defaultdict(list)
 
@@ -204,6 +231,11 @@ def _normalize_name(name: str) -> str:
     nfkd = unicodedata.normalize("NFKD", name)
     no_accents = "".join(c for c in nfkd if not unicodedata.combining(c))
     return no_accents.lower().strip()
+
+
+# Public alias so callers (main.py) can reuse the same accent/case
+# rules when matching preserved-line names against starter names.
+normalize_name = _normalize_name
 
 
 def match_line(pitcher_name: str, lines: list[dict]) -> dict | None:

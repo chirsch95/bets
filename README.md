@@ -2,17 +2,21 @@
 
 A data pipeline and modeling system for identifying +EV prop bets on daily fantasy sites (PrizePicks, Underdog). Currently active: **MLB pitcher strikeouts**. The hitter strikeouts pipeline exists but is paused while the pitcher model accumulates calibration data — see [Re-enabling hitters](#re-enabling-hitters).
 
+The dashboard has two main surfaces:
+- **Pitcher Ks tab** — public on Netlify. Today's slate (with first-pitch time in Central), "Today's Picks" hero cards for actionable focus picks, Parlay Suggestions ranked by EV per $1 (with one-click handoff to the Bets tab when running locally), Yesterday's Results report card, and a 14-day Track Record (sparkline + trend arrows + OVER/UNDER split).
+- **Bets tab** — local-only personal parlay ledger with live K tracking from MLB Stats API. Picker-driven entry from today's slate, live Combined stats panel (Payout / Hit % / Edge / EV / Profit-if-hit) that recomputes on every leg change, mid-game lock-in for HIT/MISS, auto-settle on definitive verdicts, free-entry exclusion from totals.
+
 ## Daily Routine
 
 Open **https://winningbets.netlify.app/** in any browser. The dashboard fetches the latest CSVs from this GitHub repo at page-load — click **Refresh data** any time to re-pull, no Netlify deploy required (so refreshing is *free*, doesn't burn your Netlify credit budget).
 
-A GitHub Action runs the underlying pipeline daily at noon CT to keep the CSVs fresh. For an off-schedule pipeline run (e.g. before a big night slate, or when news drops):
+The pipeline runs only when you ask it to — there is no daily cron. Pull lines on demand close to first pitch, either from the local dashboard's **Re-run pipeline** button or from GitHub:
 
 ```sh
 gh workflow run "Refresh dashboard" -R chirsch95/bets
 ```
 
-Wait ~1 minute and click **Refresh data** on the dashboard. The local Flask server isn't part of the daily routine — it's reserved for code-change testing (see [Local Development](#local-development)).
+Wait ~1 minute and click **Refresh data** on the dashboard. Re-runs only spend Odds API credits on games that aren't already priced in today's CSV — covered games are skipped automatically.
 
 **Periodic (weekly is fine):**
 
@@ -42,7 +46,7 @@ bets/
 ├── netlify.toml                    publish dir = output/, ignore rule skips no-data deploys
 ├── .github/
 │   └── workflows/
-│       └── refresh.yml             daily 17:00 UTC cron + workflow_dispatch
+│       └── refresh.yml             manual-only (workflow_dispatch); cron removed 2026-05-01 to conserve Odds API quota
 ├── .env                            ODDS_API_KEY (gitignored, chmod 600)
 ├── .env.example
 ├── .venv/                          virtualenv (gitignored)
@@ -52,19 +56,24 @@ bets/
 │   ├── fetch.py                    MLB Stats API (starters + lineups + pitcher/hitter stats); Baseball Savant SwStr% (12h disk cache)
 │   ├── odds.py                     The Odds API: pitcher_strikeouts + batter_strikeouts, multi-book aggregation, line preservation across reruns
 │   ├── model.py                    v0/v1/v2 pitcher projections + v0 hitter projection; Poisson P(over); odds + EV math
-│   ├── main.py                     CLI: project today's pitcher slate
+│   ├── main.py                     CLI: project today's pitcher slate; freezes first run as the day's slate snapshot
 │   ├── hitters.py                  CLI: project today's hitter slate (separate runner for clarity)
-│   ├── settle.py                   Settle yesterday's pitchers + hitters with actuals
+│   ├── settle.py                   Settle yesterday with actuals + slate-time fields (slate_edge/line/over_hit/pnl) for honest pick grading
 │   ├── analyze.py                  Aggregate settled history (pitcher only so far)
-│   ├── web.py                      HTML+JS dashboard shell (client-side rendered); STATIC_MODE=1 hides local-only buttons
-│   └── server.py                   Local Flask server (port 8000); GET / serves shell, also serves output/ CSVs as static
-├── data/                           caches (gitignored): swstr_<season>.json
+│   ├── live.py                     Slate-pitcher list + live K-count from MLB Stats API boxscore + schedule (60s in-memory cache)
+│   ├── wagers.py                   Personal bet ledger: load/save/CRUD on data/bets.json; legs[] schema; totals exclude free entries
+│   ├── web.py                      HTML+JS dashboard shell (client-side rendered); same HTML works on Netlify + localhost (runtime hostname check hides local-only buttons/tab)
+│   └── server.py                   Local Flask server (port 8000); GET / serves shell + output/ CSVs as static; /api/bets, /api/slate-pitchers, /api/live-ks for the local-only Bets tab
+├── data/                           gitignored — caches + private bet ledger:
+│   ├── swstr_<season>.json
+│   └── bets.json                   personal bet ledger (NEVER committed; never reaches Netlify)
 └── output/                         tracked — Netlify publishes from here:
-    ├── pitcher_ks_<date>.csv
-    ├── pitcher_ks_<date>_settled.csv
+    ├── pitcher_ks_<date>.csv               live state, overwritten on each run
+    ├── pitcher_ks_<date>_slate.csv         frozen first-run snapshot for grading
+    ├── pitcher_ks_<date>_settled.csv       projections + actuals + slate_* fields
     ├── hitter_ks_<date>.csv
     ├── hitter_ks_<date>_settled.csv
-    └── index.html                  latest dashboard
+    └── index.html                          latest dashboard
 ```
 
 ## Command Reference
@@ -100,7 +109,7 @@ Override the port if 8000 is taken: `BETS_PORT=5050 python -m bets.server`. macO
 4. Commit + push **only when satisfied** — that's the action that costs credits
 5. Netlify auto-deploys on push (subject to the `output/*.csv`-changed ignore rule)
 
-Local data and Netlify data drift because they're independent disks. To pull whatever the cron last produced into your local copy: `git pull origin main`.
+Local data and Netlify data drift because they're independent disks. To pull whatever the most recent GitHub Actions run produced into your local copy: `git pull origin main`.
 
 ## Dashboard
 
@@ -110,25 +119,61 @@ open output/index.html
 
 The dashboard sorts pitchers into tiers based on the model's edge versus the no-vig fair line:
 
-- **Focus** (green = over, red = under, 5–15% edge): plausible disagreement, worth a closer look.
+- **Focus** (green = over, red = under, 5–15% edge): plausible disagreement, worth a closer look. These surface as **Today's Picks** hero cards above the full table.
 - **Investigate** (yellow, ≥ 20% edge): edge too large to trust — almost always indicates a model gap (sample size, role change, missing context). Worth understanding *why* the model disagrees, not bet on directly.
 - **No line** (gray): no sportsbook line available, either because the book hasn't posted or the game has already started. Projection only.
 
-The dashboard also has a **Recent Results** section below today's slate, showing the most recently settled day with predicted vs. actual Ks and OVER/UNDER hits — so you get same-page feedback on how the model has been doing.
+Each row shows the **first-pitch time in Central** alongside the pitcher and opponent, so you can see at a glance which games still have time before lock.
 
-The 14-day calibration summary at the top (MAE, bias, flat-bet ROI) populates as you accumulate `*_settled.csv` files.
+### Parlay Suggestions
+
+Below the hero picks, a **Parlay Suggestions** section ranks the top 5 two-leg and top 3 three-leg combinations of today's focus picks by **EV per $1**. Each card shows the leg list (direction badge · pitcher · line · game time) and a stats row (combined Payout · Hit % · Edge · EV / $1). Cards get a green left-border for +EV, red for −EV.
+
+Combined probabilities assume leg independence — fine for K props since two pitchers in the same game face *different* lineups. Eligible legs are focus-band only; investigate / noise picks are excluded.
+
+When running locally, each card has a **+ Add to bets** button that switches to the Bets tab and pre-populates a new parlay form with the suggested legs. The button is hidden on Netlify.
+
+### Yesterday's Results report card
+
+A summary card sits above the per-pitcher results table showing **W–L record on focus picks**, **net units (1u flat)**, and **hit rate**. Picks are graded against the **slate-time** line + edge (the morning state, not whatever survived to gametime), so the verdict reflects what you'd actually have bet at. Full per-pitcher table below shows Off By, Line, Our Pick badge, and HIT/MISS verdict for actionable picks (informational OVER hit/UNDER hit for non-bets).
+
+### Track Record (last 14 days)
+
+A rolling-window section below Yesterday's Results aggregates focus picks across the available settled days:
+- Top stats: Picks · Hit rate · Units · ROI (with week-over-week trend arrows once 8+ picks accumulate)
+- SVG sparkline of cumulative units (auto-scales, fills green/red below the zero line)
+- OVER/UNDER split panel showing share + per-side W-L + units
+- Per-day breakdown table
+
+Slate-time fields (`slate_edge`, `slate_line`, `slate_over_hit`, etc.) are added by `settle.py` when a `_slate.csv` snapshot exists for the date. Older settled rows fall back to live/final-state fields gracefully.
+
+### Bets tab (local only)
+
+A **personal parlay ledger** for tracking actual DFS bets, hidden on Netlify (visible only when the page is loaded from `localhost`/`127.0.0.1`). Backed by `data/bets.json` which is gitignored.
+
+- **Structured parlay entry** with leg-count selector (2–6 legs, matching DFS-site minimums). Each leg has a pitcher picker (auto-fills from today's slate including model recommendation), a per-leg line override (DFS lines often differ from sportsbook), and an O/U toggle.
+- **Live Combined stats panel** above the stake/odds inputs: recomputes Payout, Hit %, Edge, EV per $1, and Profit-if-hit on every leg-state change (pitcher select, line input, O/U toggle, leg-count, stake). Auto-fills the Odds field with the parlay decimal — once you type into Odds yourself, your value sticks. Reading from the slate's `p_over` / `novig_over`, so the math you see in the editor matches what the Pitcher-tab Parlay Suggestions show.
+- **+ Add to bets** handoff: clicking a parlay-suggester card jumps to the Bets tab with the suggested legs already filled in and the Combined panel showing the same numbers.
+- **Live K tracking** per leg: queries MLB Stats API boxscore + schedule via `/api/live-ks` (60s in-memory cache). Statuses: `Sched`, `Live · Top 5th`, `7 K [HIT]`, `2 K [MISS]`, etc.
+- **Mid-game lock-in**: once `ks > line`, an OVER bet locks as HIT and an UNDER bet locks as MISS regardless of game state — Ks can only increase. The opposite cases (over not yet reached, under still alive) wait for game final.
+- **Parlay-level rollup** in the expanded view: "Win confirmed", "Loss confirmed", or "In progress" with leg counts (1H · 1M · 1P) plus a mismatch warning if your manual W/L disagrees with the math.
+- **Inline status badge** on each row (no expand needed): compact `1H · 1M · 1P` next to the legs summary.
+- **Auto-settle** on definitive verdicts: when a parlay is locked Win or Loss, the bet's W/L is automatically updated and payout calculated (`stake × odds` for W, `0` for L). User can override with Reopen.
+- **Free-entry flag**: tickets marked as free entries are excluded from `staked` and `ROI` totals (their winnings still count toward `returned`). Shown separately on a secondary totals line.
+
+The Flask server's `/api/bets` (CRUD), `/api/slate-pitchers`, and `/api/live-ks` routes serve the tab. None of these reach Netlify — the tab itself is hidden via the `local-only` CSS class plus a synchronous head script that adds `is-local` to `<html>` only when `location.hostname` matches localhost.
 
 ## Deployment (Netlify + GitHub Actions)
 
 The dashboard can be published to a public Netlify URL so you can read it from any device. The architecture:
 
-1. **GitHub Actions** runs the pipeline once a day at 17:00 UTC (~12:00 PM CDT / 11:00 AM CST). See `.github/workflows/refresh.yml`. Trigger an extra run anytime via `gh workflow run "Refresh dashboard" -R <user>/<repo>` or the Actions tab.
+1. **GitHub Actions** runs the pipeline only on demand (`workflow_dispatch`). Trigger via `gh workflow run "Refresh dashboard" -R <user>/<repo>`, the Actions tab, or the local **Re-run pipeline** button. Cron was removed 2026-05-01 to conserve Odds API quota — the pipeline costs ~16 credits/run on a typical 15-game day, so a daily cron alone (~480/month) would burn nearly the whole 500/month free tier. Re-runs skip games already priced in today's CSV (`skip_team_pairs` in `odds.py`) so a second pull only spends credits on still-uncovered games.
 2. The Action regenerates `output/`, commits, and pushes.
-3. **Netlify** publishes a thin HTML+JS shell. The browser fetches CSV data directly from `https://raw.githubusercontent.com/chirsch95/bets/main/output/*.csv` on each page load, so committing new CSV data does NOT require a Netlify redeploy. The `netlify.toml` ignore rule (`git diff $CACHED_COMMIT_REF $COMMIT_REF -- output/index.html`) only redeploys when the *shell itself* changes — i.e. when you ship a code/UI change. Daily cron commits are free.
+3. **Netlify** publishes a thin HTML+JS shell. The browser fetches CSV data directly from `https://raw.githubusercontent.com/chirsch95/bets/main/output/*.csv` on each page load, so committing new CSV data does NOT require a Netlify redeploy. The `netlify.toml` ignore rule (`git diff $CACHED_COMMIT_REF $COMMIT_REF -- output/index.html`) only redeploys when the *shell itself* changes — i.e. when you ship a code/UI change. CSV-only commits are free.
 
 This requires the repo to be **public** (so `raw.githubusercontent.com` can serve the CSVs unauthenticated). Picks are already public via the Netlify URL, so making the source repo public doesn't expose anything new.
 
-The published page is **read-only** — when `STATIC_MODE=1` is set in the workflow env, the action buttons are replaced with an "Auto-refreshed daily" timestamp. The `ODDS_API_KEY` lives only in GitHub Secrets, never on Netlify.
+The published page is **read-only** by runtime detection — a synchronous head script checks `location.hostname` and only reveals the local-server-only buttons (Re-run pipeline, Settle yesterday) and the local-only Bets tab when running from `localhost`/`127.0.0.1`. Same `index.html` works in both environments — no env-var gotcha at build time. The `ODDS_API_KEY` lives only in GitHub Secrets, never on Netlify.
 
 ### One-time setup
 
@@ -149,9 +194,9 @@ gh secret set ODDS_API_KEY     # paste your key when prompted
 #    The publish dir is "output" (already configured); no build command needed.
 ```
 
-After the first manual workflow run (Actions tab → "Refresh dashboard" → Run workflow), Netlify deploys the dashboard. Daily refreshes are then automatic.
+After the first manual workflow run (Actions tab → "Refresh dashboard" → Run workflow), Netlify deploys the dashboard. From there, refresh on demand whenever you need new lines.
 
-To change the refresh time, edit the cron in `.github/workflows/refresh.yml` — the schedule is in UTC.
+If you later want a scheduled pull (e.g. weekly to keep settled CSVs current), add a `schedule:` block back to `.github/workflows/refresh.yml` — the existing `workflow_dispatch` trigger is preserved.
 
 ## Status
 
@@ -160,20 +205,20 @@ To change the refresh time, edit the cron in `.github/workflows/refresh.yml` —
 - ✅ v1 model: per-pitcher expected BF + log5 matchup vs opposing team K%
 - ✅ v2 model: SwStr%-blended pitcher K% (Baseball Savant CSV, 12h cache), lineup-level opp K% (team K% fallback), park K factors
 
-**Hitter Ks** *(paused 2026-05-01 — see Re-enabling hitters below)*
+**Hitter Ks** *(paused 2026-05-01, target re-eval ~2026-06-02 — see Re-enabling hitters below)*
 - ✅ v0 model: log5(hitter K%, opp starter K%) × park × lineup-slot PA — code intact in `bets/hitters.py`
 - ⏳ v1: bullpen K% blending (currently treats whole game as vs starter), platoon splits, per-player PA history
 
 ### Re-enabling hitters
 
-The hitter pipeline was disabled to conserve Odds API quota while the pitcher model gathers ~30 days of calibration data. To turn it back on:
+The hitter pipeline is paused for **~1 month** (paused 2026-05-01, target re-eval ~2026-06-02) so the pitcher Ks model can be dialed in first — both to free up Odds API quota for pitcher reruns and to keep the calibration signal focused on a single market while v2 weights and `SWSTR_BLEND_WEIGHT` get tuned. To turn it back on:
 
 1. Flip `SHOW_HITTERS = False` to `True` in `bets/web.py`
 2. Uncomment the "Project today's hitters" step in `.github/workflows/refresh.yml`
 3. Uncomment the `run_hitter_projections()` block in `bets/server.py:refresh`
 4. Commit + push — Netlify will redeploy the shell with the hitter tab visible
 
-That's it. The model code, settle path, and CSV format are all preserved untouched. Note: re-enabling adds ~15 quota/cron-run = ~450/month back to the Odds API budget; either bump cron to every-other-day or move to the paid Odds API tier.
+That's it. The model code, settle path, and CSV format are all preserved untouched. Note: re-enabling adds another full per-game odds call to each pipeline run (`batter_strikeouts` market) — roughly doubles the per-run credit cost. With manual-only pulls this is manageable but worth keeping in mind before triggering many re-runs in a day.
 
 **Pipeline + UI**
 - ✅ The Odds API integration with multi-book aggregation: median line, best odds per side with sourcing book, median no-vig P(over)
@@ -181,7 +226,7 @@ That's it. The model code, settle path, and CSV format are all preserved untouch
 - ✅ Calibration harness: settle vs actual outcomes, MAE / RMSE / bias for v0 / v1 / v2 head-to-head, P(over) buckets, edge-threshold ROI
 - ✅ HTML dashboard with focus highlighting, OVER / UNDER recommendations, Recent Results section. Currently single-tab (Pitcher Ks); tabbed layout returns when hitters are re-enabled.
 - ✅ Local Flask server (port 8000) with Refresh Lines / Settle Yesterday buttons — dev/test only
-- ✅ Public Netlify deploy at https://winningbets.netlify.app/. **Client-side rendering**: thin HTML+JS shell on Netlify, browser fetches CSVs from raw.githubusercontent.com → CSV updates do NOT trigger Netlify redeploys, so daily cron commits are free. Manual **Refresh data** button re-fetches at any time.
+- ✅ Public Netlify deploy at https://winningbets.netlify.app/. **Client-side rendering**: thin HTML+JS shell on Netlify, browser fetches CSVs from raw.githubusercontent.com → CSV updates do NOT trigger Netlify redeploys, so on-demand pipeline commits are free. Manual **Refresh data** button re-fetches at any time.
 
 **Future**
 - ⏳ Empirical-Bayes shrinkage, catcher framing, umpire tendencies

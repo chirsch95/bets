@@ -41,6 +41,7 @@ def todays_probable_starters(target_date: date | None = None) -> list[dict]:
     for date_block in payload.get("dates", []):
         for game in date_block.get("games", []):
             game_pk = game["gamePk"]
+            game_datetime_utc = game.get("gameDate")
             home = game["teams"]["home"]
             away = game["teams"]["away"]
             home_team_id = home["team"]["id"]
@@ -75,6 +76,7 @@ def todays_probable_starters(target_date: date | None = None) -> list[dict]:
                 starters.append(
                     {
                         "game_pk": game_pk,
+                        "game_datetime_utc": game_datetime_utc,
                         "home_team": home_team_name,
                         "away_team": away_team_name,
                         "home_team_id": home_team_id,

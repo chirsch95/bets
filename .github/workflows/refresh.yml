@@ -1,17 +1,11 @@
 name: Refresh dashboard
 
-# Build today's slate once a day around noon CT to manage Netlify deploy
-# credits. Cron is in UTC and doesn't shift with daylight saving:
-#
-#   17:00 UTC = 12:00 PM CDT (summer) / 11:00 AM CST (winter)
-#
-# For an extra refresh on a big night slate (e.g. to pick up afternoon
-# lineup news), trigger manually from the Actions tab or via:
+# Manual-only — no cron. Daily auto-refresh was disabled 2026-05-01 to
+# conserve the Odds API monthly quota; user pulls lines on demand from
+# the local dashboard's Re-run button (or via the Actions tab here):
 #   gh workflow run "Refresh dashboard" -R chirsch95/bets
 
 on:
-  schedule:
-    - cron: "0 17 * * *"
   workflow_dispatch: {}    # manual trigger from the Actions tab
 
 permissions:

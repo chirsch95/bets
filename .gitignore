@@ -29,3 +29,7 @@ data/*
 .idea/
 *.swp
 .DS_Store
+
+# Personal spreadsheets / scratch ledgers — never publish
+Bets.numbers
+Bets.xlsx
