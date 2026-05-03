@@ -1588,6 +1588,40 @@ def _render_js() -> str:
   // on a 60s tick so countdowns stay accurate and rows flip locked the
   // moment first pitch passes.
   let _liveByPid = new Map();
+
+  // 60s auto-poll for live MLB stats on the pitcher tab. Self-stops
+  // once every tracked game is Final; skipped while the browser tab is
+  // hidden so we don't hammer the public MLB API in a background tab.
+  let _pitcherLivePollTimer = null;
+  let _pitcherLivePollRows = [];
+  let _pitcherLivePollDate = "";
+  function stopPitcherLivePoll() {{
+    if (_pitcherLivePollTimer) {{
+      clearInterval(_pitcherLivePollTimer);
+      _pitcherLivePollTimer = null;
+    }}
+  }}
+  async function pitcherLivePollTick() {{
+    if (document.hidden) return;
+    if (!_pitcherLivePollRows.length || !_pitcherLivePollDate) return;
+    try {{
+      const byPid = await fetchLiveKsPublic(_pitcherLivePollRows, _pitcherLivePollDate);
+      _liveByPid = byPid;
+      repaintGameTimeCells();
+      // Stop once nothing is Preview/Live anymore — every game has
+      // gone Final, so further polls would be wasted traffic.
+      const vals = [..._liveByPid.values()];
+      const stillActive = vals.some(v => v && (v.status === "Preview" || v.status === "Live"));
+      if (vals.length && !stillActive) stopPitcherLivePoll();
+    }} catch (e) {{ /* swallow — next tick retries */ }}
+  }}
+  async function startPitcherLivePoll(rows, dateISO) {{
+    stopPitcherLivePoll();
+    _pitcherLivePollRows = rows;
+    _pitcherLivePollDate = dateISO;
+    await pitcherLivePollTick();
+    _pitcherLivePollTimer = setInterval(pitcherLivePollTick, 60000);
+  }}
   function repaintGameTimeCells() {{
     document.querySelectorAll("td.gametime[data-game-iso]").forEach(td => {{
       const iso = td.dataset.gameIso || "";
@@ -2347,6 +2381,7 @@ def _render_js() -> str:
   let slateById = new Map();
   let liveKsByPid = new Map();
   let liveLastFetchedAt = null;
+  let _betsLivePollTimer = null;
 
   async function apiBets(method, body, id) {{
     const url = id ? `/api/bets/${{id}}` : "/api/bets";
@@ -2765,8 +2800,11 @@ def _render_js() -> str:
       slateById = new Map(pitchers.map(p => [p.pitcher_id, p]));
       panel.innerHTML = renderBetsTab(state);
       wireBetsHandlers(panel);
-      // Kick off live K refresh for any pending bets with a pitcher_id.
+      // Kick off live K refresh for any pending bets with a pitcher_id,
+      // then start the 60s auto-poll so K counts update without the
+      // user clicking Refresh live.
       refreshLiveKs();
+      startBetsLivePoll();
     }} catch (e) {{
       panel.innerHTML = `<p class="empty-msg">Bets API unavailable. Make sure the local Flask server is running (python -m bets.server).</p>`;
     }}
@@ -2777,10 +2815,13 @@ def _render_js() -> str:
   // so the user can be expanding/scrolling without disruption.
   async function refreshLiveKs(opts) {{
     opts = opts || {{}};
+    const silent = !!opts.silent;
     const stampEl = document.getElementById("live-stamp");
     const refreshBtn = document.getElementById("refresh-live");
-    if (refreshBtn) refreshBtn.disabled = true;
-    if (stampEl) stampEl.textContent = "fetching…";
+    if (!silent) {{
+      if (refreshBtn) refreshBtn.disabled = true;
+      if (stampEl) stampEl.textContent = "fetching…";
+    }}
     try {{
       // Collect pitcher_ids from all bets (not just pending). Settled
       // bets still benefit from live data so the user can spot a
@@ -2808,10 +2849,31 @@ def _render_js() -> str:
       liveLastFetchedAt = new Date();
       if (stampEl) stampEl.textContent = `updated ${{liveLastFetchedAt.toLocaleTimeString("en-US", {{ hour: "numeric", minute: "2-digit", second: "2-digit" }})}}`;
     }} catch (e) {{
-      if (stampEl) stampEl.textContent = "fetch failed";
+      if (stampEl && !silent) stampEl.textContent = "fetch failed";
     }} finally {{
       if (refreshBtn) refreshBtn.disabled = false;
     }}
+  }}
+
+  // 60s auto-poll for the bets tab. Mirrors the pitcher tab pattern:
+  // self-stops once every linked pitcher has gone Final, paused while
+  // the browser tab is hidden. Manual refresh-button clicks still work
+  // at any time and don't conflict — refreshLiveKs is idempotent.
+  function stopBetsLivePoll() {{
+    if (_betsLivePollTimer) {{
+      clearInterval(_betsLivePollTimer);
+      _betsLivePollTimer = null;
+    }}
+  }}
+  function startBetsLivePoll() {{
+    stopBetsLivePoll();
+    _betsLivePollTimer = setInterval(async () => {{
+      if (document.hidden) return;
+      await refreshLiveKs({{ silent: true }});
+      const vals = [...liveKsByPid.values()];
+      const stillActive = vals.some(v => v && (v.status === "Preview" || v.status === "Live"));
+      if (vals.length && !stillActive) stopBetsLivePoll();
+    }}, 60000);
   }}
 
   // Decide if a leg's outcome is mathematically settled given current
@@ -3787,11 +3849,11 @@ def _render_js() -> str:
       // Live K + game-status overlay — fires after the table is on
       // screen so the initial paint isn't blocked on the MLB API. Once
       // the data arrives, repaintGameTimeCells() patches each row in
-      // place (no full re-render).
+      // place (no full re-render). startPitcherLivePoll then keeps it
+      // ticking every 60s until every game is Final.
+      stopPitcherLivePoll();
       if (pSlate.rows.length && pSlate.date) {{
-        fetchLiveKsPublic(pSlate.rows, pSlate.date)
-          .then(byPid => {{ _liveByPid = byPid; repaintGameTimeCells(); }})
-          .catch(() => {{}});
+        startPitcherLivePoll(pSlate.rows, pSlate.date);
       }}
 
       if (SHOW_HITTERS && hSlate) {{

@@ -145,7 +145,7 @@ Each row's Time cell does triple duty depending on game state:
 - **Live**: `● B5 4K` — pulsing red dot, compact half-inning (`B5` = bottom 5th, `T3` = top 3rd, etc.), running K count.
 - **Final**: `Final · 7K`.
 
-Once first pitch passes the row dims to 55% opacity (it's locked from the bet window). Live K + game status are pulled directly from the public MLB Stats API in JS — works on Netlify and locally without a proxy.
+Once first pitch passes the row dims to 55% opacity (it's locked from the bet window). Live K + game status are pulled directly from the public MLB Stats API in JS — works on Netlify and locally without a proxy. The fetch auto-polls every 60s (paused while the browser tab is hidden, self-stops once every game has gone Final), so K counts and inning state update without clicking **Refresh data**.
 
 ### Today's Picks hero cards
 
@@ -182,7 +182,7 @@ A **personal parlay ledger** for tracking actual DFS bets, hidden on Netlify (vi
 - **Structured parlay entry** with leg-count selector (2–6 legs, matching DFS-site minimums). Each leg has a pitcher picker (auto-fills from today's slate including model recommendation), a per-leg line override (DFS lines often differ from sportsbook), and an O/U toggle.
 - **Live Combined stats panel** above the stake/odds inputs: recomputes Payout, Hit %, Edge, EV per $1, and Profit-if-hit on every leg-state change (pitcher select, line input, O/U toggle, leg-count, stake). Auto-fills the Odds field with the parlay decimal — once you type into Odds yourself, your value sticks. Reading from the slate's `p_over` / `novig_over`, so the math you see in the editor matches what the Pitcher-tab Parlay Suggestions show.
 - **+ Add to bets** handoff: clicking a parlay-suggester card jumps to the Bets tab with the suggested legs already filled in and the Combined panel showing the same numbers.
-- **Live K tracking** per leg: queries MLB Stats API boxscore + schedule via `/api/live-ks` (60s in-memory cache). Statuses: `Sched`, `Live · Top 5th`, `7 K [HIT]`, `2 K [MISS]`, etc.
+- **Live K tracking** per leg: queries MLB Stats API boxscore + schedule via `/api/live-ks` (60s in-memory cache). Statuses: `Sched`, `Live · Top 5th`, `7 K [HIT]`, `2 K [MISS]`, etc. The tab auto-polls every 60s (paused on hidden browser tab, self-stops once every linked pitcher has gone Final) so K counts update without clicking **Refresh live**; the manual button still works for an on-demand pull.
 - **Mid-game lock-in**: once `ks > line`, an OVER bet locks as HIT and an UNDER bet locks as MISS regardless of game state — Ks can only increase. The opposite cases (over not yet reached, under still alive) wait for game final.
 - **Parlay-level rollup** in the expanded view: "Win confirmed", "Loss confirmed", or "In progress" with leg counts (1H · 1M · 1P) plus a mismatch warning if your manual W/L disagrees with the math.
 - **Inline status badge** on each row (no expand needed): compact `1H · 1M · 1P` next to the legs summary.

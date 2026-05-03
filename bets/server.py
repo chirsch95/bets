@@ -175,7 +175,9 @@ def api_slate_pitchers():
 @app.get("/api/live-ks")
 def api_live_ks():
     """Look up live K + game status for ?ids=<csv of pitcher_ids>.
-    60s in-memory cache shields the MLB API from refresh-button mash."""
+    60s in-memory cache shields the MLB API from refresh-button mash
+    and the Bets tab's 60s auto-poll (cache TTL matches poll cadence
+    so the second client tick usually hits the cache for free)."""
     ids_raw = request.args.get("ids", "").strip()
     if not ids_raw:
         return jsonify({"results": {}})
