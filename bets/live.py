@@ -209,21 +209,34 @@ def _game_status_map(target_date_iso: str) -> dict[int, dict]:
     return out
 
 
-def _ks_from_boxscore(box: dict, pitcher_id: int) -> int | None:
-    """Find a pitcher's K count in a boxscore response. Players are
-    nested under teams.{home|away}.players.ID{pitcher_id}.stats.pitching."""
+def _pitcher_state_from_boxscore(
+    box: dict, pitcher_id: int
+) -> tuple[int | None, bool]:
+    """Return (ks, done) for a pitcher in a boxscore response.
+
+    `done` is True when the pitcher has been replaced — i.e. they appear
+    in their team's `pitchers` array (ordered by appearance) but aren't
+    the last entry. Once true, their K count is locked even before the
+    game goes Final, so the over/under can be called immediately.
+    """
     key = f"ID{pitcher_id}"
     for side in ("home", "away"):
-        players = box.get("teams", {}).get(side, {}).get("players", {})
-        if key in players:
-            pitching = players[key].get("stats", {}).get("pitching", {})
-            ks = pitching.get("strikeOuts")
-            if ks is not None:
-                try:
-                    return int(ks)
-                except (TypeError, ValueError):
-                    return None
-    return None
+        team = box.get("teams", {}).get(side, {})
+        players = team.get("players", {})
+        if key not in players:
+            continue
+        pitching = players[key].get("stats", {}).get("pitching", {})
+        raw_ks = pitching.get("strikeOuts")
+        ks: int | None = None
+        if raw_ks is not None:
+            try:
+                ks = int(raw_ks)
+            except (TypeError, ValueError):
+                ks = None
+        pitchers = team.get("pitchers") or []
+        done = bool(pitchers) and pitcher_id in pitchers and pitchers[-1] != pitcher_id
+        return ks, done
+    return None, False
 
 
 def live_ks(pitcher_ids: list[int], target_date: date | None = None) -> dict:
@@ -241,6 +254,7 @@ def live_ks(pitcher_ids: list[int], target_date: date | None = None) -> dict:
           "current_inning": str | None,        # e.g. "5th" when Live
           "inning_state": str | None,          # "Top" / "Bottom" / "End"
           "first_pitch": ISO timestamp str | None,
+          "done":        bool,                 # True once pitcher is pulled — Ks locked
           "error":       str | None,
         }
     """
@@ -265,6 +279,7 @@ def live_ks(pitcher_ids: list[int], target_date: date | None = None) -> dict:
             "current_inning": None,
             "inning_state": None,
             "first_pitch": None,
+            "done": False,
             "error": None,
         }
         if info is None:
@@ -294,7 +309,7 @@ def live_ks(pitcher_ids: list[int], target_date: date | None = None) -> dict:
             continue
         try:
             box = _cached(f"box:{gpk}", lambda gpk=gpk: _fetch_boxscore(gpk))
-            result["ks"] = _ks_from_boxscore(box, pid)
+            result["ks"], result["done"] = _pitcher_state_from_boxscore(box, pid)
         except Exception as e:  # noqa: BLE001
             result["status"] = "Error"
             result["error"] = str(e)
