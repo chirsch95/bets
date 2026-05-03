@@ -382,6 +382,62 @@ CSS = """
     color: var(--muted);
     font-size: 13px;
   }
+  /* "Why this pick" disclosure on each hero card. Surfaces the raw
+     model inputs so you can sanity-check what the edge is reacting to.
+     Tilt arrows compare each input to a stable league pivot (not an
+     invented threshold): starter K% ≈ .22, SwStr% ≈ .115, lineup K%
+     ≈ .22, park = 1.00. ↑K = favors strikeouts (regardless of bet
+     direction), ↓K = suppresses, • = roughly neutral. */
+  .pick-why { margin-top: 8px; }
+  .pick-why-summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    user-select: none;
+    padding: 3px 0;
+    list-style: none;
+  }
+  .pick-why-summary::-webkit-details-marker { display: none; }
+  .pick-why-summary::before { content: "▸ "; display: inline-block; transition: transform 0.12s; }
+  .pick-why[open] .pick-why-summary::before { transform: rotate(90deg); }
+  .pick-why-summary:hover { color: var(--text); }
+  .pick-why-list {
+    list-style: none;
+    padding: 4px 0 0;
+    margin: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .pick-why-list li {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: baseline;
+    gap: 8px;
+    padding: 1px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .why-label { color: var(--muted); font-size: 11px; }
+  .why-val { font-weight: 600; font-size: 11px; }
+  .why-tilt { font-size: 11px; font-weight: 700; min-width: 18px; text-align: right; }
+  .why-tilt.k-up { color: var(--green); }
+  .why-tilt.k-down { color: var(--red); }
+  .why-tilt.k-flat { color: var(--muted); }
+  /* On settled (saturated) cards, override muted/border colors so the
+     disclosure stays legible against the green/red fill. */
+  .pick-card.hit .pick-why-summary,
+  .pick-card.miss .pick-why-summary,
+  .pick-card.hit .why-label,
+  .pick-card.miss .why-label { color: rgba(255,255,255,0.78); }
+  .pick-card.hit .why-val,
+  .pick-card.miss .why-val { color: #fff; }
+  .pick-card.hit .why-tilt.k-up,
+  .pick-card.miss .why-tilt.k-up,
+  .pick-card.hit .why-tilt.k-down,
+  .pick-card.miss .why-tilt.k-down,
+  .pick-card.hit .why-tilt.k-flat,
+  .pick-card.miss .why-tilt.k-flat { color: rgba(255,255,255,0.95); }
   /* Parlay suggester — combos of focus picks, ranked by EV per $1. */
   .parlay-suggester { margin: 8px 0 24px; }
   .parlay-suggester-header {
@@ -824,6 +880,19 @@ CSS = """
   tr.parlay-row { cursor: pointer; }
   tr.parlay-row:hover td { background: rgba(255, 255, 255, 0.02); }
   tr.parlay-row.expanded td { background: rgba(74, 222, 128, 0.04); }
+  /* W/L row shading on the Bets ledger. Pending rows stay neutral.
+     Uses the same alpha range as the slate table's row-focus tints so
+     the visual language carries across both tables. The expanded +
+     hover overrides exist because, without them, the existing
+     .expanded / :hover td rules above paint over the W/L tint. */
+  tr.parlay-row.result-W td { background: rgba(74, 222, 128, 0.16); }
+  tr.parlay-row.result-L td { background: rgba(248, 113, 113, 0.14); }
+  tr.parlay-row.result-W:hover td { background: rgba(74, 222, 128, 0.22); }
+  tr.parlay-row.result-L:hover td { background: rgba(248, 113, 113, 0.20); }
+  tr.parlay-row.result-W.expanded td { background: rgba(74, 222, 128, 0.22); }
+  tr.parlay-row.result-L.expanded td { background: rgba(248, 113, 113, 0.20); }
+  tr.parlay-detail.result-W td { background: rgba(74, 222, 128, 0.18); }
+  tr.parlay-detail.result-L td { background: rgba(248, 113, 113, 0.16); }
   /* Phase 2: Pitcher picker (select + custom-text fallback). */
   .leg-picker { position: relative; }
   .leg-picker select.pitcher-select {
@@ -1112,6 +1181,59 @@ CSS = """
   }
   .sparkline-hover-target:hover ~ .sparkline-dot,
   .sparkline-svg circle.sparkline-dot.sparkline-dot-hover { fill: var(--green); }
+  /* Daily P&L heatmap — GitHub-style row of squares, one per day in
+     the track-record window. Color intensity scales with |units| via
+     the --cell-i custom prop; days with no picks render as a flat
+     muted square. Hover tip is a separate sibling div positioned by
+     a dedicated handler (the sparkline tip handler is SVG-bound). */
+  .cal-wrap { position: relative; margin-top: 14px; }
+  .cal-grid {
+    display: flex;
+    gap: 3px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .cal-cell {
+    width: 22px;
+    height: 22px;
+    border-radius: 3px;
+    background: var(--border);
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .cal-cell.cal-empty { cursor: default; opacity: 0.45; }
+  .cal-cell.pos { background: rgba(74, 222, 128, var(--cell-i, 0.5)); }
+  .cal-cell.neg { background: rgba(248, 113, 113, var(--cell-i, 0.5)); }
+  .cal-cell.flat { background: var(--border); }
+  .cal-cell:hover { outline: 1px solid var(--text); }
+  .cal-legend {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    margin-top: 8px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .cal-legend .cal-cell { width: 12px; height: 12px; cursor: default; }
+  .cal-legend .cal-legend-spacer { width: 6px; }
+  .cal-tip {
+    position: absolute;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 6px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+    margin-top: -6px;
+    white-space: nowrap;
+    z-index: 5;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  }
+  .cal-tip strong { color: var(--text); }
+  .cal-tip .tip-units.pos { color: var(--green); }
+  .cal-tip .tip-units.neg { color: var(--red); }
   td.edge.over { color: var(--green); font-weight: 500; }
   td.edge.under { color: var(--red); font-weight: 500; }
   tr.row-focus.dir-over { background: var(--green-bg); }
@@ -1793,6 +1915,62 @@ def _render_js() -> str:
 
   // Hero card for a single focus pick — surfaces the actionable info
   // (pick direction, line, edge) above the dense table.
+  // Build the "Why this pick" disclosure body — one row per model
+  // input with a ↑K / ↓K / • tilt indicator. Compares each value to a
+  // league pivot rather than a tier label so the meaning is honest:
+  // a tilt simply says "this input pushes Ks up vs. league average".
+  // The card's bet direction is independent — useful when most inputs
+  // tilt opposite the bet (rare, but signals model is reacting to one
+  // strong factor).
+  function renderHeroWhy(r) {{
+    const swstr = f(r.swstr_pct);
+    const recent = f(r.recent_k_pct);
+    const season = f(r.season_k_pct);
+    const oppK = f(r.opp_k_pct);
+    const park = f(r.park_factor);
+    const proj = f(r.proj_ks_v2);
+    const line = f(r.line);
+    const tilt = (v, mean, eps) => {{
+      const e = eps == null ? 0.005 : eps;
+      const d = v - mean;
+      if (d > e) return {{ sym: "↑K", cls: "k-up" }};
+      if (d < -e) return {{ sym: "↓K", cls: "k-down" }};
+      return {{ sym: "•", cls: "k-flat" }};
+    }};
+    const pct1 = v => (v * 100).toFixed(1) + "%";
+    const items = [];
+    const pitcherK = recent !== null ? recent : season;
+    if (pitcherK !== null) {{
+      const t = tilt(pitcherK, 0.22);
+      const lbl = recent !== null ? "Pitcher K% (recent)" : "Pitcher K% (season)";
+      items.push(`<li><span class="why-label">${{lbl}}</span><span class="why-val">${{pct1(pitcherK)}}</span><span class="why-tilt ${{t.cls}}">${{t.sym}}</span></li>`);
+    }}
+    if (swstr !== null) {{
+      const t = tilt(swstr, 0.115);
+      items.push(`<li><span class="why-label">SwStr%</span><span class="why-val">${{pct1(swstr)}}</span><span class="why-tilt ${{t.cls}}">${{t.sym}}</span></li>`);
+    }}
+    if (oppK !== null) {{
+      const t = tilt(oppK, 0.22);
+      items.push(`<li><span class="why-label">Opp lineup K%</span><span class="why-val">${{pct1(oppK)}}</span><span class="why-tilt ${{t.cls}}">${{t.sym}}</span></li>`);
+    }}
+    if (park !== null) {{
+      const t = tilt(park, 1.00, 0.01);
+      items.push(`<li><span class="why-label">Park factor</span><span class="why-val">${{park.toFixed(2)}}</span><span class="why-tilt ${{t.cls}}">${{t.sym}}</span></li>`);
+    }}
+    if (proj !== null && line !== null) {{
+      const delta = proj - line;
+      const cls = delta > 0.05 ? "k-up" : delta < -0.05 ? "k-down" : "k-flat";
+      const sym = delta > 0.05 ? "↑K" : delta < -0.05 ? "↓K" : "•";
+      const sign = delta >= 0 ? "+" : "";
+      items.push(`<li><span class="why-label">Proj vs line</span><span class="why-val">${{proj.toFixed(2)}} vs ${{line.toFixed(1)}}</span><span class="why-tilt ${{cls}}">${{sym}} ${{sign}}${{delta.toFixed(2)}}</span></li>`);
+    }}
+    if (!items.length) return "";
+    return `<details class="pick-why">
+      <summary class="pick-why-summary">Why this pick</summary>
+      <ul class="pick-why-list">${{items.join("")}}</ul>
+    </details>`;
+  }}
+
   function renderHeroPickCard(r) {{
     const edge = f(r.edge);
     if (edge === null) return "";
@@ -1835,6 +2013,7 @@ def _render_js() -> str:
           <span class="pick-card-stat-val card-live-val ${{liveCell.cls}}">${{liveCell.html}}</span>
         </div>
       </div>
+      ${{renderHeroWhy(r)}}
     </div>`;
   }}
 
@@ -2238,6 +2417,86 @@ def _render_js() -> str:
     if (tip) tip.style.display = "none";
   }});
 
+  // Daily P&L heatmap — one row of squares for the track-record window.
+  // Days without picks fill the row with muted "no data" cells so the
+  // calendar reads as a continuous timeline (not just the days you bet).
+  function renderCalendar(dailyUnits, maxDays) {{
+    if (!dailyUnits.length) return "";
+    const byDate = {{}};
+    for (const u of dailyUnits) byDate[u.date] = u;
+    const dates = [];
+    for (let i = maxDays; i >= 1; i--) dates.push(dateInChicago(-i));
+    const maxAbs = Math.max(0.01, ...dailyUnits.map(u => Math.abs(u.units)));
+    const cells = dates.map(d => {{
+      const u = byDate[d];
+      if (!u) {{
+        return `<div class="cal-cell cal-empty" data-cal-date="${{escapeHTML(d)}}" data-cal-empty="1"></div>`;
+      }}
+      const sign = u.units > 0 ? "pos" : u.units < 0 ? "neg" : "flat";
+      const intensity = u.units === 0 ? 0.30 : Math.max(0.30, Math.abs(u.units) / maxAbs);
+      const losses = u.picks - u.hits;
+      return `<div class="cal-cell ${{sign}}" style="--cell-i: ${{intensity.toFixed(2)}};"
+        data-cal-date="${{escapeHTML(d)}}"
+        data-cal-units="${{u.units.toFixed(2)}}"
+        data-cal-hits="${{u.hits}}"
+        data-cal-losses="${{losses}}"
+        data-cal-picks="${{u.picks}}"></div>`;
+    }}).join("");
+    return `<div class="cal-wrap">
+      <div class="sparkline-title">Daily P&L heatmap (last ${{dates.length}} day${{dates.length === 1 ? "" : "s"}})</div>
+      <div class="cal-grid">${{cells}}</div>
+      <div class="cal-legend">
+        <span>Loss</span>
+        <span class="cal-cell neg" style="--cell-i: 1.00;"></span>
+        <span class="cal-cell neg" style="--cell-i: 0.50;"></span>
+        <span class="cal-legend-spacer"></span>
+        <span class="cal-cell cal-empty"></span>
+        <span>no picks</span>
+        <span class="cal-legend-spacer"></span>
+        <span class="cal-cell pos" style="--cell-i: 0.50;"></span>
+        <span class="cal-cell pos" style="--cell-i: 1.00;"></span>
+        <span>Win</span>
+      </div>
+      <div class="cal-tip" style="display:none;"></div>
+    </div>`;
+  }}
+
+  // Calendar hover tooltip. Separate from the sparkline handler because
+  // sparkline-hover-target is SVG-styled (fill/stroke); calendar cells
+  // are HTML divs so they need their own positioning logic.
+  document.addEventListener("mouseover", (e) => {{
+    const t = e.target.closest(".cal-cell[data-cal-date]");
+    if (!t) return;
+    const wrap = t.closest(".cal-wrap");
+    const tip = wrap && wrap.querySelector(".cal-tip");
+    if (!wrap || !tip) return;
+    const date = t.dataset.calDate;
+    if (t.dataset.calEmpty) {{
+      tip.innerHTML = `<strong>${{date}}</strong><br><span class="tip-units">no picks</span>`;
+    }} else {{
+      const units = parseFloat(t.dataset.calUnits);
+      const hits = parseInt(t.dataset.calHits, 10);
+      const losses = parseInt(t.dataset.calLosses, 10);
+      const picks = parseInt(t.dataset.calPicks, 10);
+      const cls = units > 0 ? "pos" : units < 0 ? "neg" : "";
+      const str = `${{units >= 0 ? "+" : ""}}${{units.toFixed(2)}}u`;
+      tip.innerHTML = `<strong>${{date}}</strong><br>`
+        + `<span class="tip-units ${{cls}}">${{str}}</span> · ${{hits}}W–${{losses}}L (${{picks}})`;
+    }}
+    const wrapRect = wrap.getBoundingClientRect();
+    const cellRect = t.getBoundingClientRect();
+    tip.style.left = (cellRect.left - wrapRect.left + cellRect.width / 2) + "px";
+    tip.style.top = (cellRect.top - wrapRect.top) + "px";
+    tip.style.display = "block";
+  }});
+  document.addEventListener("mouseout", (e) => {{
+    const t = e.target.closest(".cal-cell[data-cal-date]");
+    if (!t) return;
+    const wrap = t.closest(".cal-wrap");
+    const tip = wrap && wrap.querySelector(".cal-tip");
+    if (tip) tip.style.display = "none";
+  }});
+
   // Trend arrow comparing the most-recent half of the window to the
   // older half. Only meaningful with ~7+ picks; below that we just show
   // a flat dash to avoid noise.
@@ -2355,6 +2614,8 @@ def _render_js() -> str:
       </tr>`;
     }}).join("");
 
+    const calHTML = renderCalendar(dailyUnits, maxDays);
+
     return `<section class="results-section">
       <h2>Track Record — last ${{maxDays}} days</h2>
       ${{summaryHTML}}
@@ -2369,6 +2630,7 @@ def _render_js() -> str:
         </tr></thead>
         <tbody>${{dayRows}}</tbody>
       </table></div>
+      ${{calHTML}}
     </section>`;
   }}
 
@@ -2526,8 +2788,9 @@ def _render_js() -> str:
     const stakeDisplay = b.free_entry
       ? `<span class="muted" title="Free entry — not counted toward staked">${{fmtMoney(b.stake)}}</span>`
       : fmtMoney(b.stake);
-    const rowCls = "parlay-row" + (extraCls ? " " + extraCls : "");
-    const detailCls = "parlay-detail hidden" + (extraCls ? " " + extraCls : "");
+    const resultRowCls = b.result === "W" ? " result-W" : b.result === "L" ? " result-L" : "";
+    const rowCls = "parlay-row" + (extraCls ? " " + extraCls : "") + resultRowCls;
+    const detailCls = "parlay-detail hidden" + (extraCls ? " " + extraCls : "") + resultRowCls;
     return `<tr data-id="${{escapeHTML(b.id)}}" class="${{rowCls}}">
       <td>${{escapeHTML(fmtDate(b.date))}}</td>
       <td>
