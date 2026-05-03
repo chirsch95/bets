@@ -35,11 +35,13 @@ from .model import (
     project_hitter_ks_v0,
 )
 from .odds import (
+    canonical_team_name,
     fetch_hitter_k_lines,
     has_api_key,
     load_previous_hitter_lines,
     match_hitter_line,
     merge_lines,
+    normalize_name,
 )
 
 load_dotenv(PROJECT_ROOT / ".env")
@@ -53,10 +55,59 @@ def run(target_date: date | None = None) -> None:
         print(f"No probable starters listed for {target_date.isoformat()}.")
         return
 
-    if has_api_key():
+    # Load preserved lines first so we can tell the fetcher which games
+    # are already covered by an earlier run today — those events get
+    # skipped (one Odds API credit each).
+    out_path = OUTPUT_DIR / f"hitter_ks_{target_date.isoformat()}.csv"
+    preserved = load_previous_hitter_lines(out_path)
+
+    # Map each batter (by normalized name) to (game_pk, batter_team) using
+    # today's lineup cards. Lets us attribute preserved lines back to a
+    # game without storing extra columns in the line dict.
+    name_to_game_team: dict[str, tuple[int, str]] = {}
+    for s in starters:
+        # Batter's team = the pitcher's opponent. canonical_team_name
+        # ensures the comparison matches the form home_team/away_team
+        # come back in.
+        team = canonical_team_name(s.get("opp_team_name", ""))
+        for batter in s.get("opp_lineup") or []:
+            bname = normalize_name(batter.get("name") or "")
+            if bname:
+                name_to_game_team[bname] = (s["game_pk"], team)
+
+    covered_teams_by_game: dict[int, set[str]] = {}
+    for entry in preserved:
+        info = name_to_game_team.get(normalize_name(entry.get("hitter_name", "")))
+        if not info:
+            continue
+        game_pk, team = info
+        covered_teams_by_game.setdefault(game_pk, set()).add(team)
+
+    skip_pairs: set[frozenset[str]] = set()
+    for s in starters:
+        home = canonical_team_name(s.get("home_team", ""))
+        away = canonical_team_name(s.get("away_team", ""))
+        if {home, away} <= covered_teams_by_game.get(s["game_pk"], set()):
+            skip_pairs.add(frozenset({home, away}))
+
+    # Skip the API entirely when every game is already covered — the
+    # /events list call alone would still cost 1 credit otherwise.
+    all_game_pks = {s["game_pk"] for s in starters}
+    all_covered = bool(skip_pairs) and len(skip_pairs) == len(all_game_pks)
+
+    if all_covered:
+        print(
+            "Every game's hitter lines already pulled by an earlier run today — "
+            "skipping Odds API call entirely (0 credits).\n"
+        )
+        lines = []
+    elif has_api_key():
         try:
-            lines = fetch_hitter_k_lines(target_date)
-            print(f"Fetched {len(lines)} hitter K lines from sportsbook.\n")
+            lines = fetch_hitter_k_lines(target_date, skip_team_pairs=skip_pairs)
+            print(f"Fetched {len(lines)} hitter K lines from sportsbook.")
+            if skip_pairs:
+                print(f"Skipped {len(skip_pairs)} game(s) already covered by earlier run today.")
+            print()
         except Exception as e:  # noqa: BLE001
             print(f"Failed to fetch hitter K lines: {e}\n")
             lines = []
@@ -67,9 +118,6 @@ def run(target_date: date | None = None) -> None:
             "See README for setup.\n"
         )
 
-    # Preserve any lines captured by an earlier run today.
-    out_path = OUTPUT_DIR / f"hitter_ks_{target_date.isoformat()}.csv"
-    preserved = load_previous_hitter_lines(out_path)
     if preserved:
         merged = merge_lines(lines, preserved, "hitter_name")
         added = len(merged) - len(lines)

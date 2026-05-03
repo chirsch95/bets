@@ -10,13 +10,23 @@ The dashboard has two main surfaces:
 
 Open **https://winningbets.netlify.app/** in any browser. The dashboard fetches the latest CSVs from this GitHub repo at page-load — click **Refresh data** any time to re-pull, no Netlify deploy required (so refreshing is *free*, doesn't burn your Netlify credit budget).
 
-The pipeline runs only when you ask it to — there is no daily cron. Pull lines on demand close to first pitch, either from the local dashboard's **Re-run pipeline** button or from GitHub:
+**Local is the canonical pipeline.** Run it from your laptop close to first pitch:
+
+```sh
+.venv/bin/python -m bets.server   # http://127.0.0.1:8000
+```
+
+Click **Re-run pipeline** in the local dashboard. When the run finishes, `git add output/ && git commit && git push` to publish to Netlify. Wait ~30s for the Netlify deploy, then click **Refresh data** on the public dashboard.
+
+**Escape hatch — `gh workflow run` (use sparingly).** When you're away from your laptop and need Netlify lines updated:
 
 ```sh
 gh workflow run "Refresh dashboard" -R chirsch95/bets
 ```
 
-Wait ~1 minute and click **Refresh data** on the dashboard. Re-runs only spend Odds API credits on games that aren't already priced in today's CSV — covered games are skipped automatically.
+This runs the pipeline on GitHub's runner instead. Free if local has already run + pushed today (the short-circuit sees every starter already priced, so 0 Odds API credits). Costs ~16 credits if it's the first run of the day. Wait ~1 minute and click **Refresh data**.
+
+Re-runs in either environment only spend Odds API credits on games not already priced in today's CSV — covered games are skipped automatically (`skip_team_pairs` in `odds.py`); when every starter is covered, the API call is skipped entirely.
 
 **Periodic (weekly is fine):**
 

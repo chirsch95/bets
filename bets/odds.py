@@ -88,17 +88,23 @@ def fetch_pitcher_k_lines(
 def fetch_hitter_k_lines(
     target_date: date | None = None,
     sport: str = "baseball_mlb",
+    skip_team_pairs: set[frozenset[str]] | None = None,
 ) -> list[dict]:
     """Return aggregated batter_strikeouts O/U lines across all US books.
 
     Each entry: hitter_name, line, over_odds, over_book, under_odds,
     under_book, consensus_p_over, n_books, books.
+
+    skip_team_pairs: optional set of frozenset({home_team, away_team})
+    pairs whose per-event odds call should be skipped (one credit per
+    skipped game). Caller decides which games are already covered.
     """
     return _fetch_player_prop_lines(
         market_key="batter_strikeouts",
         name_key="hitter_name",
         target_date=target_date,
         sport=sport,
+        skip_team_pairs=skip_team_pairs,
     )
 
 

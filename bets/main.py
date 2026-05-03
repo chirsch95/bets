@@ -62,10 +62,10 @@ def run(target_date: date | None = None) -> None:
     # credit each) and the existing data flows through merge_lines below.
     out_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}.csv"
     preserved = load_previous_pitcher_lines(out_path)
+    covered = {normalize_name(p["pitcher_name"]) for p in preserved}
 
     skip_pairs: set[frozenset[str]] = set()
-    if preserved:
-        covered = {normalize_name(p["pitcher_name"]) for p in preserved}
+    if covered:
         # Group starters by game and skip a game only if BOTH starters
         # are already covered (otherwise we still need the event call to
         # pick up the missing side).
@@ -82,7 +82,21 @@ def run(target_date: date | None = None) -> None:
                     canonical_team_name(first["away_team"]),
                 }))
 
-    if has_api_key():
+    # Even when every event would be filtered by skip_pairs, the underlying
+    # /events list call still costs 1 credit. Short-circuit when every
+    # starter is already priced — preserved data flows through merge_lines
+    # and we spend zero credits on the re-run.
+    all_covered = bool(covered) and all(
+        normalize_name(s["pitcher_name"]) in covered for s in starters
+    )
+
+    if all_covered:
+        print(
+            "Every starter already priced from an earlier run today — "
+            "skipping Odds API call entirely (0 credits).\n"
+        )
+        lines = []
+    elif has_api_key():
         try:
             lines = fetch_pitcher_k_lines(target_date, skip_team_pairs=skip_pairs)
             print(f"Fetched {len(lines)} pitcher K lines from sportsbook.")
