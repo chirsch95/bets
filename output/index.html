@@ -1591,6 +1591,17 @@
     if (isNaN(d.getTime())) return { html: "—", locked: false };
     const timeStr = _CT_FMT.format(d) + " CT";
 
+    if (live && live.status === "Live" && live.done) {
+      // Pitcher was pulled — Ks are locked even though the game is still
+      // going, so render like Final but with a "Pulled" label so the user
+      // knows the over/under decision is callable now.
+      const ksStr = (live.ks !== null && live.ks !== undefined)
+        ? `<span class="live-ks">${live.ks}K</span>` : "—";
+      return {
+        html: `<span class="final-text">Pulled</span> · ${ksStr}`,
+        locked: true,
+      };
+    }
     if (live && live.status === "Live") {
       const inning = live.current_inning
         ? escapeHTML(compactInning(live.inning_state, live.current_inning))
@@ -1699,6 +1710,7 @@
       const status = statusByGpk.get(gpk) || { status: "Preview" };
       const result = {
         ks: null,
+        done: false,
         status: status.status,
         detailed: status.detailed || "",
         current_inning: status.current_inning,
@@ -1708,13 +1720,20 @@
       if (box) {
         const key = `ID${pid}`;
         for (const side of ["home", "away"]) {
-          const players = (box.teams && box.teams[side] && box.teams[side].players) || {};
+          const team = (box.teams && box.teams[side]) || {};
+          const players = team.players || {};
           if (players[key]) {
             const stats = players[key].stats && players[key].stats.pitching;
             const ks = stats && stats.strikeOuts;
             if (ks !== undefined && ks !== null && ks !== "") {
               const n = parseInt(ks, 10);
               if (!isNaN(n)) result.ks = n;
+            }
+            // pitchers[] is ordered by appearance; if our pitcher isn't
+            // the last entry, they've been pulled and their Ks are locked.
+            const pitchers = team.pitchers || [];
+            if (pitchers.length && pitchers.includes(pid) && pitchers[pitchers.length - 1] !== pid) {
+              result.done = true;
             }
             break;
           }
@@ -1754,7 +1773,7 @@
       // Stop once nothing is Preview/Live anymore — every game has
       // gone Final, so further polls would be wasted traffic.
       const vals = [..._liveByPid.values()];
-      const stillActive = vals.some(v => v && (v.status === "Preview" || v.status === "Live"));
+      const stillActive = vals.some(v => v && (v.status === "Preview" || (v.status === "Live" && !v.done)));
       if (vals.length && !stillActive) stopPitcherLivePoll();
     } catch (e) { /* swallow — next tick retries */ }
   }
@@ -1869,12 +1888,14 @@
   // Outcome of a card's pick given current K count + line + game state.
   // Mirrors legHitState() on the bets tab. Returns "hit" | "miss" | null.
   // dir is "over" | "under" (the model's recommendation for this card).
-  function pickOutcome(ks, line, dir, status) {
+  // done=true means the pitcher has been pulled — locks the count even
+  // before the game goes Final.
+  function pickOutcome(ks, line, dir, status, done) {
     if (ks === null || ks === undefined) return null;
     const lineNum = parseFloat(line);
     if (isNaN(lineNum)) return null;
     if (ks > lineNum) return dir === "over" ? "hit" : "miss";
-    if (status === "Final") return dir === "under" ? "hit" : "miss";
+    if (status === "Final" || done) return dir === "under" ? "hit" : "miss";
     return null;
   }
 
@@ -1885,7 +1906,18 @@
   // {html, label, cls, locked, outcome} where outcome is "hit"/"miss"/null.
   function renderHeroLive(iso, live, line, dir) {
     const lineNum = parseFloat(line);
-    const outcome = live ? pickOutcome(live.ks, line, dir, live.status) : null;
+    const outcome = live ? pickOutcome(live.ks, line, dir, live.status, live.done) : null;
+    if (live && live.status === "Live" && live.done) {
+      const ksHTML = (live.ks !== null && live.ks !== undefined)
+        ? `<span class="live-ks">${live.ks}K</span>` : "—";
+      return {
+        html: `Pulled · ${ksHTML}`,
+        label: "Pulled",
+        cls: "live-final",
+        locked: true,
+        outcome,
+      };
+    }
     if (live && live.status === "Live") {
       const inning = live.current_inning
         ? escapeHTML(compactInning(live.inning_state, live.current_inning))
@@ -3264,7 +3296,7 @@
       if (document.hidden) return;
       await refreshLiveKs({ silent: true });
       const vals = [...liveKsByPid.values()];
-      const stillActive = vals.some(v => v && (v.status === "Preview" || v.status === "Live"));
+      const stillActive = vals.some(v => v && (v.status === "Preview" || (v.status === "Live" && !v.done)));
       if (vals.length && !stillActive) stopBetsLivePoll();
     }, 60000);
   }
@@ -3279,7 +3311,7 @@
   // is locked: OVER bets WIN (can't go back), UNDER bets LOSE (can't
   // un-record Ks). The opposite cases (over not yet reached, under
   // still alive) need the game to finish before we know.
-  function legHitState(ks, line, ou, status) {
+  function legHitState(ks, line, ou, status, done) {
     if (ks === null || ks === undefined || line === null || line === undefined) {
       return null;
     }
@@ -3287,8 +3319,9 @@
       // OVER won, UNDER busted — locked in regardless of status
       return ou === "O" ? "hit" : "miss";
     }
-    if (status === "Final") {
-      // Final K count ≤ line: OVER missed, UNDER held
+    if (status === "Final" || done) {
+      // K count locked (game over OR pitcher pulled) and ≤ line:
+      // OVER missed, UNDER held.
       return ou === "U" ? "hit" : "miss";
     }
     return null;  // pending
@@ -3310,15 +3343,18 @@
 
     // Mid-game lock-in: if the math is already settled, show the
     // verdict immediately without waiting for Final.
-    const hitState = legHitState(ks, line, leg.ou, status);
+    const hitState = legHitState(ks, line, leg.ou, status, live.done);
     if (hitState) {
       const cls = `live-status ${hitState}`;
       const verdict = hitState === "hit" ? "HIT" : "MISS";
       // Tag the badge with where in the game it locked in (helpful
       // context — "MISS in 5th" is more informative than just "MISS").
-      const inningTag = status === "Live" && live.current_inning
-        ? ` <span class="muted" style="font-size:10px;">(in ${escapeHTML(live.current_inning)})</span>`
-        : "";
+      let inningTag = "";
+      if (live.done && live.current_inning) {
+        inningTag = ` <span class="muted" style="font-size:10px;">(pulled in ${escapeHTML(live.current_inning)})</span>`;
+      } else if (status === "Live" && live.current_inning) {
+        inningTag = ` <span class="muted" style="font-size:10px;">(in ${escapeHTML(live.current_inning)})</span>`;
+      }
       return `<span class="${cls}"><span class="live-ks">${ks} K</span><span class="live-badge">${verdict}</span>${inningTag}</span>`;
     }
 
@@ -3332,6 +3368,13 @@
       cls += " preview";
       badge = `<span class="live-badge">Sched ${escapeHTML(pitch)}</span>`;
       body = "";
+    } else if (status === "Live" && live.done) {
+      // Pitcher pulled but game still going — Ks locked. Reached when
+      // the leg has no line (legHitState couldn't render a verdict).
+      const inning = live.current_inning ? ` ${escapeHTML(live.current_inning)}` : "";
+      cls += " preview";
+      badge = `<span class="live-badge">Pulled${inning}</span>`;
+      body = ks !== null ? `<span class="live-ks">${ks} K</span>` : "";
     } else if (status === "Live") {
       // Game in progress, math not yet settled (ks ≤ line, OVER could
       // still hit / UNDER could still hold).
@@ -3369,7 +3412,7 @@
         const live = liveKsByPid.get(pid);
         if (cell) cell.innerHTML = liveStatusHTML({ ou, line }, live);
         if (live) {
-          legStates.push(legHitState(live.ks, line, ou, live.status));
+          legStates.push(legHitState(live.ks, line, ou, live.status, live.done));
         } else {
           // No live data — could be a leg without a pitcher_id, or fetch
           // hasn't happened yet. Treat as pending.
