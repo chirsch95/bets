@@ -15,7 +15,9 @@ Lines are aggregated across every US bookmaker the API returns:
 from __future__ import annotations
 
 import csv
+import json
 import os
+import tempfile
 import unicodedata
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -23,12 +25,78 @@ from pathlib import Path
 
 import requests
 
+from .config import OUTPUT_DIR
+
 THE_ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 HTTP_TIMEOUT = 10
+
+# Quota log written after each Odds API call. The API returns
+# x-requests-remaining / x-requests-used on every response — those values
+# are authoritative for the monthly cap. We persist the latest snapshot
+# plus a capped per-call history so the dashboard can show running usage.
+USAGE_LOG_PATH = OUTPUT_DIR / "odds_api_usage.json"
+_USAGE_LOG_MAX_CALLS = 500
 
 
 def has_api_key() -> bool:
     return bool(os.environ.get("ODDS_API_KEY"))
+
+
+def _log_quota(resp: requests.Response, endpoint: str) -> None:
+    """Append the response's quota headers to the usage log. Silent on
+    any failure — quota tracking must never break a pipeline run."""
+    try:
+        remaining = resp.headers.get("x-requests-remaining")
+        used = resp.headers.get("x-requests-used")
+        last_cost = resp.headers.get("x-requests-last")
+        if remaining is None or used is None:
+            return
+        remaining_i = int(remaining)
+        used_i = int(used)
+        last_cost_i = int(last_cost) if last_cost is not None else None
+
+        try:
+            current = json.loads(USAGE_LOG_PATH.read_text())
+        except (FileNotFoundError, json.JSONDecodeError):
+            current = {}
+        calls = current.get("calls") or []
+
+        ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        calls.append({
+            "ts": ts,
+            "endpoint": endpoint,
+            "remaining": remaining_i,
+            "used": used_i,
+            "cost": last_cost_i,
+        })
+        if len(calls) > _USAGE_LOG_MAX_CALLS:
+            calls = calls[-_USAGE_LOG_MAX_CALLS:]
+
+        payload = {
+            "last_updated": ts,
+            "remaining": remaining_i,
+            "used": used_i,
+            "cap": remaining_i + used_i,
+            "last_cost": last_cost_i,
+            "last_endpoint": endpoint,
+            "calls": calls,
+        }
+
+        USAGE_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        # Atomic write so a concurrent reader (Flask static route) never
+        # sees a half-written file.
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=USAGE_LOG_PATH.parent,
+            prefix=".odds_api_usage.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            json.dump(payload, tmp)
+            tmp_path = Path(tmp.name)
+        tmp_path.replace(USAGE_LOG_PATH)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _american_to_decimal(american: int) -> float:
@@ -137,6 +205,7 @@ def _fetch_player_prop_lines(
         params={"apiKey": key, "dateFormat": "iso"},
         timeout=HTTP_TIMEOUT,
     )
+    _log_quota(events_resp, "events")
     events_resp.raise_for_status()
     events = [
         e
@@ -173,6 +242,7 @@ def _fetch_player_prop_lines(
             },
             timeout=HTTP_TIMEOUT,
         )
+        _log_quota(odds_resp, f"odds:{market_key}")
         if not odds_resp.ok:
             continue
 

@@ -107,6 +107,26 @@ CSS = """
   html.is-local .local-only { display: revert; }
   .last-refresh { color: var(--muted); font-size: 12px; margin-left: 8px; }
   .last-refresh strong { color: var(--text); font-weight: 500; }
+  .quota-pill {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--panel);
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1;
+    cursor: help;
+  }
+  .quota-pill.visible { display: inline-flex; }
+  .quota-pill strong { color: var(--text); font-weight: 600; }
+  .quota-pill .quota-today { color: var(--muted); }
+  .quota-pill.warn { border-color: var(--yellow); color: var(--yellow); }
+  .quota-pill.warn strong { color: var(--yellow); }
+  .quota-pill.danger { border-color: var(--red); color: var(--red); }
+  .quota-pill.danger strong { color: var(--red); }
   .tabs {
     display: flex;
     gap: 4px;
@@ -1396,6 +1416,7 @@ def _action_buttons_html() -> str:
     return """<div class="actions">
     <button type="button" id="refresh-btn" class="primary">Refresh data</button>
     <span class="last-refresh" id="last-refresh"></span>
+    <span class="quota-pill" id="quota-pill" title=""></span>
     <form class="local-only" action="/refresh" method="post" onsubmit="document.body.classList.add('loading');">
       <button type="submit">Re-run pipeline</button>
     </form>
@@ -4445,6 +4466,66 @@ def _render_js() -> str:
     if (form) form.scrollIntoView({{ behavior: "smooth", block: "center" }});
   }}
 
+  // Reads output/odds_api_usage.json (written by bets/odds.py after each
+  // API call) and renders the header pill. Same baseUrl() pattern as the
+  // CSV fetches: localhost reads via Flask static, Netlify reads via raw
+  // GitHub. Quietly hides the pill if the file is missing or stale.
+  async function loadOddsQuota() {{
+    const pill = document.getElementById("quota-pill");
+    if (!pill) return;
+    try {{
+      const r = await fetch(baseUrl() + "odds_api_usage.json", {{ cache: "no-cache" }});
+      if (!r.ok) return;
+      const data = await r.json();
+      const used = Number(data.used);
+      const cap = Number(data.cap);
+      if (!Number.isFinite(used) || !Number.isFinite(cap) || cap <= 0) return;
+
+      const todayStr = dateInChicago(0);
+      const calls = Array.isArray(data.calls) ? data.calls : [];
+      let todayCalls = 0;
+      let todayCost = 0;
+      for (const c of calls) {{
+        if (!c || !c.ts) continue;
+        const d = new Date(c.ts);
+        if (Number.isNaN(d.getTime())) continue;
+        const local = new Intl.DateTimeFormat("en-CA", {{
+          timeZone: "America/Chicago",
+          year: "numeric", month: "2-digit", day: "2-digit",
+        }}).format(d);
+        if (local === todayStr) {{
+          todayCalls += 1;
+          if (Number.isFinite(Number(c.cost))) todayCost += Number(c.cost);
+        }}
+      }}
+
+      const pct = used / cap;
+      pill.classList.remove("warn", "danger");
+      if (pct >= 0.9) pill.classList.add("danger");
+      else if (pct >= 0.75) pill.classList.add("warn");
+
+      const todaySegment = todayCalls
+        ? ` <span class="quota-today">· +${{todayCost || todayCalls}} today</span>`
+        : "";
+      pill.innerHTML = `Odds API: <strong>${{used}}/${{cap}}</strong>${{todaySegment}}`;
+
+      const updated = data.last_updated
+        ? new Date(data.last_updated).toLocaleString("en-US", {{
+            timeZone: "America/Chicago",
+            month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+          }})
+        : "unknown";
+      pill.title =
+        `Odds API quota\n` +
+        `Used: ${{used}} / ${{cap}} (remaining: ${{data.remaining}})\n` +
+        `Today: ${{todayCalls}} calls, ${{todayCost}} credits\n` +
+        `Last updated: ${{updated}} CT`;
+      pill.classList.add("visible");
+    }} catch (e) {{
+      console.warn("quota fetch failed", e);
+    }}
+  }}
+
   document.addEventListener("DOMContentLoaded", () => {{
     updateHeaderDate();
     applyNoisePreference();
@@ -4472,6 +4553,7 @@ def _render_js() -> str:
     if (btn) btn.addEventListener("click", loadAndRender);
 
     loadAndRender();
+    loadOddsQuota();
 
     // Tick the gametime cells every minute so "in NN min" stays
     // accurate and a row flips to row-locked the moment first pitch

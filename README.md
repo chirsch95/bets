@@ -64,7 +64,7 @@ bets/
 │   ├── __init__.py
 │   ├── config.py                   constants: blend weights, park factors, lineup PA, paths
 │   ├── fetch.py                    MLB Stats API (starters + lineups + pitcher/hitter stats); Baseball Savant SwStr% (12h disk cache)
-│   ├── odds.py                     The Odds API: pitcher_strikeouts + batter_strikeouts, multi-book aggregation, line preservation across reruns
+│   ├── odds.py                     The Odds API: pitcher_strikeouts + batter_strikeouts, multi-book aggregation, line preservation across reruns, quota-header logging (writes output/odds_api_usage.json)
 │   ├── model.py                    v0/v1/v2 pitcher projections + v0 hitter projection; Poisson P(over); odds + EV math
 │   ├── main.py                     CLI: project today's pitcher slate; freezes first run as the day's slate snapshot
 │   ├── hitters.py                  CLI: project today's hitter slate (separate runner for clarity)
@@ -83,6 +83,7 @@ bets/
     ├── pitcher_ks_<date>_settled.csv       projections + actuals + slate_* fields
     ├── hitter_ks_<date>.csv
     ├── hitter_ks_<date>_settled.csv
+    ├── odds_api_usage.json                 latest Odds API quota snapshot + per-call history (powers the header pill)
     └── index.html                          latest dashboard
 ```
 
@@ -136,6 +137,10 @@ The dashboard sorts pitchers into tiers based on the model's edge versus the no-
 By default only **focus + investigate** rows are shown. A "Show N noise / no-line" toggle above the table reveals the rest; preference persists in `localStorage`.
 
 The Opponent column prefixes the team name with **`vs`** when the pitcher is the home team and **`@`** when away, so you can tell at a glance whether the pitcher is on the mound for the top or bottom of each inning. The same convention applies in the hero cards, the Bets-tab pitcher dropdown, and the Yesterday's Results table.
+
+### Odds API quota pill
+
+A pill in the header (`Odds API: 188/500 · +9 today`) tracks usage against the 500/month free-tier cap. The `used/cap` figures come from `x-requests-remaining` / `x-requests-used` headers The Odds API returns on every response, so they're authoritative — captured by `_log_quota` in `bets/odds.py` after each fetch and persisted to `output/odds_api_usage.json` (latest snapshot + per-call history capped at 500 entries). The `+N today` segment is computed locally from the log and answers "did this re-run consume too many credits?" — useful for confirming the skip-covered-games optimization is doing its job (a same-day re-run after every starter is priced should bump it by 0). Pill turns yellow at ≥75% used, red at ≥90%. Hover for last-update time and breakdown. Note: `/events` calls cost 0 credits; only the per-event `/odds` calls bill against quota.
 
 ### Time + live status column
 
