@@ -15,6 +15,7 @@ Schema for one bet (one row in the spreadsheet ≈ one parlay ticket):
       "stake":      10.0,                  # dollars (notional, may be free)
       "odds":       2.29,                  # decimal odds
       "boost":      "Free entry",          # freeform note
+      "site":       "PP" | "UD" | "DK" | "",  # DFS site this ticket was placed on
       "free_entry": false,                 # if true, excluded from staked only
       "result":     "W" | "L" | null,      # null = pending
       "payout":     14.6 | 0 | null,       # null = pending; winnings count
@@ -154,6 +155,9 @@ def _normalize(bet: dict) -> dict:
         free_entry = _coerce_bool(bet.get("free_entry"))
     else:
         free_entry = "free entry" in boost.lower()
+    site = (bet.get("site") or "").strip().upper()
+    if site not in ("PP", "UD", "DK"):
+        site = ""
     return {
         "id": bet.get("id") or _new_id(),
         "date": (bet.get("date") or "").strip(),
@@ -161,6 +165,7 @@ def _normalize(bet: dict) -> dict:
         "stake": _coerce_float(bet.get("stake"), 0.0) or 0.0,
         "odds": _coerce_float(bet.get("odds"), 0.0) or 0.0,
         "boost": boost,
+        "site": site,
         "free_entry": free_entry,
         "result": bet.get("result") if bet.get("result") in ("W", "L") else None,
         "payout": _coerce_float(bet.get("payout"), None),

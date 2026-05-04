@@ -836,9 +836,45 @@ CSS = """
   .ou-toggle button.active.over { background: var(--green); color: #001a00; }
   .ou-toggle button.active.under { background: var(--red); color: #2a0000; }
   .ou-toggle button:hover:not(.active) { color: var(--text); }
+  /* Site selector (PP / UD / DK) — same visual pattern as .ou-toggle. */
+  .site-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+    width: 100%;
+  }
+  .site-toggle button {
+    flex: 1;
+    background: transparent;
+    color: var(--muted);
+    border: none;
+    padding: 7px 0;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+  }
+  .site-toggle button + button { border-left: 1px solid var(--border); }
+  .site-toggle button.active { background: var(--green); color: #001a00; }
+  .site-toggle button:hover:not(.active) { color: var(--text); }
+  .site-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    background: rgba(74, 222, 128, 0.18);
+    color: var(--green);
+    border: 1px solid rgba(74, 222, 128, 0.35);
+    vertical-align: middle;
+  }
   .bets-form-bottom {
     display: grid;
-    grid-template-columns: 100px 100px 1fr;
+    grid-template-columns: 130px 100px 100px 1fr;
     gap: 10px;
     align-items: end;
     margin-bottom: 12px;
@@ -2907,6 +2943,7 @@ def _render_js() -> str:
     const legCount = (b.legs || []).length;
     const legsLabel = `${{legCount}}-leg`;
     const freeBadge = b.free_entry ? '<span class="free-badge" title="Free entry — not counted toward staked; winnings still flow into Net / ROI">FREE</span>' : "";
+    const siteBadge = b.site ? `<span class="site-badge" title="Placed on ${{escapeHTML(b.site)}}">${{escapeHTML(b.site)}}</span>` : "";
     const stakeDisplay = b.free_entry
       ? `<span class="muted" title="Free entry — not counted toward staked">${{fmtMoney(b.stake)}}</span>`
       : fmtMoney(b.stake);
@@ -2921,6 +2958,7 @@ def _render_js() -> str:
           <span class="muted" style="font-size: 11px;">${{legsLabel}}</span>
           <span>${{legsSummary(b.legs)}}</span>
           <span class="parlay-inline-status" data-inline-status></span>
+          ${{siteBadge}}
           ${{freeBadge}}
         </div>
       </td>
@@ -3101,6 +3139,14 @@ def _render_js() -> str:
         <div class="bets-combined-hint" id="bfc-hint">Pick pitchers + O/U on each leg to see live payout, hit %, edge, and EV.</div>
       </div>
       <div class="bets-form-bottom">
+        <div class="bets-field">
+          <label>Site</label>
+          <div class="site-toggle" id="bf-site">
+            <button type="button" data-site="PP" class="active">PP</button>
+            <button type="button" data-site="UD">UD</button>
+            <button type="button" data-site="DK">DK</button>
+          </div>
+        </div>
         <div class="bets-field"><label>Stake</label><input id="bf-stake" type="number" step="0.01" placeholder="10.00"></div>
         <div class="bets-field"><label>Odds</label><input id="bf-odds" type="number" step="0.01" placeholder="2.40"></div>
         <div class="bets-field"><label>Boost (free text)</label><input id="bf-boost" placeholder="Free entry / +30%"></div>
@@ -3504,6 +3550,31 @@ def _render_js() -> str:
   // (loaded from a bet — PUT on save). editingBetId is the discriminant.
   let editingBetId = null;
 
+  // Site toggle (PP / UD / DK) — small button-group with one .active.
+  // Default to PP when nothing is set / value is unrecognized.
+  function readFormSite() {{
+    const grp = document.getElementById("bf-site");
+    if (!grp) return "PP";
+    const active = grp.querySelector("button.active");
+    return active ? (active.dataset.site || "PP") : "PP";
+  }}
+  function setFormSite(site) {{
+    const grp = document.getElementById("bf-site");
+    if (!grp) return;
+    const target = (site || "PP").toUpperCase();
+    const buttons = grp.querySelectorAll("button");
+    let matched = false;
+    buttons.forEach(b => {{
+      const m = b.dataset.site === target;
+      b.classList.toggle("active", m);
+      if (m) matched = true;
+    }});
+    if (!matched && buttons.length) {{
+      buttons.forEach(b => b.classList.remove("active"));
+      buttons[0].classList.add("active");
+    }}
+  }}
+
   function readForm() {{
     const get = id => document.getElementById(id).value.trim();
     return {{
@@ -3512,6 +3583,7 @@ def _render_js() -> str:
       stake: get("bf-stake"),
       odds: get("bf-odds"),
       boost: get("bf-boost"),
+      site: readFormSite(),
       free_entry: document.getElementById("bf-free-entry").checked,
     }};
   }}
@@ -3657,6 +3729,7 @@ def _render_js() -> str:
     document.getElementById("bf-odds").value = "";
     document.getElementById("bf-boost").value = "";
     document.getElementById("bf-free-entry").checked = false;
+    setFormSite("PP");
     document.getElementById("bf-legcount").value = "2";
     document.getElementById("bf-legs").innerHTML = renderLegInputs(2, []);
     setFormMode("add");
@@ -3668,6 +3741,7 @@ def _render_js() -> str:
     document.getElementById("bf-odds").value = bet.odds !== null ? bet.odds : "";
     document.getElementById("bf-boost").value = bet.boost || "";
     document.getElementById("bf-free-entry").checked = !!bet.free_entry;
+    setFormSite(bet.site || "PP");
     const legCount = Math.max(2, Math.min(6, (bet.legs || []).length || 2));
     document.getElementById("bf-legcount").value = String(legCount);
     document.getElementById("bf-legs").innerHTML = renderLegInputs(legCount, bet.legs || []);
@@ -3812,6 +3886,17 @@ def _render_js() -> str:
       oddsEl.addEventListener("input", () => {{
         // Once the user types, stop auto-filling. Their value wins.
         delete oddsEl.dataset.autoFilled;
+      }});
+    }}
+
+    // Site toggle (PP / UD / DK): mark the clicked button .active.
+    const siteGrp = document.getElementById("bf-site");
+    if (siteGrp) {{
+      siteGrp.addEventListener("click", (e) => {{
+        const btn = e.target.closest("button[data-site]");
+        if (!btn) return;
+        siteGrp.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
       }});
     }}
 
