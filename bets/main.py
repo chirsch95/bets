@@ -28,6 +28,7 @@ from .fetch import (
     team_k_rate,
     todays_probable_starters,
 )
+from . import model_ml
 from .model import (
     ev_per_dollar,
     prob_over_poisson,
@@ -166,6 +167,19 @@ def run(target_date: date | None = None) -> None:
             league_k_pct=LEAGUE_K_PCT,
         )
 
+        # Shadow-only ML projection. Returns None when no trained model
+        # is on disk yet — proj_ks_ml is then written as an empty cell
+        # and ignored by every downstream consumer (UI, edge calc, P&L).
+        ml_proj = model_ml.predict({
+            "season_k_pct": ps["season_k_pct"],
+            "recent_k_pct": ps["recent_k_pct"],
+            "swstr_pct": swstr,
+            "opp_k_pct": opp_k,
+            "park_factor": park_factor,
+            "exp_bf": v2["expected_bf"],
+            "is_home": s["is_home"],
+        })
+
         # Persisted as JSON so we can later join against batter handedness /
         # splits without re-fetching the lineup card. Empty list when the
         # lineup wasn't posted yet at slate time.
@@ -190,6 +204,7 @@ def run(target_date: date | None = None) -> None:
             "proj_ks_v0": round(v0, 2),
             "proj_ks_v1": round(v1["proj_ks"], 2),
             "proj_ks_v2": round(v2["proj_ks"], 2),
+            "proj_ks_ml": round(ml_proj, 2) if ml_proj is not None else None,
             "opp_lineup_json": opp_lineup_json,
         }
 
@@ -298,4 +313,9 @@ def run(target_date: date | None = None) -> None:
 
 
 if __name__ == "__main__":
-    run()
+    import sys
+
+    if "--train-ml" in sys.argv:
+        model_ml.train_cli()
+    else:
+        run()
