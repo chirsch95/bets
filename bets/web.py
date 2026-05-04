@@ -1206,6 +1206,33 @@ CSS = """
   .cal-cell.neg { background: rgba(248, 113, 113, var(--cell-i, 0.5)); }
   .cal-cell.flat { background: var(--border); }
   .cal-cell:hover { outline: 1px solid var(--text); }
+  /* Money-mode cells (Bets tab heatmap). Wider so the $ amount fits
+     inside the tile; date label sits underneath the dollar value. */
+  .cal-grid.cal-grid-money { gap: 4px; }
+  .cal-cell.cal-cell-money {
+    width: auto;
+    min-width: 64px;
+    height: 38px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.1;
+  }
+  .cal-cell.cal-cell-money .cal-money-amt {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.2px;
+  }
+  .cal-cell.cal-cell-money .cal-money-date {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+  .cal-cell.cal-cell-money.cal-empty .cal-money-amt { color: var(--muted); font-weight: 400; }
   .cal-legend {
     display: flex;
     gap: 5px;
@@ -2471,8 +2498,20 @@ def _render_js() -> str:
     const tip = wrap && wrap.querySelector(".cal-tip");
     if (!wrap || !tip) return;
     const date = t.dataset.calDate;
+    const isMoney = t.dataset.calMoney === "1";
     if (t.dataset.calEmpty) {{
-      tip.innerHTML = `<strong>${{date}}</strong><br><span class="tip-units">no picks</span>`;
+      tip.innerHTML = `<strong>${{date}}</strong><br><span class="tip-units">no ${{isMoney ? "bets" : "picks"}}</span>`;
+    }} else if (isMoney) {{
+      const pnl = parseFloat(t.dataset.calPnl);
+      const wins = parseInt(t.dataset.calWins, 10);
+      const losses = parseInt(t.dataset.calLosses, 10);
+      const count = parseInt(t.dataset.calCount, 10);
+      const staked = parseFloat(t.dataset.calStaked || "0");
+      const cls = pnl > 0 ? "pos" : pnl < 0 ? "neg" : "";
+      const str = `${{pnl >= 0 ? "+" : "-"}}$${{Math.abs(pnl).toFixed(2)}}`;
+      const stakedStr = staked > 0 ? ` · staked $${{staked.toFixed(2)}}` : "";
+      tip.innerHTML = `<strong>${{date}}</strong><br>`
+        + `<span class="tip-units ${{cls}}">${{str}}</span> · ${{wins}}W–${{losses}}L (${{count}})${{stakedStr}}`;
     }} else {{
       const units = parseFloat(t.dataset.calUnits);
       const hits = parseInt(t.dataset.calHits, 10);
@@ -2739,6 +2778,89 @@ def _render_js() -> str:
       <div class="report-stat"><div class="report-label">Net</div><div class="report-val ${{netCls === "flat" ? "" : netCls}}">${{fmtSignedMoney(t.net)}}</div><div class="report-sub">on settled</div></div>
       <div class="report-stat"><div class="report-label">ROI</div><div class="report-val">${{roiStr}}</div></div>
     </div>${{freeLine}}`;
+  }}
+
+  // Daily $ P&L for the Bets tab heatmap. Mirrors the totals card's
+  // net rule: free-entry winnings flow into P&L (pure upside, no stake
+  // to subtract), but free-entry stakes never count toward staked. So
+  // a free win on a day with no paid bets shows as a green tile.
+  function computeDailyBetsPnl(bets) {{
+    const byDate = {{}};
+    for (const b of bets) {{
+      if (b.result !== "W" && b.result !== "L") continue;
+      const d = b.date;
+      if (!d) continue;
+      if (!byDate[d]) byDate[d] = {{ date: d, pnl: 0, staked: 0, wins: 0, count: 0 }};
+      const stake = parseFloat(b.stake) || 0;
+      const payout = parseFloat(b.payout) || 0;
+      const isFree = !!b.free_entry;
+      if (b.result === "W") {{
+        byDate[d].pnl += payout - (isFree ? 0 : stake);
+        byDate[d].wins += 1;
+      }} else {{
+        byDate[d].pnl += isFree ? 0 : -stake;
+      }}
+      if (!isFree) byDate[d].staked += stake;
+      byDate[d].count += 1;
+    }}
+    return Object.values(byDate);
+  }}
+
+  // Bets-tab heatmap. Like renderCalendar() but each tile shows the $
+  // P&L as text inside; cells are wider to fit the amount. Window ends
+  // on today (last `maxDays` days inclusive); days with no settled
+  // paid bets render as muted empty tiles.
+  function renderBetsCalendar(dailyPnl, maxDays) {{
+    const byDate = {{}};
+    for (const u of dailyPnl) byDate[u.date] = u;
+    const dates = [];
+    for (let i = maxDays - 1; i >= 0; i--) dates.push(dateInChicago(-i));
+    const maxAbs = Math.max(0.01, ...dailyPnl.map(u => Math.abs(u.pnl)));
+    const cells = dates.map(d => {{
+      const dateLabel = fmtDate(d);
+      const u = byDate[d];
+      if (!u) {{
+        return `<div class="cal-cell cal-cell-money cal-empty"
+          data-cal-date="${{escapeHTML(d)}}"
+          data-cal-empty="1"
+          data-cal-money="1">
+          <div class="cal-money-amt">—</div>
+          <div class="cal-money-date">${{escapeHTML(dateLabel)}}</div>
+        </div>`;
+      }}
+      const sign = u.pnl > 0 ? "pos" : u.pnl < 0 ? "neg" : "flat";
+      const intensity = u.pnl === 0 ? 0.30 : Math.max(0.30, Math.abs(u.pnl) / maxAbs);
+      const losses = u.count - u.wins;
+      const amtStr = `${{u.pnl >= 0 ? "+" : "-"}}$${{Math.abs(u.pnl).toFixed(2)}}`;
+      return `<div class="cal-cell cal-cell-money ${{sign}}" style="--cell-i: ${{intensity.toFixed(2)}};"
+        data-cal-date="${{escapeHTML(d)}}"
+        data-cal-money="1"
+        data-cal-pnl="${{u.pnl.toFixed(2)}}"
+        data-cal-staked="${{u.staked.toFixed(2)}}"
+        data-cal-wins="${{u.wins}}"
+        data-cal-losses="${{losses}}"
+        data-cal-count="${{u.count}}">
+        <div class="cal-money-amt">${{amtStr}}</div>
+        <div class="cal-money-date">${{escapeHTML(dateLabel)}}</div>
+      </div>`;
+    }}).join("");
+    return `<div class="cal-wrap">
+      <div class="sparkline-title">Daily P&L heatmap (last ${{dates.length}} day${{dates.length === 1 ? "" : "s"}})</div>
+      <div class="cal-grid cal-grid-money">${{cells}}</div>
+      <div class="cal-legend">
+        <span>Loss</span>
+        <span class="cal-cell neg" style="--cell-i: 1.00;"></span>
+        <span class="cal-cell neg" style="--cell-i: 0.50;"></span>
+        <span class="cal-legend-spacer"></span>
+        <span class="cal-cell cal-empty"></span>
+        <span>no settled bets</span>
+        <span class="cal-legend-spacer"></span>
+        <span class="cal-cell pos" style="--cell-i: 0.50;"></span>
+        <span class="cal-cell pos" style="--cell-i: 1.00;"></span>
+        <span>Win</span>
+      </div>
+      <div class="cal-tip" style="display:none;"></div>
+    </div>`;
   }}
 
   // Compact summary of all legs in a parlay — what shows in the
@@ -3025,8 +3147,12 @@ def _render_js() -> str:
       </div>
     </div>`;
 
+    const dailyPnl = computeDailyBetsPnl(sorted);
+    const heatmapHTML = renderBetsCalendar(dailyPnl, 14);
+
     return `${{toolbar}}
       ${{renderBetsTotals(totals)}}
+      ${{heatmapHTML}}
       <div class="bets-table-wrap"><table class="bets-ledger">
         <thead><tr>
           <th>Date</th>

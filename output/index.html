@@ -2783,7 +2783,7 @@
       </div>`;
     }).join("");
     return `<div class="cal-wrap">
-      <div class="sparkline-title">Daily P&L heatmap (last ${dates.length} days)</div>
+      <div class="sparkline-title">Daily P&L heatmap (last ${dates.length} day${dates.length === 1 ? "" : "s"})</div>
       <div class="cal-grid cal-grid-money">${cells}</div>
       <div class="cal-legend">
         <span>Loss</span>
