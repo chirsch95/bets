@@ -366,6 +366,53 @@
     color: var(--muted);
     font-size: 13px;
   }
+  /* Bet badges on hero cards — one per open parlay this pitcher is in.
+     Color follows the live state of THIS leg so a glance answers "is
+     my action on this guy still alive?". Tooltip carries the parlay
+     details (other legs, site, payout). */
+  .pick-card-bets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0 0 7px;
+  }
+  .pick-card-bet-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    cursor: help;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  .pick-card-bet-badge .bb-label {
+    font-weight: 700;
+    margin-right: 4px;
+    opacity: 0.78;
+  }
+  .pick-card-bet-badge.pending { background: var(--panel); }
+  .pick-card-bet-badge.hit {
+    background: var(--green); color: #001a00; border-color: var(--green);
+  }
+  .pick-card-bet-badge.miss {
+    background: var(--red); color: #2a0000; border-color: var(--red);
+  }
+  .pick-card-bet-badge.hit .bb-label,
+  .pick-card-bet-badge.miss .bb-label { opacity: 0.65; }
+  /* Settled hero cards have a saturated fill — make badges read against
+     that by switching to translucent white panels. */
+  .pick-card.hit .pick-card-bet-badge,
+  .pick-card.miss .pick-card-bet-badge {
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    border-color: rgba(255,255,255,0.3);
+  }
+  .pick-card.hit .pick-card-bet-badge .bb-label,
+  .pick-card.miss .pick-card-bet-badge .bb-label { opacity: 0.85; }
   /* "Why this pick" disclosure on each hero card. Surfaces the raw
      model inputs so you can sanity-check what the edge is reacting to.
      Tilt arrows compare each input to a stable league pivot (not an
@@ -1751,6 +1798,163 @@
   // moment first pitch passes.
   let _liveByPid = new Map();
 
+  // Open-parlay index for the pitcher tab's hero badges. Populated from
+  // /api/bets (local-only — Netlify gets nothing, badges silently
+  // disappear). Keyed by pitcher_id so renderHeroPickCard can look up
+  // every open parlay this pitcher is a leg in.
+  //
+  // _betsByPid: Map<pitcher_id, Array of leg-context objects (label,
+  //   parlayId, ou, line, legCount, otherLegs, site, stake, odds,
+  //   payout, isFreeEntry).
+  // _openParlays: ordered list of open parlays so labels (P1, P2, …)
+  //   stay stable across renders within a single page load.
+  let _betsByPid = new Map();
+  let _openParlays = [];
+
+  function indexBetsByPitcher(state) {
+    _betsByPid = new Map();
+    _openParlays = [];
+    if (!state || !Array.isArray(state.bets)) return;
+    // Open = result not yet recorded. Settled W/L bets are intentionally
+    // excluded — the card's own banner already shows HIT/MISS, and
+    // historical bets clutter today's slate. Sort by date ASC then id
+    // so P-labels are deterministic across re-renders.
+    const open = state.bets
+      .filter(b => b.result === null && Array.isArray(b.legs) && b.legs.length > 0)
+      .sort((a, b) => {
+        const da = a.date || ""; const db = b.date || "";
+        if (da !== db) return da < db ? -1 : 1;
+        const ia = a.id || ""; const ib = b.id || "";
+        return ia < ib ? -1 : (ia > ib ? 1 : 0);
+      });
+    open.forEach((b, i) => {
+      const label = `P${i + 1}`;
+      _openParlays.push({
+        id: b.id, label, legs: b.legs,
+        site: b.site || "", stake: b.stake || 0, odds: b.odds || 0,
+        isFreeEntry: !!b.free_entry,
+      });
+      for (const leg of b.legs) {
+        const pid = leg.pitcher_id;
+        if (!pid) continue;
+        if (!_betsByPid.has(pid)) _betsByPid.set(pid, []);
+        _betsByPid.get(pid).push({
+          parlayId: b.id,
+          label,
+          legCount: b.legs.length,
+          ou: leg.ou,
+          line: leg.line,
+          otherLegs: b.legs.filter(l => l !== leg),
+          site: b.site || "",
+          stake: b.stake || 0,
+          odds: b.odds || 0,
+          isFreeEntry: !!b.free_entry,
+        });
+      }
+    });
+  }
+
+  // Fetch + index. Errors swallowed: the bets API is local-only, so on
+  // Netlify the fetch 404s and badges just don't render. Call before
+  // first pitcher-tab paint so the initial cards already include badges.
+  async function fetchBetsForPitcherTab() {
+    if (!isLocal()) return;
+    try {
+      const r = await fetch("/api/bets", { cache: "no-cache" });
+      if (!r.ok) return;
+      const state = await r.json();
+      indexBetsByPitcher(state);
+    } catch (e) { /* ignore */ }
+  }
+
+  // Live state for one bet leg given the pitcher_id whose card we're
+  // rendering. Reuses legHitState — same logic as the Bets-tab leg cells
+  // so the two views can never disagree. Returns "hit"/"miss"/null.
+  function betLegState(pid, ou, line) {
+    const live = _liveByPid.get(pid);
+    if (!live) return null;
+    const lineToUse = (line === null || line === undefined || line === "")
+      ? live.line : line;
+    return legHitState(live.ks, lineToUse, ou, live.status, live.done);
+  }
+
+  // Build a multi-line tooltip string for one bet badge. Plain text with
+  // newline separators — modern browsers render newlines in title
+  // attrs, and a custom hover popup is overkill for a local tool.
+  function betBadgeTooltip(entry) {
+    const lines = [];
+    const head = `${entry.label} · ${entry.legCount}-leg parlay${entry.site ? " · " + entry.site : ""}`;
+    lines.push(head);
+    const lineStr = (entry.line === null || entry.line === undefined || entry.line === "")
+      ? "" : ` ${entry.line}`;
+    const dirWord = entry.ou === "U" ? "UNDER" : "OVER";
+    lines.push(`This leg: ${dirWord}${lineStr}`);
+    if (entry.otherLegs.length) {
+      lines.push("Other legs:");
+      for (const l of entry.otherLegs) {
+        const olLine = (l.line === null || l.line === undefined || l.line === "")
+          ? "" : ` ${l.line}`;
+        const olDir = l.ou === "U" ? "U" : "O";
+        const olName = l.pitcher || "(pending name)";
+        // Other-leg live status — gives parlay-level "is anything dead
+        // already?" context without crowding the badge itself.
+        const olState = l.pitcher_id ? betLegState(l.pitcher_id, l.ou, l.line) : null;
+        const tag = olState === "hit" ? " ✓" : olState === "miss" ? " ✗" : "";
+        lines.push(`  • ${olName} ${olDir}${olLine}${tag}`);
+      }
+    }
+    if (entry.stake || entry.odds) {
+      const potential = (entry.stake && entry.odds)
+        ? ` → $${(entry.stake * entry.odds).toFixed(2)}` : "";
+      const stakeStr = entry.isFreeEntry ? "Free entry" : `$${(entry.stake || 0).toFixed(2)} stake`;
+      lines.push(`${stakeStr}${potential}`);
+    }
+    return lines.join("\n");
+  }
+
+  function renderBetBadge(entry, pid) {
+    const state = betLegState(pid, entry.ou, entry.line);
+    const cls = state === "hit" ? "hit" : state === "miss" ? "miss" : "pending";
+    const lineStr = (entry.line === null || entry.line === undefined || entry.line === "")
+      ? "" : ` ${entry.line}`;
+    const dirShort = entry.ou === "U" ? "U" : "O";
+    const tip = betBadgeTooltip(entry);
+    return `<span class="pick-card-bet-badge ${cls}" title="${escapeHTML(tip)}" data-parlay-id="${escapeHTML(entry.parlayId)}"><span class="bb-label">${entry.label}</span>${dirShort}${escapeHTML(lineStr)}</span>`;
+  }
+
+  function renderBetBadgesRow(pid) {
+    if (!pid || isNaN(pid)) return "";
+    const entries = _betsByPid.get(pid);
+    if (!entries || !entries.length) return "";
+    const badges = entries.map(e => renderBetBadge(e, pid)).join("");
+    return `<div class="pick-card-bets" data-bet-badges>${badges}</div>`;
+  }
+
+  // Repaint just the bet-badge rows in place (called from the same
+  // 60s tick as the live cells). Cheap: an entry's HTML is small and
+  // we only touch cards that actually have badges.
+  function repaintBetBadges() {
+    document.querySelectorAll(".pick-card[data-pitcher-id]").forEach(card => {
+      const pid = parseInt(card.dataset.pitcherId, 10);
+      if (isNaN(pid)) return;
+      const existing = card.querySelector("[data-bet-badges]");
+      const html = renderBetBadgesRow(pid);
+      if (html) {
+        if (existing) {
+          existing.outerHTML = html;
+        } else {
+          // No existing row — inject after the matchup line so badges
+          // land in the same slot as on initial render.
+          const matchup = card.querySelector(".pick-card-matchup");
+          if (matchup) matchup.insertAdjacentHTML("afterend", html);
+        }
+      } else if (existing) {
+        // Bets removed since last paint — drop the row.
+        existing.remove();
+      }
+    });
+  }
+
   // 60s auto-poll for live MLB stats on the pitcher tab. Self-stops
   // once every tracked game is Final; skipped while the browser tab is
   // hidden so we don't hammer the public MLB API in a background tab.
@@ -1827,6 +2031,10 @@
         }
       }
     });
+    // Bet badges share the same 60s tick — repaint after the live cells
+    // so a leg flipping HIT/MISS changes the badge color in lockstep
+    // with the card's main banner.
+    repaintBetBadges();
   }
 
   function sortKey(r, projField) {
@@ -2052,6 +2260,7 @@
       </div>
       <div class="pick-card-pitcher">${escapeHTML(r.pitcher || "")}</div>
       <div class="pick-card-matchup">${oppPrefix(r)}${escapeHTML(r.opp || "")} · ${formatGameTime(r.game_datetime_utc)}</div>
+      ${renderBetBadgesRow(pidNum)}
       <div class="pick-card-stats">
         <div class="pick-card-stat">
           <span class="pick-card-stat-label">Our Proj</span>
@@ -3223,6 +3432,11 @@
       ]);
       slatePitchers = pitchers;
       slateById = new Map(pitchers.map(p => [p.pitcher_id, p]));
+      // Keep the pitcher-tab badge index aligned with whatever the bets
+      // tab just rendered. Cheap, and saves a duplicate /api/bets fetch
+      // when the user toggles tabs after editing a parlay.
+      indexBetsByPitcher(state);
+      repaintBetBadges();
       panel.innerHTML = renderBetsTab(state);
       wireBetsHandlers(panel);
       // Kick off live K refresh for any pending bets with a pitcher_id,
@@ -4297,6 +4511,10 @@
         fetchTodaysCSV("pitcher_ks"),
         fetchMostRecentSettled("pitcher_ks"),
         fetchTrackRecord(TRACK_DAYS),
+        // Bets index drives the per-card parlay badges. Local-only —
+        // fetchBetsForPitcherTab no-ops on Netlify so badges just don't
+        // render. Awaited alongside slate so badges land on first paint.
+        fetchBetsForPitcherTab(),
       ];
       if (SHOW_HITTERS) {
         fetches.push(
@@ -4305,7 +4523,7 @@
         );
       }
       const results = await Promise.all(fetches);
-      const [pSlate, pSettled, pTrack, hSlate, hSettled] = results;
+      const [pSlate, pSettled, pTrack, _bets, hSlate, hSettled] = results;
 
       const pTab = renderPitcherTab({
         slate: pSlate, settled: pSettled,
