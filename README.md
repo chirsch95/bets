@@ -70,8 +70,9 @@ bets/
 │   ├── hitters.py                  CLI: project today's hitter slate (separate runner for clarity)
 │   ├── settle.py                   Settle yesterday with actuals + slate-time fields (slate_edge/line/over_hit/pnl) for honest pick grading
 │   ├── analyze.py                  Aggregate settled history (pitcher only so far)
-│   ├── live.py                     Slate-pitcher list + live K-count from MLB Stats API boxscore + schedule (60s in-memory cache)
-│   ├── wagers.py                   Personal bet ledger: load/save/CRUD on data/bets.json; legs[] schema; totals exclude free entries
+│   ├── live.py                     Slate-pitcher list + live K-count + pitches + IP from MLB Stats API boxscore + schedule (60s in-memory cache); also surfaces is_home for vs/@ rendering
+│   ├── wagers.py                   Personal bet ledger: load/save/CRUD on data/bets.json; legs[] schema; totals exclude free entries; per-site by_site breakdown
+│   ├── notify.py                   Optional Pushover notifications: bet settle (server-fired) + pulled-starter / one-to-go alerts (live-ks-piggyback). No-op without PUSHOVER_TOKEN/PUSHOVER_USER in .env
 │   ├── web.py                      HTML+JS dashboard shell (client-side rendered); same HTML works on Netlify + localhost (runtime hostname check hides local-only buttons/tab)
 │   └── server.py                   Local Flask server (port 8000); GET / serves shell + output/ CSVs as static; /api/bets, /api/slate-pitchers, /api/live-ks for the local-only Bets tab
 ├── data/                           gitignored — caches + private bet ledger:
@@ -84,6 +85,7 @@ bets/
     ├── hitter_ks_<date>.csv
     ├── hitter_ks_<date>_settled.csv
     ├── odds_api_usage.json                 latest Odds API quota snapshot + per-call history (powers the header pill)
+    ├── icon-128.png                        128×128 PNG of the favicon (for Pushover application icon upload)
     └── index.html                          latest dashboard
 ```
 
@@ -157,7 +159,11 @@ Once first pitch passes the row dims to 55% opacity (it's locked from the bet wi
 
 Each focus pick gets a card at the top with `BET OVER 6.5` (or UNDER), the model edge, our projection, our %, and a **live status box** showing the same data as the row's time cell. While the game is in progress the live box also surfaces a `5 of 6.5` pace label.
 
-**Outcome coloring**: once a card's pick is mathematically settled — mid-game (`ks > line` permanently locks the verdict, or the starter has been pulled with Ks ≤ line) or at Final — the card flips to a **solid saturated fill** (deep green for HIT, deep red for MISS) with white text and a **full-width HIT/MISS banner** across the top, regardless of the original direction. Pre-settle cards keep the subtle pale tint, so the flip is unmistakable on a slate of mostly-pending cards. The original `BET OVER 6.5` pill stays visible in the header so you can see the bet you placed.
+**Pulse line**: while the pitcher is actively throwing (status `Live` and not yet pulled), a thin line under the stats row shows `92 P · 5.2 IP` so you can sense workload + how much of the start is left. Hidden pre-game, on pull, and at Final so it never lingers on stale data. Field source is the same MLB boxscore call already running — no extra API hits.
+
+**Projection tooltip**: hovering "Our Proj" reveals the v0/v1/v2/ML breakdown so you can eyeball where the v2 number came from and how shadow ML compares.
+
+**Outcome coloring**: once a card's pick is mathematically settled — mid-game (`ks > line` permanently locks the verdict, or the starter has been pulled with Ks ≤ line) or at Final — the card flips to a **solid saturated fill** (deep green for HIT, deep red for MISS) with white text and a **full-width ✓ HIT / ✗ MISS banner** across the top, regardless of the original direction. The glyph prefix gives a color-blind-safe redundancy on top of the green/red fill. Pre-settle cards keep the subtle pale tint, so the flip is unmistakable on a slate of mostly-pending cards. The original `BET OVER 6.5` pill stays visible in the header so you can see the bet you placed.
 
 ### Parlay Suggestions
 
@@ -177,6 +183,8 @@ A rolling-window section below Yesterday's Results aggregates focus picks across
 - Top stats: Picks · Hit rate · Units · ROI (with week-over-week trend arrows once 8+ picks accumulate)
 - SVG sparkline of cumulative units (auto-scales, fills green/red below the zero line). **Hover any day** for a tooltip with date, day units (signed/colored), W–L, and cumulative total to that point.
 - OVER/UNDER split panel showing share + per-side W-L + units
+- **ROI by edge bucket** — every graded pick (focus + below-threshold) bucketed by `|edge|` into 0–2% / 2–5% / 5–10% / 10%+ rows with picks · hits · hit% · units · ROI. Sanity check that higher-edge picks actually pay off, and tells you where to set your threshold.
+- **Calibration scatter** — projected v2 K vs actual K with a 45° reference line. Mean residual + RMSE printed above the chart so model bias jumps out (positive residual = model under-projecting, negative = over-projecting). Dot opacity fades by recency so a recent drift is spottable.
 - Per-day breakdown table
 
 Slate-time fields (`slate_edge`, `slate_line`, `slate_over_hit`, etc.) are added by `settle.py` when a `_slate.csv` snapshot exists for the date. Older settled rows fall back to live/final-state fields gracefully.
@@ -194,8 +202,28 @@ A **personal parlay ledger** for tracking actual DFS bets, hidden on Netlify (vi
 - **Inline status badge** on each row (no expand needed): compact `1H · 1M · 1P` next to the legs summary.
 - **Auto-settle** on definitive verdicts: when a parlay is locked Win or Loss, the bet's W/L is automatically updated and payout calculated (`stake × odds` for W, `0` for L). User can override with Reopen.
 - **Free-entry flag**: tickets marked as free entries are excluded from `staked` and `ROI` totals (their winnings still count toward `returned`). Shown separately on a secondary totals line.
+- **Per-site P&L row**: under the totals strip, a "By site:" line breaks out tickets · W–L–pending · net · ROI for each of PP / UD / DK separately, so you can see whether one site is actually paying off differently. Tickets with no site tag are excluded from the row.
 
 The Flask server's `/api/bets` (CRUD), `/api/slate-pitchers`, and `/api/live-ks` routes serve the tab. None of these reach Netlify — the tab itself is hidden via the `local-only` CSS class plus a synchronous head script that adds `is-local` to `<html>` only when `location.hostname` matches localhost.
+
+### Pushover notifications (optional, local-only)
+
+When `PUSHOVER_TOKEN` and `PUSHOVER_USER` are set in `.env`, the local Flask server fires push notifications to your phone for three events:
+
+- **Bet settled** — every transition from pending → W/L through `PUT /api/bets/<id>` (covers manual marks and the JS auto-settle). Title shows net P&L; body lists the legs.
+- **Pulled starter** — when a pitcher on a still-pending bet leg is pulled mid-game (`done=true` and game not yet Final), so you immediately know whether the leg busted or held instead of staring at a frozen K count.
+- **Parlay one-to-go** — when a multi-leg parlay has all-but-one legs hit, exactly one pending, and zero misses. For OVER picks it computes how many more Ks are needed; both O/U include current K count and inning.
+
+Setup: create a free Pushover account at https://pushover.net, install the iOS/Android app and log in, then create an Application/API token (`Apps & Plugins → Create an Application/API Token`). Add both keys to `.env`:
+
+```sh
+PUSHOVER_TOKEN=your-app-api-token
+PUSHOVER_USER=your-user-key
+```
+
+Restart the Flask server. If either env var is missing the notification calls are silent no-ops, so the dashboard works unchanged without Pushover configured.
+
+The pulled-starter and one-to-go alerts piggyback on the dashboard's `/api/live-ks` 60s poll (the dashboard tab needs to be open). The bet-settled alert fires on the API call regardless of which tab is open. Dedup state for the live alerts lives in `data/notify_state.json` (gitignored, prunes entries older than 7 days), one fire per event per day. A 128×128 PNG of the favicon ships at `output/icon-128.png` for upload as the Pushover application icon.
 
 ## Deployment (Netlify + GitHub Actions)
 
