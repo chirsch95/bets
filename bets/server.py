@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, request, send_file, send_from_directory
 
-from . import live, wagers
+from . import live, notify, wagers
 from .config import OUTPUT_DIR, PROJECT_ROOT
 from .hitters import run as run_hitter_projections
 from .main import run as run_projections
@@ -144,9 +144,21 @@ def api_add_bet():
 @app.put("/api/bets/<bet_id>")
 def api_update_bet(bet_id: str):
     payload = request.get_json(silent=True) or {}
+    # Snapshot the prior result so we can fire a notification only on
+    # the pending → W/L transition (and skip W↔L corrections / re-saves
+    # of an already-settled bet).
+    prior = next(
+        (b for b in wagers.load_bets()["bets"] if b.get("id") == bet_id),
+        None,
+    )
+    prior_result = prior.get("result") if prior else None
     updated = wagers.update_bet(bet_id, payload)
     if updated is None:
         return jsonify({"error": "not found"}), 404
+    if prior_result is None and updated.get("result") in ("W", "L"):
+        formatted = notify.format_bet_settle(updated)
+        if formatted:
+            notify.send_pushover(*formatted)
     return jsonify({"bet": updated, "totals": wagers.totals()})
 
 
