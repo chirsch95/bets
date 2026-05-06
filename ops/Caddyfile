@@ -1,0 +1,26 @@
+# Caddy config for the self-hosted bets dashboard on the M1 Air.
+# Listens on localhost:8080; Cloudflare Tunnel proxies the public URL here.
+# Only exposes index.html + the icon — every other path 404s, so the CSVs
+# physically present in output/ are never reachable from the public site.
+
+:8080 {
+    root * /Users/chadhirsch/bets/output
+
+    @public path / /index.html /icon-128.png
+
+    handle @public {
+        header Cache-Control "public, max-age=300"
+        file_server
+    }
+
+    handle {
+        respond 404
+    }
+
+    log {
+        output file /Users/chadhirsch/Library/Logs/bets-caddy.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}
