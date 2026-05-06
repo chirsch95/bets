@@ -6,6 +6,18 @@
 :8080 {
     root * /Users/chadhirsch/bets/output
 
+    # Security headers applied to every response (including 404s).
+    # CSP allows inline <script>/<style> the dashboard relies on, but blocks
+    # externally-loaded JS — so a hijacked main can't ship picks/bets data
+    # off-site via an injected <script src="https://evil/x.js">.
+    # connect-src is the exfil boundary: only github raw + MLB statsapi.
+    header {
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        X-Frame-Options "DENY"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com https://statsapi.mlb.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+    }
+
     @public path / /index.html /icon-128.png
 
     handle @public {
