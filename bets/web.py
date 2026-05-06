@@ -4,13 +4,14 @@ Generates a thin HTML shell with embedded JavaScript. The JS fetches CSV
 files at page-load:
   - On localhost / 127.0.0.1: from same origin (`./...csv`) — Flask
     server serves them from output/.
-  - On any other host (Netlify): from
+  - On any other host (the public URL): from
     `https://raw.githubusercontent.com/chirsch95/bets/main/output/...csv`.
 
-Rendering happens client-side, so committing new CSV data does NOT require
-a Netlify redeploy — saves build credits. Netlify only re-deploys when the
-shell itself (this generated index.html) changes, governed by the
-`netlify.toml` ignore rule.
+Rendering happens client-side, so the M1 Air host (which serves only this
+shell via Caddy + Cloudflare Tunnel) never has to re-render or rebuild
+when CSVs change — the browser pulls fresh CSVs straight from GitHub raw
+on every page load. The Air's 60s `git pull` cron picks up shell changes
+(`output/index.html`) within ~1 minute of any push.
 
 Run with:
     python -m bets.web              # today
@@ -1535,8 +1536,8 @@ def _action_buttons_html() -> str:
     """All three buttons always present in the HTML. The two POST forms
     target Flask routes that only exist on the local server, so they're
     wrapped in `.local-only` (see CSS + head script — revealed only when
-    the page is loaded from localhost). Same HTML works on Netlify and
-    locally without environment-dependent generation."""
+    the page is loaded from localhost). Same HTML works on the public URL
+    and locally without environment-dependent generation."""
     return """<div class="actions">
     <button type="button" id="refresh-btn" class="primary">Refresh data</button>
     <span class="last-refresh" id="last-refresh"></span>
@@ -1831,8 +1832,8 @@ def _render_js() -> str:
   }}
 
   // Fetch live K + game status for the slate's pitchers directly from
-  // the public MLB Stats API. No auth, no proxy needed — works on
-  // Netlify and locally. Returns Map<pitcher_id, liveData>.
+  // the public MLB Stats API. No auth, no proxy needed — works on the
+  // public URL and locally. Returns Map<pitcher_id, liveData>.
   // One /schedule call + one /boxscore per in-progress-or-final game.
   async function fetchLiveKsPublic(slateRows, dateISO) {{
     const byPid = new Map();
@@ -1952,7 +1953,7 @@ def _render_js() -> str:
   let _liveByPid = new Map();
 
   // Open-parlay index for the pitcher tab's hero badges. Populated from
-  // /api/bets (local-only — Netlify gets nothing, badges silently
+  // /api/bets (local-only — public URL gets nothing, badges silently
   // disappear). Keyed by pitcher_id so renderHeroPickCard can look up
   // every open parlay this pitcher is a leg in.
   //
@@ -2008,8 +2009,9 @@ def _render_js() -> str:
   }}
 
   // Fetch + index. Errors swallowed: the bets API is local-only, so on
-  // Netlify the fetch 404s and badges just don't render. Call before
-  // first pitcher-tab paint so the initial cards already include badges.
+  // the public URL the fetch 404s and badges just don't render. Call
+  // before first pitcher-tab paint so the initial cards already include
+  // badges.
   async function fetchBetsForPitcherTab() {{
     if (!isLocal()) return;
     try {{
@@ -4909,8 +4911,8 @@ def _render_js() -> str:
         fetchMostRecentSettled("pitcher_ks"),
         fetchTrackRecord(TRACK_DAYS),
         // Bets index drives the per-card parlay badges. Local-only —
-        // fetchBetsForPitcherTab no-ops on Netlify so badges just don't
-        // render. Awaited alongside slate so badges land on first paint.
+        // fetchBetsForPitcherTab no-ops on the public URL so badges just
+        // don't render. Awaited alongside slate so badges land on first paint.
         fetchBetsForPitcherTab(),
       ];
       if (SHOW_HITTERS) {{
@@ -5063,8 +5065,8 @@ def _render_js() -> str:
 
   // Reads output/odds_api_usage.json (written by bets/odds.py after each
   // API call) and renders the header pill. Same baseUrl() pattern as the
-  // CSV fetches: localhost reads via Flask static, Netlify reads via raw
-  // GitHub. Quietly hides the pill if the file is missing or stale.
+  // CSV fetches: localhost reads via Flask static, public URL reads via
+  // raw GitHub. Quietly hides the pill if the file is missing or stale.
   async function loadOddsQuota() {{
     const pill = document.getElementById("quota-pill");
     if (!pill) return;
@@ -5167,8 +5169,8 @@ def generate(target_date: date | None = None) -> Path | None:
 
     # Tab nav: pitchers always visible. Hitters when SHOW_HITTERS.
     # Bets is always present in the HTML but tagged local-only — the
-    # CSS hides it on Netlify, the JS only allows navigation to it on
-    # localhost.
+    # CSS hides it on the public URL, the JS only allows navigation to
+    # it on localhost.
     pitcher_btn = '<button data-tab="pitchers" type="button">Pitcher Ks <span class="count" id="pitcher-counts"></span></button>'
     hitter_btn = '<button data-tab="hitters" type="button">Hitter Ks <span class="count" id="hitter-counts"></span></button>' if SHOW_HITTERS else ""
     bets_btn = '<button class="local-only" data-tab="bets" type="button">Bets</button>'
@@ -5181,12 +5183,12 @@ def generate(target_date: date | None = None) -> Path | None:
 
     # Note: NO date or timestamp in the shell — those are rendered client-
     # side by JS so the shell stays byte-identical across regens.
-    # Otherwise every daily run would change index.html and trigger a
-    # Netlify redeploy, defeating the credit-saving design.
+    # Otherwise every daily run would change index.html and force the
+    # M1 Air to do an unnecessary `git pull` cycle.
     # Synchronous head script: tags <html> as local-only-buttons-eligible
-    # before first paint, so .local-only buttons stay hidden on Netlify
-    # and reveal cleanly on localhost (no flash). The same hostname check
-    # is mirrored later in baseUrl() to pick the CSV source.
+    # before first paint, so .local-only buttons stay hidden on the
+    # public URL and reveal cleanly on localhost (no flash). The same
+    # hostname check is mirrored later in baseUrl() to pick the CSV source.
     local_check = (
         "(function(){var h=location.hostname;"
         "if(h===''||h==='localhost'||h==='127.0.0.1')"

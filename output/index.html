@@ -1768,8 +1768,8 @@
   }
 
   // Fetch live K + game status for the slate's pitchers directly from
-  // the public MLB Stats API. No auth, no proxy needed — works on
-  // Netlify and locally. Returns Map<pitcher_id, liveData>.
+  // the public MLB Stats API. No auth, no proxy needed — works on the
+  // public URL and locally. Returns Map<pitcher_id, liveData>.
   // One /schedule call + one /boxscore per in-progress-or-final game.
   async function fetchLiveKsPublic(slateRows, dateISO) {
     const byPid = new Map();
@@ -1889,7 +1889,7 @@
   let _liveByPid = new Map();
 
   // Open-parlay index for the pitcher tab's hero badges. Populated from
-  // /api/bets (local-only — Netlify gets nothing, badges silently
+  // /api/bets (local-only — public URL gets nothing, badges silently
   // disappear). Keyed by pitcher_id so renderHeroPickCard can look up
   // every open parlay this pitcher is a leg in.
   //
@@ -1945,8 +1945,9 @@
   }
 
   // Fetch + index. Errors swallowed: the bets API is local-only, so on
-  // Netlify the fetch 404s and badges just don't render. Call before
-  // first pitcher-tab paint so the initial cards already include badges.
+  // the public URL the fetch 404s and badges just don't render. Call
+  // before first pitcher-tab paint so the initial cards already include
+  // badges.
   async function fetchBetsForPitcherTab() {
     if (!isLocal()) return;
     try {
@@ -4846,8 +4847,8 @@
         fetchMostRecentSettled("pitcher_ks"),
         fetchTrackRecord(TRACK_DAYS),
         // Bets index drives the per-card parlay badges. Local-only —
-        // fetchBetsForPitcherTab no-ops on Netlify so badges just don't
-        // render. Awaited alongside slate so badges land on first paint.
+        // fetchBetsForPitcherTab no-ops on the public URL so badges just
+        // don't render. Awaited alongside slate so badges land on first paint.
         fetchBetsForPitcherTab(),
       ];
       if (SHOW_HITTERS) {
@@ -5000,8 +5001,8 @@
 
   // Reads output/odds_api_usage.json (written by bets/odds.py after each
   // API call) and renders the header pill. Same baseUrl() pattern as the
-  // CSV fetches: localhost reads via Flask static, Netlify reads via raw
-  // GitHub. Quietly hides the pill if the file is missing or stale.
+  // CSV fetches: localhost reads via Flask static, public URL reads via
+  // raw GitHub. Quietly hides the pill if the file is missing or stale.
   async function loadOddsQuota() {
     const pill = document.getElementById("quota-pill");
     if (!pill) return;

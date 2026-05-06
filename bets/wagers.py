@@ -1,7 +1,7 @@
 """Personal bet ledger backed by data/bets.json.
 
 Local-only feature — the JSON file lives in data/ which is gitignored,
-so it never reaches GitHub or Netlify. The Flask server exposes CRUD
+so it never reaches GitHub or the public URL. The Flask server exposes CRUD
 endpoints; the dashboard renders a local-only "Bets" tab against them.
 
 Schema for one bet (one row in the spreadsheet ≈ one parlay ticket):
