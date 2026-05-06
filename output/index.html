@@ -3539,13 +3539,19 @@
       const ex = existingLegs[i] || { pitcher: "", ou: "O", pitcher_id: null, line: null };
       const overActive = (ex.ou || "O") === "O" ? "active" : "";
       const underActive = (ex.ou || "O") === "U" ? "active" : "";
-      // Decide initial picker state: if the existing leg has a known
-      // pitcher_id that matches a slate row, select it; else fall back
-      // to "custom" mode with the freeform name.
-      const isCustom = ex.pitcher && (!ex.pitcher_id || !slateById.has(ex.pitcher_id));
-      const selectValue = isCustom
-        ? "custom"
-        : (ex.pitcher_id ? String(ex.pitcher_id) : "");
+      // Decide initial picker state. Three cases:
+      //   1. pitcher_id matches today's slate → preselect that slate option
+      //   2. pitcher_id present but not in today's slate (typical when
+      //      editing a past-date bet): inject a self-only "off-slate"
+      //      option so the id is preserved on save
+      //   3. only a freeform name (no id) → custom-input mode
+      const isOffSlate = !!(ex.pitcher && ex.pitcher_id && !slateById.has(ex.pitcher_id));
+      const isCustom = !!(ex.pitcher && !ex.pitcher_id);
+      const placeholderSel = (!ex.pitcher) ? " selected" : "";
+      const customSel = isCustom ? " selected" : "";
+      const offSlateOpt = isOffSlate
+        ? `<option value="${ex.pitcher_id}" data-line="${ex.line === null || ex.line === undefined ? "" : ex.line}" data-name="${escapeHTML(ex.pitcher || "")}" selected>${escapeHTML(ex.pitcher)} (off-slate)</option>`
+        : "";
       const selectedOpts = slatePitchers.map(p => pitcherOptionHTML(p, ex.pitcher_id)).join("");
       const customClass = isCustom ? "" : "hidden";
       const ctxLine = ex.pitcher_id && slateById.has(ex.pitcher_id)
@@ -3563,9 +3569,10 @@
         <span class="bets-leg-label">Leg ${i + 1}</span>
         <div class="leg-picker">
           <select class="pitcher-select" data-line="${ex.line === null || ex.line === undefined ? "" : ex.line}" data-pitcher-id="${ex.pitcher_id || ""}" data-name="${escapeHTML(ex.pitcher || "")}">
-            <option value="">— Select pitcher —</option>
-            <option value="custom">[Type custom name]</option>
+            <option value=""${placeholderSel}>— Select pitcher —</option>
+            <option value="custom"${customSel}>[Type custom name]</option>
             <option disabled>──────────</option>
+            ${offSlateOpt}
             ${selectedOpts}
           </select>
           <input class="pitcher-custom ${customClass}" type="text" value="${isCustom ? escapeHTML(ex.pitcher || "") : ""}" placeholder="Custom pitcher name" />
@@ -3577,8 +3584,6 @@
           <button type="button" class="${underActive} under" data-ou="U">U</button>
         </div>
       </div>`);
-      // Pre-set the select's value if matched
-      // (note: needs to happen via JS post-render — handled in renderLegInputsWire)
     }
     return rows.join("");
   }
