@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.bets.flask</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/chadhirsch/bets/.venv/bin/python</string>
+        <string>-m</string>
+        <string>bets.server</string>
+    </array>
+    <!-- WorkingDirectory matters: server.py loads .env via load_dotenv(PROJECT_ROOT / ".env"),
+         but launchd runs jobs from / by default — without this, .env wouldn't be found until
+         the import resolves PROJECT_ROOT. Setting cwd is belt-and-suspenders. -->
+    <key>WorkingDirectory</key><string>/Users/chadhirsch/bets</string>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>ThrottleInterval</key><integer>10</integer>
+    <key>StandardOutPath</key><string>/Users/chadhirsch/Library/Logs/bets-flask.out</string>
+    <key>StandardErrorPath</key><string>/Users/chadhirsch/Library/Logs/bets-flask.err</string>
+</dict>
+</plist>

@@ -102,10 +102,14 @@ CSS = """
   .actions button:disabled { opacity: 0.5; cursor: wait; }
   body.loading { cursor: progress; }
   body.loading .actions button { opacity: 0.5; cursor: wait; }
-  /* Hidden by default; revealed only on localhost (see head script). The
-     Re-run/Settle buttons POST to Flask routes that exist only locally. */
+  /* Two visibility scopes set by the head script from location.hostname:
+     - .local-only: laptop only (refresh/settle/push pipeline buttons)
+     - .bets-only:  Tailscale URL only (bets tab + add-to-bets handoff —
+                    bets data is canonical on the Air, accessed via tailnet) */
   .local-only { display: none; }
   html.is-local .local-only { display: revert; }
+  .bets-only { display: none; }
+  html.is-bets .bets-only { display: revert; }
   .last-refresh { color: var(--muted); font-size: 12px; margin-left: 8px; }
   .last-refresh strong { color: var(--text); font-weight: 500; }
   .quota-pill {
@@ -1571,6 +1575,7 @@ def _render_js() -> str:
   function baseUrl() {{
     const h = location.hostname;
     if (h === "localhost" || h === "127.0.0.1" || h === "") return "./";
+    if (/\.ts\.net$/i.test(h)) return "./";  // Air's Flask serves CSVs same-origin
     return RAW_BASE;
   }}
 
@@ -2016,7 +2021,7 @@ def _render_js() -> str:
   // before first pitcher-tab paint so the initial cards already include
   // badges.
   async function fetchBetsForPitcherTab() {{
-    if (!isLocal()) return;
+    if (!isBets()) return;
     try {{
       const r = await fetch("/api/bets", {{ cache: "no-cache" }});
       if (!r.ok) return;
@@ -2549,7 +2554,7 @@ def _render_js() -> str:
       line: l.line,
       ou: l.dir === "over" ? "O" : "U",
     }}));
-    const addBtn = `<button type="button" class="parlay-add-btn local-only" data-legs='${{escapeHTML(JSON.stringify(formLegs))}}' title="Pre-populate the Bets-tab form with these legs">+ Add to bets</button>`;
+    const addBtn = `<button type="button" class="parlay-add-btn bets-only" data-legs='${{escapeHTML(JSON.stringify(formLegs))}}' title="Pre-populate the Bets-tab form with these legs">+ Add to bets</button>`;
     return `<div class="parlay-card ${{evCls}}">
       <div class="parlay-legs">${{legsHTML}}</div>
       <div class="parlay-stats">
@@ -5000,6 +5005,14 @@ def _render_js() -> str:
     return h === "" || h === "localhost" || h === "127.0.0.1";
   }}
 
+  // True when bets data is reachable from this origin: the Air's Flask,
+  // accessed via Tailscale Serve URL (https://<host>.<tailnet>.ts.net/).
+  // Bets tab is hidden everywhere else — public Cloudflare URL never sees
+  // it, and the laptop's localhost server has stale data after migration.
+  function isBets() {{
+    return /\.ts\.net$/i.test(location.hostname);
+  }}
+
   // Default-hide the noise + no-line rows so the eye lands on focus
   // picks first. Persist the preference via localStorage so a power
   // user who wants the full table doesn't have to click every visit.
@@ -5145,7 +5158,7 @@ def _render_js() -> str:
     }});
     const allowed = ["pitchers"];
     if (SHOW_HITTERS) allowed.push("hitters");
-    if (isLocal()) allowed.push("bets");
+    if (isBets()) allowed.push("bets");
     const initial = (location.hash || "#pitchers").slice(1);
     showTab(allowed.includes(initial) ? initial : "pitchers");
 
@@ -5176,26 +5189,29 @@ def generate(target_date: date | None = None) -> Path | None:
     # it on localhost.
     pitcher_btn = '<button data-tab="pitchers" type="button">Pitcher Ks <span class="count" id="pitcher-counts"></span></button>'
     hitter_btn = '<button data-tab="hitters" type="button">Hitter Ks <span class="count" id="hitter-counts"></span></button>' if SHOW_HITTERS else ""
-    bets_btn = '<button class="local-only" data-tab="bets" type="button">Bets</button>'
+    bets_btn = '<button class="bets-only" data-tab="bets" type="button">Bets</button>'
     tabs_nav = "    " + "\n    ".join(b for b in (pitcher_btn, hitter_btn, bets_btn) if b)
 
     pitcher_panel = '<div class="tab-panel active" data-tab="pitchers" id="pitcher-panel">\n    <p class="muted">Loading…</p>\n  </div>'
     hitter_panel = '<div class="tab-panel" data-tab="hitters" id="hitter-panel">\n    <p class="muted">Loading…</p>\n  </div>' if SHOW_HITTERS else ""
-    bets_panel = '<div class="tab-panel local-only" data-tab="bets" id="bets-panel">\n    <p class="muted">Loading…</p>\n  </div>'
+    bets_panel = '<div class="tab-panel bets-only" data-tab="bets" id="bets-panel">\n    <p class="muted">Loading…</p>\n  </div>'
     panels = "  " + "\n  ".join(p for p in (pitcher_panel, hitter_panel, bets_panel) if p)
 
     # Note: NO date or timestamp in the shell — those are rendered client-
     # side by JS so the shell stays byte-identical across regens.
     # Otherwise every daily run would change index.html and force the
     # M1 Air to do an unnecessary `git pull` cycle.
-    # Synchronous head script: tags <html> as local-only-buttons-eligible
-    # before first paint, so .local-only buttons stay hidden on the
-    # public URL and reveal cleanly on localhost (no flash). The same
-    # hostname check is mirrored later in baseUrl() to pick the CSV source.
+    # Synchronous head script: tags <html> with visibility classes before
+    # first paint so .local-only / .bets-only stay hidden on the public URL
+    # and reveal cleanly on the right contexts (no flash).
+    #   is-local → laptop's Flask (refresh/settle/push buttons)
+    #   is-bets  → Air's Flask via Tailscale Serve (bets tab + add-to-bets)
+    # Mirrored in baseUrl() / isBets() / isLocal() in the JS.
     local_check = (
-        "(function(){var h=location.hostname;"
-        "if(h===''||h==='localhost'||h==='127.0.0.1')"
-        "document.documentElement.classList.add('is-local');})();"
+        "(function(){var h=location.hostname;var d=document.documentElement;"
+        "if(h===''||h==='localhost'||h==='127.0.0.1')d.classList.add('is-local');"
+        "if(/\\.ts\\.net$/i.test(h))d.classList.add('is-bets');"
+        "})();"
     )
 
     doc = f"""<!doctype html>
@@ -5216,7 +5232,7 @@ def generate(target_date: date | None = None) -> Path | None:
     <div class="date" id="header-date"></div>
   </div>
   {actions_block}
-  <nav class="tabs{' local-only' if not SHOW_HITTERS else ''}">
+  <nav class="tabs{' bets-only' if not SHOW_HITTERS else ''}">
 {tabs_nav}
   </nav>
 </header>

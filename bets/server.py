@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
+import time
 from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
@@ -185,12 +186,10 @@ def api_add_bet():
     return jsonify({"bet": bet, "totals": wagers.totals()})
 
 
-@app.put("/api/bets/<bet_id>")
-def api_update_bet(bet_id: str):
-    payload = request.get_json(silent=True) or {}
-    # Snapshot the prior result so we can fire a notification only on
-    # the pending → W/L transition (and skip W↔L corrections / re-saves
-    # of an already-settled bet).
+def _settle_bet_with_notify(bet_id: str, payload: dict) -> dict | None:
+    """Update a bet and fire the bet-settled Pushover on pending → W/L.
+    Shared by PUT /api/bets and the background alerts loop so both paths
+    hit the same notification flow."""
     prior = next(
         (b for b in wagers.load_bets()["bets"] if b.get("id") == bet_id),
         None,
@@ -198,11 +197,20 @@ def api_update_bet(bet_id: str):
     prior_result = prior.get("result") if prior else None
     updated = wagers.update_bet(bet_id, payload)
     if updated is None:
-        return jsonify({"error": "not found"}), 404
+        return None
     if prior_result is None and updated.get("result") in ("W", "L"):
         formatted = notify.format_bet_settle(updated)
         if formatted:
             notify.send_pushover(*formatted)
+    return updated
+
+
+@app.put("/api/bets/<bet_id>")
+def api_update_bet(bet_id: str):
+    payload = request.get_json(silent=True) or {}
+    updated = _settle_bet_with_notify(bet_id, payload)
+    if updated is None:
+        return jsonify({"error": "not found"}), 404
     return jsonify({"bet": updated, "totals": wagers.totals()})
 
 
@@ -269,6 +277,99 @@ def _today() -> date:
     return date.today()
 
 
+def _leg_hit_state(ks, line, ou, status, done):
+    """Python port of legHitState() in web.py. Returns 'hit' | 'miss' | None."""
+    if ks is None or line is None:
+        return None
+    if ks > line:
+        return "hit" if ou == "O" else "miss"
+    if status == "Final" or done:
+        return "hit" if ou == "U" else "miss"
+    return None
+
+
+def _parlay_verdict(leg_states: list) -> str | None:
+    """Python port of parlayRollupClass(). Returns 'W' | 'L' | None."""
+    if any(s == "miss" for s in leg_states):
+        return "L"
+    if leg_states and all(s == "hit" for s in leg_states):
+        return "W"
+    return None
+
+
+def _alerts_tick() -> None:
+    """One pass of the background loop: fetch live K for any pending
+    bets, fire pulled-starter / parlay-one-to-go alerts, then auto-settle
+    any bets with definitive verdicts (which fires the bet-settled alert
+    via _settle_bet_with_notify). No-op when no pending bets."""
+    target = _today()
+    state = wagers.load_bets()
+    pending = [b for b in state["bets"] if not b.get("result")]
+    pids: set[int] = set()
+    for b in pending:
+        for leg in b.get("legs") or []:
+            pid = leg.get("pitcher_id")
+            if isinstance(pid, int):
+                pids.add(pid)
+    if not pids:
+        return
+    try:
+        results = live.live_ks(list(pids), target)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.warning("alerts tick: live_ks failed: %s", exc)
+        return
+    try:
+        notify.check_live_alerts(results, target.isoformat())
+    except Exception as exc:  # noqa: BLE001
+        app.logger.warning("alerts tick: check_live_alerts failed: %s", exc)
+    for bet in pending:
+        leg_states = []
+        for leg in bet.get("legs") or []:
+            pid = leg.get("pitcher_id")
+            data = results.get(pid) if isinstance(pid, int) else None
+            if not data:
+                leg_states.append(None)
+                continue
+            leg_states.append(
+                _leg_hit_state(
+                    data.get("ks"),
+                    leg.get("line"),
+                    leg.get("ou"),
+                    data.get("status"),
+                    bool(data.get("done")),
+                )
+            )
+        verdict = _parlay_verdict(leg_states)
+        if verdict is None or bet.get("result") == verdict:
+            continue
+        payout = (
+            round((bet.get("stake") or 0) * (bet.get("odds") or 0), 2)
+            if verdict == "W"
+            else 0
+        )
+        try:
+            _settle_bet_with_notify(bet["id"], {"result": verdict, "payout": payout})
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning(
+                "alerts tick: auto-settle for %s failed: %s", bet.get("id"), exc
+            )
+
+
+def _start_alerts_loop() -> None:
+    """Daemon thread that runs _alerts_tick every 60s. Independent of
+    the browser, so notifications (pulled / one-to-go / bet-settled) and
+    auto-settle fire as long as the local server is running, even if the
+    user is on the pitcher tab or has the browser closed."""
+    def _loop():
+        while True:
+            try:
+                _alerts_tick()
+            except Exception as exc:  # noqa: BLE001
+                app.logger.warning("alerts loop tick crashed: %s", exc)
+            time.sleep(60)
+    threading.Thread(target=_loop, name="alerts-loop", daemon=True).start()
+
+
 def main() -> None:
     port = int(os.environ.get("BETS_PORT", "8000"))
     print(f"Starting dashboard server at http://127.0.0.1:{port}")
@@ -279,6 +380,8 @@ def main() -> None:
     print("  *    /api/bets — local-only bet ledger CRUD")
     print("  GET  /api/slate-pitchers — today's pitcher list for picker")
     print("  GET  /api/live-ks?ids=… — live K + game status, 60s cache")
+    print("  +    background alerts loop — fires Pushover + auto-settles every 60s")
+    _start_alerts_loop()
     app.run(host="127.0.0.1", port=port, debug=False)
 
 
