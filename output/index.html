@@ -1141,6 +1141,48 @@
     color: var(--muted);
     border: 1px solid var(--border);
   }
+  /* Mobile-only "Live now" quick-status strip at the top of the bets
+     panel: one tappable row per still-pending bet, one chip per leg.
+     Hidden on desktop where the full ledger is already at the top. */
+  .bets-quickstatus { display: none; }
+  .bets-quickstatus-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .bets-quickstatus-row:last-child { border-bottom: none; }
+  .bets-quickstatus-row .qs-meta {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-right: 2px;
+    flex: 0 0 auto;
+  }
+  .bets-qs-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: transparent;
+    white-space: nowrap;
+  }
+  .bets-qs-chip .qs-name { font-weight: 600; color: var(--text); }
+  .bets-qs-chip.hit { background: rgba(74, 222, 128, 0.15); border-color: var(--green); color: var(--green); }
+  .bets-qs-chip.hit .qs-name { color: var(--green); }
+  .bets-qs-chip.miss { background: rgba(248, 113, 113, 0.15); border-color: var(--red); color: var(--red); }
+  .bets-qs-chip.miss .qs-name { color: var(--red); }
+  .bets-qs-chip.live { background: rgba(251, 191, 36, 0.12); border-color: var(--yellow); color: var(--yellow); }
+  .bets-qs-chip.live .qs-name { color: var(--text); }
   .bets-toolbar {
     display: flex;
     justify-content: space-between;
@@ -1662,6 +1704,8 @@
        order stays the same so handlers + accessibility tree are
        unchanged — only visual order shifts. */
     #bets-panel { display: flex; flex-direction: column; }
+    #bets-panel > .bets-quickstatus     { order: 0; display: block; margin-bottom: 10px; }
+    #bets-panel > .bets-quickstatus:empty { display: none; }
     #bets-panel > .bets-toolbar         { order: 1; }
     #bets-panel > .bets-table-wrap      { order: 2; }
     #bets-panel > .bets-totals-card     { order: 3; margin-top: 14px; }
@@ -3811,6 +3855,103 @@
     return legs;
   }
 
+  // Mobile-only quick-status strip: one row per still-pending bet,
+  // one chip per leg. Each chip shows the pitcher's last name plus
+  // K count + pitch count when available; row colors reflect the
+  // legHitState verdict (green/red/yellow/gray). The strip is hidden
+  // by CSS on desktop, so this code runs unconditionally.
+  function qsLastName(full) {
+    if (!full) return "?";
+    const parts = String(full).trim().split(/\s+/);
+    let last = parts[parts.length - 1] || full;
+    if (last.length > 8) last = last.slice(0, 8);
+    return last;
+  }
+
+  function renderQuickStatus(state) {
+    const open = (state.bets || []).filter(b =>
+      b.result === null || b.result === undefined || b.result === ""
+    ).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    if (!open.length) {
+      return '<div class="bets-quickstatus" id="bets-quickstatus"></div>';
+    }
+    const rows = open.map(b => {
+      const legCount = (b.legs || []).length;
+      const chips = (b.legs || []).map(l => {
+        const name = qsLastName(l.pitcher);
+        const lineAttr = (l.line === null || l.line === undefined) ? "" : l.line;
+        return `<span class="bets-qs-chip" data-pitcher-id="${l.pitcher_id || ''}" data-ou="${l.ou || ''}" data-line="${lineAttr}">
+          <span class="qs-name">${escapeHTML(name)}</span>
+          <span class="qs-body">—</span>
+        </span>`;
+      }).join("");
+      return `<div class="bets-quickstatus-row" data-qs-bet-id="${escapeHTML(b.id)}">
+        <span class="qs-meta">${legCount}L</span>
+        ${chips}
+      </div>`;
+    }).join("");
+    return `<div class="bets-quickstatus" id="bets-quickstatus">${rows}</div>`;
+  }
+
+  function paintQuickStatus() {
+    const root = document.getElementById("bets-quickstatus");
+    if (!root) return;
+    root.querySelectorAll(".bets-qs-chip[data-pitcher-id]").forEach(chip => {
+      const pid = parseInt(chip.dataset.pitcherId, 10);
+      const ou = chip.dataset.ou || "O";
+      const line = chip.dataset.line ? parseFloat(chip.dataset.line) : null;
+      const body = chip.querySelector(".qs-body");
+      chip.classList.remove("hit", "miss", "live");
+      chip.removeAttribute("title");
+      if (!pid) {
+        if (body) body.textContent = "—";
+        return;
+      }
+      const live = liveKsByPid.get(pid);
+      if (!live) {
+        if (body) body.textContent = "—";
+        return;
+      }
+      const ks = live.ks;
+      const verdict = legHitState(ks, line, ou, live.status, live.done);
+      const ksTxt = (ks !== null && ks !== undefined) ? `${ks}K` : "";
+      const pTxt = (live.pitches !== null && live.pitches !== undefined) ? `${live.pitches}P` : "";
+      let cls = "";
+      let txt;
+      let title = "";
+      if (verdict === "hit") {
+        cls = "hit";
+        txt = ksTxt ? `${ksTxt} ✓` : "✓";
+        title = live.current_inning ? `Hit · ${live.current_inning}` : "Hit";
+      } else if (verdict === "miss") {
+        cls = "miss";
+        txt = ksTxt ? `${ksTxt} ✗` : "✗";
+        title = live.current_inning ? `Miss · ${live.current_inning}` : "Miss";
+      } else if (live.status === "Live") {
+        cls = "live";
+        const parts = [ksTxt, pTxt].filter(Boolean).join(" · ");
+        const inning = live.current_inning ? ` ${live.current_inning}` : "";
+        txt = parts ? `${parts}${inning}` : `Live${inning}`;
+        title = `Live${live.current_inning ? " · " + live.current_inning : ""}`;
+      } else if (live.status === "Preview") {
+        const t = live.first_pitch
+          ? new Date(live.first_pitch).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" })
+          : "TBD";
+        txt = t;
+        title = "Scheduled";
+      } else if (live.status === "Final") {
+        txt = ksTxt || "Final";
+        title = "Final";
+      } else {
+        txt = live.detailed || live.status || "—";
+        title = txt;
+      }
+      if (cls) chip.classList.add(cls);
+      if (body) body.textContent = txt;
+      if (title) chip.title = title;
+    });
+  }
+
   function renderBetsTab(state) {
     const bets = state.bets || [];
     const totals = state.totals;
@@ -3908,7 +4049,8 @@
     const dailyPnl = computeDailyBetsPnl(sorted);
     const heatmapHTML = renderBetsCalendar(dailyPnl, 14);
 
-    return `${toolbar}
+    return `${renderQuickStatus(state)}
+      ${toolbar}
       ${renderBetsTotals(totals)}
       ${heatmapHTML}
       <div class="bets-table-wrap"><table class="bets-ledger">
@@ -4165,6 +4307,9 @@
         autoSettleQueue.push({ betId, verdict: verdictCls });
       }
     });
+    // Mobile-only quick-status strip uses the same liveKsByPid map —
+    // repaint it here so it always stays in sync with the detail rows.
+    paintQuickStatus();
     // Fire auto-settles asynchronously after painting completes.
     if (autoSettleQueue.length) maybeAutoSettle(autoSettleQueue);
   }
@@ -4687,6 +4832,22 @@
     panel.dataset.clickAttached = "true";
 
     panel.addEventListener("click", async (e) => {
+      // Tap on the mobile quick-status strip: expand the matching
+      // ledger row (if collapsed) and scroll it into view so the user
+      // can drill in without thumb-scrolling through the full list.
+      const qsRow = e.target.closest(".bets-quickstatus-row");
+      if (qsRow) {
+        const id = qsRow.dataset.qsBetId;
+        const row = panel.querySelector(`tr.parlay-row[data-id="${id}"]`);
+        const detail = panel.querySelector(`tr.parlay-detail[data-detail-for="${id}"]`);
+        if (detail && detail.classList.contains("hidden")) {
+          if (row) row.classList.add("expanded");
+          detail.classList.remove("hidden");
+          paintLiveKs();
+        }
+        if (row) row.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       // Action buttons take priority — don't toggle expand on button clicks.
       const btn = e.target.closest("button.act");
       if (!btn) {
