@@ -210,10 +210,15 @@ def api_live_ks():
             return jsonify({"error": f"bad date: {target_str}"}), 400
     else:
         target = _today()
-    return jsonify({
-        "date": target.isoformat(),
-        "results": live.live_ks(pitcher_ids, target),
-    })
+    results = live.live_ks(pitcher_ids, target)
+    # Piggyback live-game alerts (pulled starter / parlay one-to-go) on
+    # the dashboard's existing 60s poll. Wrapped broadly so a bug here
+    # never breaks the live-ks fetch the UI depends on.
+    try:
+        notify.check_live_alerts(results, target.isoformat())
+    except Exception as exc:  # noqa: BLE001
+        app.logger.warning("live alerts check failed: %s", exc)
+    return jsonify({"date": target.isoformat(), "results": results})
 
 
 def _today() -> date:
