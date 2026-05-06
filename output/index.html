@@ -183,6 +183,52 @@
     margin-bottom: 8px;
   }
   .sparkline-svg { display: block; width: 100%; height: 60px; }
+  /* Edge-bucket table — same visual idiom as the day breakdown but
+     squeezed into the sparkline panel for grouping. */
+  .track-bucket-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-top: 12px;
+  }
+  table.track-buckets { font-size: 13px; }
+  table.track-buckets th { font-weight: 600; color: var(--muted); }
+  table.track-buckets .pos { color: var(--green); }
+  table.track-buckets .neg { color: var(--red); }
+  /* Calibration scatter. */
+  .calibration-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-top: 12px;
+  }
+  .cal-stats {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .cal-stats strong { color: var(--text); font-weight: 600; }
+  .cal-stats strong.pos { color: var(--green); }
+  .cal-stats strong.neg { color: var(--red); }
+  .cal-stats strong.flat { color: var(--muted); }
+  .cal-svg { display: block; width: 100%; max-width: 480px; height: auto; margin: 0 auto; }
+  .cal-tick { font-size: 9px; fill: var(--muted); }
+  .cal-axis { font-size: 10px; fill: var(--muted); font-weight: 600; }
+  /* Projection cells with a v0/v1/v2/ML breakdown tooltip — subtle
+     dotted underline on the value hints that hover reveals more. */
+  td.num.proj-cell { cursor: help; }
+  td.num.proj-cell:hover { background: rgba(255,255,255,0.04); }
+  .pick-card-stat.proj-cell { cursor: help; }
+  .pick-card-stat.proj-cell .pick-card-stat-val {
+    text-decoration: underline dotted rgba(255,255,255,0.3);
+    text-underline-offset: 3px;
+  }
   .sparkline-axis { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 3; }
   .sparkline-line { fill: none; stroke-width: 2; }
   .sparkline-line.pos { stroke: var(--green); }
@@ -674,6 +720,20 @@
     flex-wrap: wrap;
   }
   .totals-card-secondary strong { color: var(--text); font-weight: 600; }
+  .site-pnl-cell {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .site-pnl-cell strong { color: var(--text); font-weight: 700; }
+  .site-pnl-cell strong.pos { color: var(--green); }
+  .site-pnl-cell strong.neg { color: var(--red); }
   /* Inline parlay status (in the row, no expand needed). */
   .parlay-inline-status {
     display: inline-flex;
@@ -2022,7 +2082,7 @@
       if (chip) {
         if (cell.outcome) {
           chip.className = `pick-card-banner ${cell.outcome}`;
-          chip.textContent = cell.outcome.toUpperCase();
+          chip.textContent = verdictLabel(cell.outcome);
           chip.style.display = "";
         } else {
           chip.className = "pick-card-banner";
@@ -2056,12 +2116,31 @@
     });
   }
 
+  // Tooltip body for a projection cell — shows the v0/v1/v2/ML stack
+  // so you can eyeball where the v2 number actually came from. Useful
+  // while shadow-ML is riding along: see at a glance whether ML
+  // disagrees with v2 and by how much.
+  function projTooltip(r) {
+    const lines = [];
+    const v0 = f(r.proj_ks_v0);
+    const v1 = f(r.proj_ks_v1);
+    const v2 = f(r.proj_ks_v2);
+    const ml = f(r.proj_ks_ml);
+    if (v0 !== null) lines.push(`v0 ${v0.toFixed(2)} — season K%`);
+    if (v1 !== null) lines.push(`v1 ${v1.toFixed(2)} — recent-form blend`);
+    if (v2 !== null) lines.push(`v2 ${v2.toFixed(2)} — SwStr + park`);
+    if (ml !== null) lines.push(`ML ${ml.toFixed(2)} — XGBoost (shadow)`);
+    return lines.length ? lines.join("\n") : "";
+  }
+
   function pitcherRow(r) {
     const edge = f(r.edge);
     const cls = classify(edge);
     const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
     const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + edge.toFixed(3);
     const proj = r.proj_ks_v2 || r.proj_ks_v1 || "";
+    const projTip = projTooltip(r);
+    const projAttr = projTip ? ` title="${escapeHTML(projTip)}"` : "";
     const overTitle = r.over_book ? ` title="Best price at ${escapeHTML(r.over_book)}"` : "";
     const underTitle = r.under_book ? ` title="Best price at ${escapeHTML(r.under_book)}"` : "";
     const novigTitle = r.n_books ? ` title="Median across ${escapeHTML(r.n_books)} books"` : "";
@@ -2082,7 +2161,7 @@
       <td class="player">${escapeHTML(r.pitcher || "")}</td>
       <td>${oppPrefix(r)}${escapeHTML(r.opp || "")}</td>
       <td class="gametime"${isoAttr}${pidAttr}>${cell.html}</td>
-      <td class="num">${dash(proj)}</td>
+      <td class="num proj-cell"${projAttr}>${dash(proj)}</td>
       <td class="num">${dash(r.line)}</td>
       <td class="num"${overTitle}>${dash(r.over_odds)}</td>
       <td class="num"${underTitle}>${dash(r.under_odds)}</td>
@@ -2105,6 +2184,15 @@
     if (ks > lineNum) return dir === "over" ? "hit" : "miss";
     if (status === "Final" || done) return dir === "under" ? "hit" : "miss";
     return null;
+  }
+
+  // Color-blind redundancy: prefix HIT / MISS labels with a glyph so
+  // the verdict reads correctly even if the green/red fill doesn't
+  // distinguish for the reader.
+  function verdictLabel(outcome) {
+    if (outcome === "hit") return "✓ HIT";
+    if (outcome === "miss") return "✗ MISS";
+    return "";
   }
 
   // Live cell content for a hero card. Mirrors the time-cell logic in
@@ -2250,7 +2338,7 @@
       ? ` data-line="${escapeHTML(String(r.line))}"` : "";
     const dirAttr = ` data-dir="${dir}"`;
     const banner = liveCell.outcome
-      ? `<div class="pick-card-banner ${liveCell.outcome}" data-outcome-chip>${liveCell.outcome.toUpperCase()}</div>`
+      ? `<div class="pick-card-banner ${liveCell.outcome}" data-outcome-chip>${verdictLabel(liveCell.outcome)}</div>`
       : `<div class="pick-card-banner" data-outcome-chip style="display:none;"></div>`;
     return `<div class="${cardCls}"${isoAttr}${pidAttr}${lineAttr}${dirAttr}>
       ${banner}
@@ -2262,7 +2350,7 @@
       <div class="pick-card-matchup">${oppPrefix(r)}${escapeHTML(r.opp || "")} · ${formatGameTime(r.game_datetime_utc)}</div>
       ${renderBetBadgesRow(pidNum)}
       <div class="pick-card-stats">
-        <div class="pick-card-stat">
+        <div class="pick-card-stat proj-cell"${projTooltip(r) ? ` title="${escapeHTML(projTooltip(r))}"` : ""}>
           <span class="pick-card-stat-label">Our Proj</span>
           <span class="pick-card-stat-val">${dash(proj)}</span>
         </div>
@@ -2463,8 +2551,8 @@
       if (cls === "focus" && dir) {
         const hit = (dir === "over" && overWon) || (dir === "under" && !overWon);
         resultCell = hit
-          ? '<td class="hit">HIT</td>'
-          : '<td class="miss">MISS</td>';
+          ? '<td class="hit">✓ HIT</td>'
+          : '<td class="miss">✗ MISS</td>';
       } else {
         resultCell = overWon
           ? '<td class="muted">OVER hit</td>'
@@ -2540,6 +2628,11 @@
   // {date, dir, won, pnl}. Slate-time fields preferred — they reflect
   // the line/odds we'd actually have bet. Falls back to live fields for
   // any pre-snapshot history.
+  //
+  // Returns {focus, all, settled} where:
+  //   focus    — focus-classified picks only (drives summary + sparkline)
+  //   all      — every graded pick with an edge value (drives edge buckets)
+  //   settled  — every settled row regardless of focus (drives calibration)
   async function fetchTrackRecord(maxDays = 14) {
     const fetches = [];
     for (let i = 1; i <= maxDays; i++) {
@@ -2550,31 +2643,170 @@
       );
     }
     const results = await Promise.all(fetches);
-    const picks = [];
+    const focus = [];
+    const all = [];
+    const settled = [];
     for (const { d, text } of results) {
       if (!text) continue;
       const rows = parseCSV(text);
       for (const r of rows) {
-        if (f(r.actual_ks) === null) continue;
+        const actual = f(r.actual_ks);
+        if (actual === null) continue;
+        const proj = f(r.proj_ks_v2) !== null
+          ? f(r.proj_ks_v2)
+          : f(r.proj_ks_v1);
+        if (proj !== null) {
+          settled.push({
+            date: d,
+            pitcher: r.pitcher || "",
+            proj,
+            actual,
+          });
+        }
         const edge = f(slateOrLive(r, "slate_edge", "edge"));
         if (edge === null) continue;
-        if (classify(edge) !== "focus") continue;
-        const dir = edge > 0 ? "over" : "under";
         const overHit = f(slateOrLive(r, "slate_over_hit", "over_hit"));
         if (overHit === null) continue;
+        const dir = edge > 0 ? "over" : "under";
         const won = (dir === "over" && overHit >= 1) ||
                     (dir === "under" && overHit < 1);
         const pnlField = dir === "over"
           ? slateOrLive(r, "slate_over_pnl", "over_pnl")
           : slateOrLive(r, "slate_under_pnl", "under_pnl");
         const pnl = f(pnlField);
-        picks.push({
+        const pick = {
           date: d, pitcher: r.pitcher || "", dir, won,
+          edge,
           pnl: pnl === null ? 0 : pnl,
-        });
+        };
+        all.push(pick);
+        if (classify(edge) === "focus") focus.push(pick);
       }
     }
-    return picks;
+    return { focus, all, settled };
+  }
+
+  // Bucket picks by absolute edge magnitude. Reveals whether the edge
+  // calc is actually predictive — high-edge bucket should outperform
+  // low. Buckets cover both OVER and UNDER picks; an UNDER with edge
+  // -8% sits in the same 5–10% bucket as an OVER with edge +8%.
+  function renderEdgeBuckets(allPicks) {
+    if (!allPicks.length) return "";
+    const buckets = [
+      { label: "0–2%",  lo: 0,    hi: 0.02 },
+      { label: "2–5%",  lo: 0.02, hi: 0.05 },
+      { label: "5–10%", lo: 0.05, hi: 0.10 },
+      { label: "10%+",  lo: 0.10, hi: Infinity },
+    ];
+    const rows = buckets.map(b => {
+      const ps = allPicks.filter(p => {
+        const ae = Math.abs(p.edge);
+        return ae >= b.lo && ae < b.hi;
+      });
+      const n = ps.length;
+      const hits = ps.filter(p => p.won).length;
+      const units = ps.reduce((s, p) => s + p.pnl, 0);
+      const hitPct = n ? (hits / n * 100).toFixed(0) + "%" : "—";
+      const roi = n ? (units / n * 100) : null;
+      const roiStr = roi === null ? "—" : (roi >= 0 ? "+" : "") + roi.toFixed(1) + "%";
+      const uStr = (units >= 0 ? "+" : "") + units.toFixed(2);
+      const uCls = units >= 0 ? "pos" : "neg";
+      const roiCls = roi === null ? "" : (roi >= 0 ? "pos" : "neg");
+      return `<tr>
+        <td><strong>${escapeHTML(b.label)}</strong></td>
+        <td class="num">${n}</td>
+        <td class="num">${hits}</td>
+        <td class="num">${hitPct}</td>
+        <td class="num ${uCls}">${uStr}u</td>
+        <td class="num ${roiCls}">${roiStr}</td>
+      </tr>`;
+    }).join("");
+    return `<div class="track-bucket-wrap">
+      <div class="sparkline-title">ROI by edge bucket
+        <span class="muted" style="font-weight: 400;">— is the edge calc predictive?</span>
+      </div>
+      <div class="table-scroll"><table class="track-buckets">
+        <thead><tr>
+          <th>|Edge|</th>
+          <th class="num">Picks</th>
+          <th class="num">Hits</th>
+          <th class="num">Hit %</th>
+          <th class="num">Units</th>
+          <th class="num">ROI</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+  }
+
+  // Calibration scatter: projected K vs actual K, with a 45° reference
+  // line. Bias is visible at a glance — points above the line = model
+  // under-projecting, below = over-projecting. Dot color encodes recency
+  // (older points faded) so a recent drift is spottable too.
+  function renderCalibrationScatter(settled) {
+    if (settled.length < 5) return "";
+    const w = 360, h = 280, padL = 36, padR = 12, padT = 18, padB = 30;
+    const xs = settled.map(p => p.proj);
+    const ys = settled.map(p => p.actual);
+    const lo = Math.floor(Math.min(0, ...xs, ...ys));
+    const hi = Math.ceil(Math.max(...xs, ...ys, 1));
+    const span = (hi - lo) || 1;
+    const xFor = v => padL + ((v - lo) / span) * (w - padL - padR);
+    const yFor = v => h - padB - ((v - lo) / span) * (h - padT - padB);
+
+    // Dates ordered oldest→newest so newer points get fuller opacity.
+    const datesAsc = [...new Set(settled.map(p => p.date))].sort();
+    const dateIdx = new Map(datesAsc.map((d, i) => [d, i]));
+    const opacityFor = d => {
+      if (datesAsc.length <= 1) return 1;
+      const idx = dateIdx.get(d);
+      return 0.35 + 0.65 * (idx / (datesAsc.length - 1));
+    };
+
+    const ticks = [];
+    for (let v = lo; v <= hi; v += 2) {
+      ticks.push(`<line x1="${xFor(v)}" y1="${padT}" x2="${xFor(v)}" y2="${h - padB}" stroke="var(--border)" stroke-width="0.5" />`);
+      ticks.push(`<line x1="${padL}" y1="${yFor(v)}" x2="${w - padR}" y2="${yFor(v)}" stroke="var(--border)" stroke-width="0.5" />`);
+      ticks.push(`<text x="${xFor(v)}" y="${h - padB + 14}" class="cal-tick" text-anchor="middle">${v}</text>`);
+      ticks.push(`<text x="${padL - 6}" y="${yFor(v) + 3}" class="cal-tick" text-anchor="end">${v}</text>`);
+    }
+
+    // 45° reference line — perfect calibration sits exactly on this.
+    const ref = `<line x1="${xFor(lo)}" y1="${yFor(lo)}" x2="${xFor(hi)}" y2="${yFor(hi)}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" />`;
+
+    const dots = settled.map(p => {
+      const cx = xFor(p.proj).toFixed(1);
+      const cy = yFor(p.actual).toFixed(1);
+      const op = opacityFor(p.date).toFixed(2);
+      const tip = `${p.pitcher} ${p.date}: proj ${p.proj.toFixed(2)} → actual ${p.actual}`;
+      return `<circle cx="${cx}" cy="${cy}" r="3.5" fill="var(--accent, #4a90e2)" fill-opacity="${op}"><title>${escapeHTML(tip)}</title></circle>`;
+    }).join("");
+
+    // Mean residual = systematic bias. + = model under, - = model over.
+    const residuals = settled.map(p => p.actual - p.proj);
+    const meanRes = residuals.reduce((s, r) => s + r, 0) / residuals.length;
+    const rmse = Math.sqrt(residuals.reduce((s, r) => s + r * r, 0) / residuals.length);
+    const biasLabel = meanRes > 0.05 ? "model UNDER-projecting"
+                    : meanRes < -0.05 ? "model OVER-projecting"
+                    : "well-calibrated";
+    const biasCls = meanRes > 0.05 ? "neg" : meanRes < -0.05 ? "pos" : "flat";
+
+    return `<div class="calibration-wrap">
+      <div class="sparkline-title">Calibration: projected vs actual Ks
+        <span class="muted" style="font-weight: 400;">— ${settled.length} starts</span>
+      </div>
+      <div class="cal-stats">
+        <span>Mean residual: <strong class="${biasCls}">${meanRes >= 0 ? "+" : ""}${meanRes.toFixed(2)} K</strong> (${biasLabel})</span>
+        <span>RMSE: <strong>${rmse.toFixed(2)} K</strong></span>
+      </div>
+      <svg class="cal-svg" viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet" aria-label="Calibration scatter">
+        ${ticks.join("")}
+        ${ref}
+        ${dots}
+        <text x="${w / 2}" y="${h - 4}" class="cal-axis" text-anchor="middle">Projected Ks</text>
+        <text x="10" y="${h / 2}" class="cal-axis" text-anchor="middle" transform="rotate(-90 10 ${h / 2})">Actual Ks</text>
+      </svg>
+    </div>`;
   }
 
   // Build sparkline as inline SVG. Plots cumulative units across the
@@ -2782,7 +3014,12 @@
     return `<div class="track-trend ${cls}">${arrow} ${fmt(delta)} vs prior</div>`;
   }
 
-  function renderTrackRecord(picks, maxDays) {
+  function renderTrackRecord(track, maxDays) {
+    // Backwards compat: callers used to pass an array of focus picks.
+    // Now they pass {focus, all, settled}. Accept either.
+    const picks = Array.isArray(track) ? track : (track.focus || []);
+    const allPicks = Array.isArray(track) ? track : (track.all || []);
+    const settledRows = Array.isArray(track) ? [] : (track.settled || []);
     if (!picks.length) {
       return `<section class="results-section">
         <h2>Track Record — last ${maxDays} days</h2>
@@ -2890,11 +3127,16 @@
 
     const calHTML = renderCalendar(dailyUnits, maxDays);
 
+    const bucketHTML = renderEdgeBuckets(allPicks);
+    const calibrationHTML = renderCalibrationScatter(settledRows);
+
     return `<section class="results-section">
       <h2>Track Record — last ${maxDays} days</h2>
       ${summaryHTML}
       ${sparkHTML}
       ${splitHTML}
+      ${bucketHTML}
+      ${calibrationHTML}
       <div class="table-scroll" style="margin-top: 12px;"><table>
         <thead><tr>
           <th>Date</th>
@@ -3006,13 +3248,40 @@
         <span class="muted">(not counted toward staked; winnings flow into Net / ROI)</span>
       </div>`;
     }
+    // Per-site breakdown row — only renders if at least one bet has a
+    // site tag. Each cell is count · WL record · net · ROI so you can
+    // see at a glance whether one site is actually paying off
+    // differently from the others.
+    let bySiteLine = "";
+    const sites = t.by_site || {};
+    const siteCodes = Object.keys(sites);
+    if (siteCodes.length) {
+      const cells = siteCodes.map(code => {
+        const s = sites[code];
+        const wlpBits = [];
+        if (s.wins) wlpBits.push(`${s.wins}W`);
+        if (s.losses) wlpBits.push(`${s.losses}L`);
+        if (s.pending) wlpBits.push(`${s.pending}P`);
+        const wlp = wlpBits.join("–") || "no settled";
+        const sNetCls = s.net > 0 ? "pos" : s.net < 0 ? "neg" : "";
+        const sRoi = s.roi !== null
+          ? `${s.roi >= 0 ? "+" : ""}${(s.roi * 100).toFixed(1)}%`
+          : "—";
+        return `<span class="site-pnl-cell">
+          <strong>${escapeHTML(code)}</strong> ${s.count} ticket${s.count === 1 ? "" : "s"} · ${wlp} · <strong class="${sNetCls}">${fmtSignedMoney(s.net)}</strong> · ${sRoi}
+        </span>`;
+      }).join("");
+      bySiteLine = `<div class="totals-card-secondary site-pnl-row">
+        <strong>By site:</strong> ${cells}
+      </div>`;
+    }
     return `<div class="bets-totals-card">
       <div class="report-stat"><div class="report-label">Bets</div><div class="report-val">${t.count}</div><div class="report-sub">${settledLabel}</div></div>
       <div class="report-stat"><div class="report-label">Staked</div><div class="report-val">${fmtMoney(t.staked)}</div>${stakedSub}</div>
       <div class="report-stat"><div class="report-label">Returned</div><div class="report-val">${fmtMoney(t.returned)}</div></div>
       <div class="report-stat"><div class="report-label">Net</div><div class="report-val ${netCls === "flat" ? "" : netCls}">${fmtSignedMoney(t.net)}</div><div class="report-sub">on settled</div></div>
       <div class="report-stat"><div class="report-label">ROI</div><div class="report-val">${roiStr}</div></div>
-    </div>${freeLine}`;
+    </div>${bySiteLine}${freeLine}`;
   }
 
   // Daily $ P&L for the Bets tab heatmap. Mirrors the totals card's
@@ -3560,7 +3829,7 @@
     const hitState = legHitState(ks, line, leg.ou, status, live.done);
     if (hitState) {
       const cls = `live-status ${hitState}`;
-      const verdict = hitState === "hit" ? "HIT" : "MISS";
+      const verdict = hitState === "hit" ? "✓ HIT" : "✗ MISS";
       // Tag the badge with where in the game it locked in (helpful
       // context — "MISS in 5th" is more informative than just "MISS").
       let inningTag = "";
@@ -3665,8 +3934,8 @@
     // all-pending with no live data isn't useful.
     if (hits === 0 && misses === 0) return "";
     const parts = [];
-    if (hits) parts.push(`<span class="pi-h">${hits}H</span>`);
-    if (misses) parts.push(`<span class="pi-m">${misses}M</span>`);
+    if (hits) parts.push(`<span class="pi-h">✓${hits}</span>`);
+    if (misses) parts.push(`<span class="pi-m">✗${misses}</span>`);
     if (pending) parts.push(`<span class="pi-p">${pending}P</span>`);
     // The wrapper already exists in the row markup; we just inject the
     // inner badge content here.
@@ -3743,8 +4012,8 @@
     const misses = legStates.filter(s => s === "miss").length;
     const pending = legStates.filter(s => s === null).length;
     let verdict;
-    if (misses > 0) verdict = "Loss confirmed";
-    else if (pending === 0 && hits > 0) verdict = "Win confirmed";
+    if (misses > 0) verdict = "✗ Loss confirmed";
+    else if (pending === 0 && hits > 0) verdict = "✓ Win confirmed";
     else verdict = "In progress";
     const counts = `${hits} hit · ${misses} miss · ${pending} pending`;
     // If the user has manually marked a result that disagrees with the
@@ -3753,9 +4022,9 @@
     const row = document.querySelector(`tr.parlay-row[data-id="${betId}"]`);
     const resultCell = row ? row.querySelector("td.result") : null;
     const userResult = resultCell ? resultCell.textContent.trim() : "";
-    if (verdict === "Loss confirmed" && userResult === "W") {
+    if (verdict === "✗ Loss confirmed" && userResult === "W") {
       mismatch = `<span class="parlay-rollup-mismatch">⚠ Marked W but legs say loss — click Reopen to revisit</span>`;
-    } else if (verdict === "Win confirmed" && userResult === "L") {
+    } else if (verdict === "✓ Win confirmed" && userResult === "L") {
       mismatch = `<span class="parlay-rollup-mismatch">⚠ Marked L but all legs hit — click Reopen to revisit</span>`;
     }
     return `<span class="parlay-rollup-verdict">${verdict}</span><span class="parlay-rollup-counts">${counts}</span>${mismatch}`;
