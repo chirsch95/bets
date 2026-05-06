@@ -3903,13 +3903,19 @@
       const body = chip.querySelector(".qs-body");
       chip.classList.remove("hit", "miss", "live");
       chip.removeAttribute("title");
+      // Pitcher's wagered side + line (e.g. "U7.5"). Prefixed onto every
+      // body so the user can read current Ks against what they bet
+      // without expanding the parlay row.
+      const ouLine = (line !== null && !isNaN(line))
+        ? `${ou}${line.toFixed(1)}` : "";
+      const withLine = (s) => (ouLine && s) ? `${ouLine} · ${s}` : (ouLine || s || "—");
       if (!pid) {
-        if (body) body.textContent = "—";
+        if (body) body.textContent = withLine("");
         return;
       }
       const live = liveKsByPid.get(pid);
       if (!live) {
-        if (body) body.textContent = "—";
+        if (body) body.textContent = withLine("");
         return;
       }
       const ks = live.ks;
@@ -3921,30 +3927,31 @@
       let title = "";
       if (verdict === "hit") {
         cls = "hit";
-        txt = ksTxt ? `${ksTxt} ✓` : "✓";
+        txt = withLine(ksTxt ? `${ksTxt} ✓` : "✓");
         title = live.current_inning ? `Hit · ${live.current_inning}` : "Hit";
       } else if (verdict === "miss") {
         cls = "miss";
-        txt = ksTxt ? `${ksTxt} ✗` : "✗";
+        txt = withLine(ksTxt ? `${ksTxt} ✗` : "✗");
         title = live.current_inning ? `Miss · ${live.current_inning}` : "Miss";
       } else if (live.status === "Live") {
         cls = "live";
         const parts = [ksTxt, pTxt].filter(Boolean).join(" · ");
         const inning = live.current_inning ? ` ${live.current_inning}` : "";
-        txt = parts ? `${parts}${inning}` : `Live${inning}`;
+        const stat = parts ? `${parts}${inning}` : `Live${inning}`;
+        txt = withLine(stat);
         title = `Live${live.current_inning ? " · " + live.current_inning : ""}`;
       } else if (live.status === "Preview") {
         const t = live.first_pitch
           ? new Date(live.first_pitch).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" })
           : "TBD";
-        txt = t;
+        txt = withLine(t);
         title = "Scheduled";
       } else if (live.status === "Final") {
-        txt = ksTxt || "Final";
+        txt = withLine(ksTxt || "Final");
         title = "Final";
       } else {
-        txt = live.detailed || live.status || "—";
-        title = txt;
+        txt = withLine(live.detailed || live.status || "");
+        title = live.detailed || live.status || "—";
       }
       if (cls) chip.classList.add(cls);
       if (body) body.textContent = txt;
