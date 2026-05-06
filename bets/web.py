@@ -1693,6 +1693,18 @@ CSS = """
     .bets-totals-card .report-val { font-size: 16px; }
     .bets-totals-card .report-label { font-size: 10px; }
     .bets-totals-card .report-sub { font-size: 10px; }
+    /* Reorder bets panel on phones: bets list first (with the live-K
+       toolbar above it, since they're functionally tied), then totals
+       and heatmap below, then the add-bet form at the bottom. DOM
+       order stays the same so handlers + accessibility tree are
+       unchanged — only visual order shifts. */
+    #bets-panel { display: flex; flex-direction: column; }
+    #bets-panel > .bets-toolbar         { order: 1; }
+    #bets-panel > .bets-table-wrap      { order: 2; }
+    #bets-panel > .bets-totals-card     { order: 3; margin-top: 14px; }
+    #bets-panel > .totals-card-secondary { order: 4; }
+    #bets-panel > .cal-wrap             { order: 5; }
+    #bets-panel > .bets-form-card       { order: 6; }
   }
 """
 
