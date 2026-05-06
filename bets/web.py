@@ -383,6 +383,23 @@ CSS = """
   .pick-card-stat-val.live-now .live-ks { color: var(--green); margin-left: 4px; }
   .pick-card-stat-val.live-final { color: var(--muted); }
   .pick-card-stat-val.live-final .live-ks { color: var(--green); margin-left: 4px; }
+  .pick-card-pulse {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--border);
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+  .pick-card-pulse strong { color: var(--text); font-weight: 700; }
+  .pick-card.hit .pick-card-pulse,
+  .pick-card.miss .pick-card-pulse {
+    border-top-color: rgba(255,255,255,0.22);
+    color: rgba(255,255,255,0.85);
+  }
+  .pick-card.hit .pick-card-pulse strong,
+  .pick-card.miss .pick-card-pulse strong { color: #fff; }
   /* Once a game has started or finished, dim the surrounding stats so
      the live cell carries the eye. Edge / proj are no longer actionable. */
   .pick-card.locked .pick-card-stat:not(:last-child) { opacity: 0.55; }
@@ -1885,6 +1902,8 @@ def _render_js() -> str:
         detailed: status.detailed || "",
         current_inning: status.current_inning,
         inning_state: status.inning_state,
+        pitches: null,
+        ip: null,
       }};
       const box = boxByGpk.get(gpk);
       if (box) {{
@@ -1894,10 +1913,21 @@ def _render_js() -> str:
           const players = team.players || {{}};
           if (players[key]) {{
             const stats = players[key].stats && players[key].stats.pitching;
-            const ks = stats && stats.strikeOuts;
-            if (ks !== undefined && ks !== null && ks !== "") {{
-              const n = parseInt(ks, 10);
-              if (!isNaN(n)) result.ks = n;
+            if (stats) {{
+              const ks = stats.strikeOuts;
+              if (ks !== undefined && ks !== null && ks !== "") {{
+                const n = parseInt(ks, 10);
+                if (!isNaN(n)) result.ks = n;
+              }}
+              const rawP = stats.numberOfPitches != null
+                ? stats.numberOfPitches : stats.pitchesThrown;
+              if (rawP !== undefined && rawP !== null && rawP !== "") {{
+                const np = parseInt(rawP, 10);
+                if (!isNaN(np)) result.pitches = np;
+              }}
+              if (stats.inningsPitched !== undefined && stats.inningsPitched !== null && stats.inningsPitched !== "") {{
+                result.ip = String(stats.inningsPitched);
+              }}
             }}
             // pitchers[] is ordered by appearance; if our pitcher isn't
             // the last entry, they've been pulled and their Ks are locked.
@@ -2136,6 +2166,19 @@ def _render_js() -> str:
       }}
       if (labelEl) labelEl.textContent = cell.label;
       card.classList.toggle("locked", cell.locked);
+      // Pulse line — only visible while the pitcher is actively
+      // throwing. Hidden pre-game, post-pull, and after Final.
+      const pulseEl = card.querySelector("[data-pulse]");
+      if (pulseEl) {{
+        const pulseHTML = renderHeroPulse(live);
+        if (pulseHTML) {{
+          pulseEl.innerHTML = pulseHTML;
+          pulseEl.style.display = "";
+        }} else {{
+          pulseEl.innerHTML = "";
+          pulseEl.style.display = "none";
+        }}
+      }}
       // Outcome flips the card to its solid HIT/MISS fill + shows the
       // top banner. Toggle both classes off first so we never end up
       // with both.
@@ -2256,6 +2299,22 @@ def _render_js() -> str:
     if (outcome === "hit") return "✓ HIT";
     if (outcome === "miss") return "✗ MISS";
     return "";
+  }}
+
+  // "Pulse" line beneath the hero card stats — pitches + IP. Only
+  // emitted while the game is actively Live (not Preview, not Final,
+  // not after the pitcher's pulled). Returns "" otherwise so the slot
+  // collapses cleanly. Always rendered through the [data-pulse] anchor
+  // so repaintGameTimeCells can swap it without re-rendering the card.
+  function renderHeroPulse(live) {{
+    if (!live || live.status !== "Live" || live.done) return "";
+    const parts = [];
+    if (live.pitches !== null && live.pitches !== undefined) {{
+      parts.push(`<strong>${{live.pitches}}</strong> P`);
+    }}
+    if (live.ip) parts.push(`${{escapeHTML(String(live.ip))}} IP`);
+    if (!parts.length) return "";
+    return parts.join(" · ");
   }}
 
   // Live cell content for a hero card. Mirrors the time-cell logic in
@@ -2426,6 +2485,7 @@ def _render_js() -> str:
           <span class="pick-card-stat-val card-live-val ${{liveCell.cls}}">${{liveCell.html}}</span>
         </div>
       </div>
+      <div class="pick-card-pulse" data-pulse${{renderHeroPulse(live) ? "" : ' style="display:none"'}}>${{renderHeroPulse(live)}}</div>
       ${{renderHeroWhy(r)}}
     </div>`;
   }}
