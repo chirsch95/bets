@@ -1533,6 +1533,167 @@ CSS = """
     .report-card { grid-template-columns: 1fr 1fr; }
     .actions button { flex: 1; min-width: 0; }
   }
+  /* Phone-sized bets ledger: keep the same <table> DOM (so event
+     handlers, expand/collapse, W/L tints, and live-K painting all
+     keep working) but visually re-layout each row as a stacked card.
+     Each parlay-row td maps to a grid-area; the parlay-detail row
+     becomes a continuation block joined to its summary card. */
+  @media (max-width: 600px) {
+    .bets-table-wrap { overflow: visible; -webkit-overflow-scrolling: auto; }
+    table.bets-ledger { min-width: 0; width: 100%; border-collapse: separate; border-spacing: 0; }
+    table.bets-ledger thead { display: none; }
+    table.bets-ledger,
+    table.bets-ledger tbody { display: block; }
+    table.bets-ledger tr.parlay-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      grid-template-areas:
+        "date    result"
+        "parlay  parlay"
+        "stake   stake"
+        "odds    odds"
+        "payout  payout"
+        "actions actions";
+      gap: 4px 10px;
+      align-items: center;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin: 0 0 10px;
+    }
+    table.bets-ledger tr.parlay-row > td {
+      display: block;
+      border: none;
+      padding: 0;
+      white-space: normal;
+      background: transparent;
+    }
+    table.bets-ledger tr.parlay-row > td:nth-child(1) {
+      grid-area: date;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    table.bets-ledger tr.parlay-row > td:nth-child(2) {
+      grid-area: parlay;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    table.bets-ledger tr.parlay-row > td:nth-child(3) { grid-area: stake; }
+    table.bets-ledger tr.parlay-row > td:nth-child(4) { grid-area: odds; }
+    table.bets-ledger tr.parlay-row > td:nth-child(5) { display: none; }  /* Boost — rarely used, hidden on phones */
+    table.bets-ledger tr.parlay-row > td:nth-child(6) {
+      grid-area: result;
+      text-align: right;
+      font-size: 14px;
+      justify-self: end;
+    }
+    table.bets-ledger tr.parlay-row > td:nth-child(7) { grid-area: payout; }
+    /* Stake / Odds / Payout: caption + value on one row each. */
+    table.bets-ledger tr.parlay-row > td:nth-child(3),
+    table.bets-ledger tr.parlay-row > td:nth-child(4),
+    table.bets-ledger tr.parlay-row > td:nth-child(7) {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      text-align: left;
+    }
+    table.bets-ledger tr.parlay-row > td:nth-child(3)::before,
+    table.bets-ledger tr.parlay-row > td:nth-child(4)::before,
+    table.bets-ledger tr.parlay-row > td:nth-child(7)::before {
+      display: inline-block;
+      min-width: 56px;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    table.bets-ledger tr.parlay-row > td:nth-child(3)::before { content: "Stake"; }
+    table.bets-ledger tr.parlay-row > td:nth-child(4)::before { content: "Odds"; }
+    table.bets-ledger tr.parlay-row > td:nth-child(7)::before { content: "Payout"; }
+    table.bets-ledger tr.parlay-row > td.actions {
+      grid-area: actions;
+      text-align: left;
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    table.bets-ledger tr.parlay-row > td.actions button.act {
+      flex: 1;
+      margin: 0;
+      padding: 9px 0;
+      font-size: 12px;
+    }
+    /* Apply W/L tint at the row level (desktop's per-cell tints don't
+       paint anything because td backgrounds are now transparent). */
+    table.bets-ledger tr.parlay-row.result-W { background: rgba(74, 222, 128, 0.10); border-color: rgba(74, 222, 128, 0.40); }
+    table.bets-ledger tr.parlay-row.result-L { background: rgba(248, 113, 113, 0.10); border-color: rgba(248, 113, 113, 0.40); }
+    /* Expanded: merge summary card and detail block into one card. */
+    table.bets-ledger tr.parlay-row.expanded {
+      margin-bottom: 0;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+    table.bets-ledger tr.parlay-detail { display: block; }
+    table.bets-ledger tr.parlay-detail.hidden { display: none; }
+    table.bets-ledger tr.parlay-detail > td {
+      display: block;
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      padding: 6px 14px 10px;
+      margin-bottom: 10px;
+      background: rgba(0, 0, 0, 0.20);
+    }
+    table.bets-ledger tr.parlay-detail.result-W > td { background: rgba(74, 222, 128, 0.06); border-color: rgba(74, 222, 128, 0.40); }
+    table.bets-ledger tr.parlay-detail.result-L > td { background: rgba(248, 113, 113, 0.06); border-color: rgba(248, 113, 113, 0.40); }
+    /* "Show older bets" toggle and empty-state row need to render as
+       full-width blocks since the table is no longer a grid of cells. */
+    table.bets-ledger tr.bets-older-toggle { display: block; }
+    table.bets-ledger tr.bets-older-toggle > td {
+      display: block;
+      border: none;
+      padding: 6px 0 12px;
+      text-align: center;
+      background: transparent;
+    }
+    table.bets-ledger tr.bets-older-row.older-hidden { display: none; }
+    table.bets-ledger td.empty-msg {
+      display: block;
+      border: none;
+      text-align: center;
+      padding: 24px 8px;
+    }
+    /* Tighten leg detail rows: stack live status under the pitcher
+       name so name + O/U + live K all fit on a phone. */
+    .parlay-leg-list li {
+      grid-template-columns: 24px 1fr auto;
+      grid-template-areas:
+        "leg name ou"
+        "leg live live";
+      gap: 2px 8px;
+    }
+    .parlay-leg-list li > :nth-child(1) { grid-area: leg; align-self: start; }
+    .parlay-leg-list li > :nth-child(2) { grid-area: name; }
+    .parlay-leg-list li > :nth-child(3) { grid-area: ou; text-align: right; }
+    .parlay-leg-list li > :nth-child(4) { grid-area: live; font-size: 11px; }
+    /* Bets toolbar: stamp + refresh button stack instead of competing. */
+    .bets-toolbar { flex-wrap: wrap; gap: 6px; }
+    .bets-toolbar > div { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; }
+    /* 5 totals cards: 3 cols fits Bets/Staked/Returned in row 1 and
+       Net/ROI in row 2 without leaving a half-empty trailing row. */
+    .bets-totals-card { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .bets-totals-card .report-stat { padding: 8px 10px; }
+    .bets-totals-card .report-val { font-size: 16px; }
+    .bets-totals-card .report-label { font-size: 10px; }
+    .bets-totals-card .report-sub { font-size: 10px; }
+  }
 """
 
 
