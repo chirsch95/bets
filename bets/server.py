@@ -16,6 +16,7 @@ Endpoints:
 from __future__ import annotations
 
 import os
+import subprocess
 import threading
 from datetime import date, datetime, timedelta
 
@@ -128,6 +129,49 @@ def settle():
         _pipeline_lock.release()
 
 
+@app.post("/push")
+def push():
+    """Stage output/, commit if there are changes, push to origin/main.
+    The Air's gitpull picks it up within 60s. Reuses the pipeline lock
+    so we never push partial state mid-refresh."""
+    if not _pipeline_lock.acquire(blocking=False):
+        return "<pre>A pipeline run is already in progress. Wait for it to finish.</pre>", 409
+    try:
+        add = subprocess.run(
+            ["git", "add", "output/"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if add.returncode != 0:
+            return f"<pre>git add failed:\n{add.stderr}</pre>", 500
+        diff = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=PROJECT_ROOT,
+        )
+        if diff.returncode != 0:
+            msg = f"refresh: {_today().isoformat()} dashboard update"
+            commit = subprocess.run(
+                ["git", "commit", "-m", msg],
+                cwd=PROJECT_ROOT,
+                capture_output=True,
+                text=True,
+            )
+            if commit.returncode != 0:
+                return f"<pre>git commit failed:\n{commit.stderr}</pre>", 500
+        push_proc = subprocess.run(
+            ["git", "push", "origin", "main"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if push_proc.returncode != 0:
+            return f"<pre>git push failed:\n{push_proc.stderr}</pre>", 500
+        return redirect("/")
+    finally:
+        _pipeline_lock.release()
+
+
 @app.get("/api/bets")
 def api_list_bets():
     state = wagers.load_bets()
@@ -231,6 +275,7 @@ def main() -> None:
     print("  GET  /         — view dashboard")
     print("  POST /refresh  — re-pull odds and recompute")
     print("  POST /settle   — settle yesterday")
+    print("  POST /push     — commit output/ + push to origin/main (deploys to Air)")
     print("  *    /api/bets — local-only bet ledger CRUD")
     print("  GET  /api/slate-pitchers — today's pitcher list for picker")
     print("  GET  /api/live-ks?ids=… — live K + game status, 60s cache")

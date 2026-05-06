@@ -1548,6 +1548,9 @@ def _action_buttons_html() -> str:
     <form class="local-only" action="/settle" method="post" onsubmit="document.body.classList.add('loading');">
       <button type="submit">Settle yesterday</button>
     </form>
+    <form class="local-only" action="/push" method="post" onsubmit="document.body.classList.add('loading');">
+      <button type="submit">Push to Air</button>
+    </form>
   </div>"""
 
 
