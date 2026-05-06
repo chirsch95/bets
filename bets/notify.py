@@ -7,8 +7,8 @@ dashboard keeps working without notifications configured.
 Sends fire on a daemon thread so the HTTP handler doesn't block on
 Pushover's API.
 
-Live-game alerts (pulled-starter, parlay one-to-go) piggyback on the
-dashboard's /api/live-ks polls. Dedup state lives in
+Live-game alerts (pulled-starter, parlay one-to-go, per-leg hit/miss)
+piggyback on the dashboard's /api/live-ks polls. Dedup state lives in
 data/notify_state.json so the same event fires at most once per day.
 """
 
@@ -147,7 +147,8 @@ def _live_for(live_results: dict, pid: int) -> dict | None:
 def check_live_alerts(live_results: dict, target_iso: str) -> None:
     """Scan today's pending bets against a live snapshot and fire
     Pushover alerts for: (1) any starter who just got pulled, (2)
-    parlays with all-but-one legs hit. Deduped via notify_state.json.
+    parlays with all-but-one legs hit, (3) per-leg hit/miss in
+    multi-leg parlays. Deduped via notify_state.json.
 
     Bet-level filtering: only today's pending bets are considered.
     Settled bets and bets dated to other days are skipped. Wrapped in
@@ -234,3 +235,31 @@ def check_live_alerts(live_results: dict, target_iso: str) -> None:
             title = f"One leg to go: {name}"
             msg = f"{name} {ou}{line_str} · {ks}K through {inning}"
         send_pushover(title, msg)
+
+    # ----- per-leg hit/miss: fire as soon as a leg's outcome is decided
+    #       (line crossed, or game went final). Skips singletons since
+    #       bet-settle already covers those.
+    for b in todays_pending:
+        legs = b.get("legs") or []
+        if len(legs) < 2:
+            continue
+        bet_id = b.get("id")
+        for l in legs:
+            pid = l.get("pitcher_id")
+            if pid is None:
+                continue
+            live = _live_for(live_results, pid)
+            if not live:
+                continue
+            line = l.get("line") if l.get("line") is not None else live.get("line")
+            s = _leg_state(live.get("ks"), line, l.get("ou"), live.get("status"), live.get("done"))
+            if s not in ("hit", "miss"):
+                continue
+            if not _claim_key(f"{target_iso}:leg:{bet_id}:{pid}:{s}", target_iso):
+                continue
+            name = l.get("pitcher") or live.get("pitcher") or f"Pitcher {pid}"
+            ou = l.get("ou") or "?"
+            ks = live.get("ks") or 0
+            line_str = f"{line:g}" if line is not None else "?"
+            verb = "hit" if s == "hit" else "miss"
+            send_pushover(f"Leg {verb}: {name}", f"{name} {ou}{line_str} · {ks}K")
