@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.bets.health</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/chadhirsch/bets/.venv/bin/python</string>
+        <string>-m</string>
+        <string>bets.health</string>
+    </array>
+    <!-- Same WorkingDirectory rationale as flask.plist: bets.health
+         loads .env via notify.send_pushover (PUSHOVER_*) and triggers
+         `gh workflow run` from the project root. -->
+    <key>WorkingDirectory</key><string>/Users/chadhirsch/bets</string>
+    <!-- Every 30 minutes. The script's own active-window guard (9am-9pm
+         local) skips retries off-hours, so we don't gate at the launchd
+         layer — keeping ticks running off-hours still records a state
+         snapshot for /api/health. -->
+    <key>StartInterval</key><integer>1800</integer>
+    <key>RunAtLoad</key><true/>
+    <key>StandardOutPath</key><string>/Users/chadhirsch/Library/Logs/bets-health.out</string>
+    <key>StandardErrorPath</key><string>/Users/chadhirsch/Library/Logs/bets-health.err</string>
+</dict>
+</plist>

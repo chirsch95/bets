@@ -24,7 +24,7 @@ from datetime import date, datetime, timedelta
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, request, send_file, send_from_directory
 
-from . import live, notify, wagers
+from . import health, live, notify, wagers
 from .config import OUTPUT_DIR, PROJECT_ROOT
 from .hitters import run as run_hitter_projections
 from .main import run as run_projections
@@ -236,6 +236,13 @@ def api_slate_pitchers():
     return jsonify({"date": target.isoformat(), "pitchers": live.slate_pitchers(target)})
 
 
+@app.get("/api/health")
+def api_health():
+    """Read-only snapshot of the watcher's per-source state. Refreshed
+    by the launchd job (bets.health), not by this read."""
+    return jsonify(health.latest_snapshot())
+
+
 @app.get("/api/live-ks")
 def api_live_ks():
     """Look up live K + game status for ?ids=<csv of pitcher_ids>.
@@ -380,6 +387,7 @@ def main() -> None:
     print("  *    /api/bets — local-only bet ledger CRUD")
     print("  GET  /api/slate-pitchers — today's pitcher list for picker")
     print("  GET  /api/live-ks?ids=… — live K + game status, 60s cache")
+    print("  GET  /api/health — pipeline + swstr freshness + retry state")
     print("  +    background alerts loop — fires Pushover + auto-settles every 60s")
     _start_alerts_loop()
     app.run(host="127.0.0.1", port=port, debug=False)
