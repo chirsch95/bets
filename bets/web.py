@@ -1995,9 +1995,11 @@ def _render_js() -> str:
     const hitProb = dir === "over" ? pOver : 1 - pOver;
     const novigP = dir === "over" ? novigOver : 1 - novigOver;
     const pidNum = parseInt(r.pitcher_id, 10);
+    const gpkNum = parseInt(r.game_pk, 10);
     return {{
       pitcher: r.pitcher || "",
       pitcher_id: isNaN(pidNum) ? null : pidNum,
+      game_pk: isNaN(gpkNum) ? null : gpkNum,
       line: r.line,
       dir,
       odds,
@@ -2869,10 +2871,19 @@ def _render_js() -> str:
   // $1, and render the top few. The DFS sites the user plays require
   // ≥ 2 legs per ticket, so this turns the model's picks into something
   // that can actually be wagered.
+  //
+  // Filters applied before display:
+  //   - positive EV only — never suggest a negative-EV combo
+  //   - one leg per game — two starters in the same game share K-environment
+  //     (umpire, weather, ump zone), so leg-independence breaks down
+  //   - per-pitcher appearance cap across the section — keeps the top-N
+  //     from collapsing onto a single hot pitcher
   function renderParlaySuggestions(rows) {{
-    const PARLAY_INPUT_CAP = 8;     // cap focus pool before exploding combos
+    const PARLAY_INPUT_CAP = 8;       // cap focus pool before exploding combos
     const TOP_TWO = 5;
     const TOP_THREE = 3;
+    const MAX_APPEARANCES = 2;        // any one pitcher can appear in at most
+                                       // this many cards within a section
     const focus = rows.filter(r => {{
       const e = f(r.edge);
       return e !== null && classify(e) === "focus";
@@ -2886,12 +2897,45 @@ def _render_js() -> str:
       .slice(0, PARLAY_INPUT_CAP);
     if (legs.length < 2) return "";
 
+    const uniqueGames = (combo) => {{
+      const seen = new Set();
+      for (const l of combo) {{
+        if (l.game_pk === null || l.game_pk === undefined) continue;
+        if (seen.has(l.game_pk)) return false;
+        seen.add(l.game_pk);
+      }}
+      return true;
+    }};
+
+    // Greedy: walk EV-sorted combos, skip any whose pitchers already hit the
+    // appearance cap. Stops at `top` selections or when the list is exhausted.
+    const selectDiverse = (sorted, top, maxPer) => {{
+      const counts = new Map();
+      const out = [];
+      for (const p of sorted) {{
+        if (out.length >= top) break;
+        let ok = true;
+        for (const l of p.legs) {{
+          const c = counts.get(l.pitcher_id) || 0;
+          if (c >= maxPer) {{ ok = false; break; }}
+        }}
+        if (!ok) continue;
+        for (const l of p.legs) {{
+          counts.set(l.pitcher_id, (counts.get(l.pitcher_id) || 0) + 1);
+        }}
+        out.push(p);
+      }}
+      return out;
+    }};
+
     const buildSection = (k, top, label) => {{
       if (legs.length < k) return "";
-      const ranked = combos(legs, k)
+      const sorted = combos(legs, k)
+        .filter(uniqueGames)
         .map(evaluateParlay)
-        .sort((a, b) => b.ev - a.ev)
-        .slice(0, top);
+        .filter(p => p.ev > 0)
+        .sort((a, b) => b.ev - a.ev);
+      const ranked = selectDiverse(sorted, top, MAX_APPEARANCES);
       if (!ranked.length) return "";
       return `<div class="parlay-section">
         <div class="parlay-section-title">${{label}}</div>
@@ -2906,7 +2950,7 @@ def _render_js() -> str:
     return `<section class="parlay-suggester">
       <div class="parlay-suggester-header">
         <h3>Parlay Suggestions</h3>
-        <span class="parlay-note">Combos of today's focus picks · ranked by EV per $1 · assumes leg independence</span>
+        <span class="parlay-note">Positive-EV combos · one leg per game · capped per pitcher · ranked by EV per $1</span>
       </div>
       ${{twoLeg}}
       ${{threeLeg}}
