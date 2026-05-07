@@ -13,6 +13,13 @@
          loads .env via notify.send_pushover (PUSHOVER_*) and triggers
          `gh workflow run` from the project root. -->
     <key>WorkingDirectory</key><string>/Users/chadhirsch/bets</string>
+    <!-- gh CLI lives in /opt/homebrew/bin (not in launchd's default
+         PATH). Without this, shutil.which("gh") in retry_pipeline_remote
+         returns None and we'd alert instead of triggering the workflow. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
     <!-- Every 30 minutes. The script's own active-window guard (9am-9pm
          local) skips retries off-hours, so we don't gate at the launchd
          layer — keeping ticks running off-hours still records a state
