@@ -67,7 +67,7 @@ bets/
 ├── .env.example
 ├── .venv/                          virtualenv (gitignored)
 ├── ops/                            self-hosting artifacts deployed on the M1 Air (see Deployment):
-│   ├── Caddyfile                   serves /, /index.html, /icon-128.png from output/ on :8080; everything else 404s
+│   ├── Caddyfile                   serves /, /index.html, the PNG icons + manifest from output/ on :8080; everything else 404s
 │   ├── git-pull.sh                 60s-cron script that runs `git pull --ff-only` on the Air
 │   ├── bets-url.sh                 prints the current quick-tunnel public URL by scanning cloudflared logs
 │   └── launchd/
@@ -100,6 +100,9 @@ bets/
     ├── hitter_ks_<date>_settled.csv
     ├── odds_api_usage.json                 latest Odds API quota snapshot + per-call history (powers the header pill)
     ├── icon-128.png                        128×128 PNG of the favicon (for Pushover application icon upload)
+    ├── apple-touch-icon.png                180×180 PNG used by iOS Safari "Add to Home Screen"
+    ├── icon-192.png, icon-512.png          PWA manifest icons (Android Chrome / generic)
+    ├── manifest.webmanifest                PWA manifest — makes the site installable as a home-screen app
     └── index.html                          latest dashboard
 ```
 
@@ -218,7 +221,7 @@ A **personal parlay ledger** for tracking actual DFS bets, hidden on the public 
 - **Per-site P&L row**: under the totals strip, a "By site:" line breaks out tickets · W–L–pending · net · ROI for each of PP / UD / DK separately, so you can see whether one site is actually paying off differently. Tickets with no site tag are excluded from the row.
 - **Phone-friendly layout**: below 600px viewport width the ledger drops the 8-column table and re-lays each bet as a stacked card (date + W/L badge on top, parlay summary, then stake / odds / payout each on their own captioned line, with full-width W/L/Edit/× action buttons at the bottom). Same `<table>` DOM so handlers, expand/collapse, W/L tints, and live-K painting keep working unchanged. Bets list is also visually reordered above the totals/heatmap on phones — current bet status is what you want at a glance, totals are reflective context further down.
 
-The Flask server's `/api/bets` (CRUD), `/api/slate-pitchers`, and `/api/live-ks` routes serve the tab. None of these reach the public URL — the tab itself is hidden via the `local-only` CSS class plus a synchronous head script that adds `is-local` to `<html>` only when `location.hostname` matches localhost. (The Caddyfile on the M1 Air also 404s any path other than `/`, `/index.html`, and `/icon-128.png`, so even the API routes can't be reached publicly even if the JS were tampered with.)
+The Flask server's `/api/bets` (CRUD), `/api/slate-pitchers`, and `/api/live-ks` routes serve the tab. None of these reach the public URL — the tab itself is hidden via the `local-only` CSS class plus a synchronous head script that adds `is-local` to `<html>` only when `location.hostname` matches localhost. (The Caddyfile on the M1 Air also 404s any path other than `/`, `/index.html`, the PNG icons, and `/manifest.webmanifest`, so even the API routes can't be reached publicly even if the JS were tampered with.)
 
 ### Pushover notifications (optional, local-only)
 
@@ -247,7 +250,7 @@ The dashboard runs on a dedicated **M1 MacBook Air** sitting on the home network
 2. Whoever runs the pipeline (locally or via the Action) regenerates `output/`, commits, and pushes to GitHub.
 3. **The M1 Air** runs three LaunchAgents that together host the dashboard:
    - `com.bets.gitpull` runs `ops/git-pull.sh` every 60s, so any push hits the Air's filesystem within a minute.
-   - `com.bets.caddy` serves `output/` on `localhost:8080` via Caddy. The Caddyfile (`ops/Caddyfile`) is an allowlist — only `/`, `/index.html`, and `/icon-128.png` are served; every other path returns 404, so the CSVs sitting in `output/` stay private (the browser fetches them from `raw.githubusercontent.com` instead).
+   - `com.bets.caddy` serves `output/` on `localhost:8080` via Caddy. The Caddyfile (`ops/Caddyfile`) is an allowlist — only `/`, `/index.html`, the PNG icons, and `/manifest.webmanifest` are served; every other path returns 404, so the CSVs sitting in `output/` stay private (the browser fetches them from `raw.githubusercontent.com` instead).
    - `com.bets.cloudflared` runs `cloudflared tunnel --url http://localhost:8080`, which opens an outbound persistent connection to Cloudflare's edge and gets a public `*.trycloudflare.com` URL. No port forwarding, no DDNS, no inbound firewall rules.
 4. The browser fetches CSV data directly from `https://raw.githubusercontent.com/chirsch95/bets/main/output/*.csv` on each page load, so the Air doesn't need to serve them — and CSV-only updates appear on the public URL almost instantly (limited only by GitHub's CDN cache, ~30s).
 

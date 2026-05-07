@@ -18,7 +18,7 @@
         Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com https://statsapi.mlb.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
     }
 
-    @public path / /index.html /icon-128.png
+    @public path / /index.html /icon-128.png /apple-touch-icon.png /icon-192.png /icon-512.png /manifest.webmanifest
 
     handle @public {
         header Cache-Control "public, max-age=300"

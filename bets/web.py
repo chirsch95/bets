@@ -5562,6 +5562,13 @@ def generate(target_date: date | None = None) -> Path | None:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MLB K Props</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315803d'/%3E%3Ctext x='16' y='24' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='900' font-size='24' fill='white'%3E%24%3C/text%3E%3C/svg%3E">
+<!-- PWA: install via Safari → Share → "Add to Home Screen". -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0e1015">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="K Props">
 <script>{local_check}</script>
 <style>{CSS}</style>
 <script>{js}</script>
