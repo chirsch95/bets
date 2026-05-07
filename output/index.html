@@ -5506,9 +5506,13 @@
   // the actions row. Same-origin fetch, so on Netlify (static, no API)
   // it 404s and the pill stays hidden — matching how Bets tab + the
   // local-only buttons scope themselves to laptop/Tailscale contexts.
+  // Also hidden on localhost: the watcher only runs on the Air, so the
+  // laptop's /api/health always reports "Watcher hasn't run today" and
+  // would just be misleading noise.
   async function loadHealth() {
     const pill = document.getElementById("health-pill");
     if (!pill) return;
+    if (isLocal()) return;
     try {
       const r = await fetch("/api/health", { cache: "no-cache" });
       if (!r.ok) return;
