@@ -49,12 +49,17 @@ RETRY_CAP = 3
 
 # Active hours (local time). Outside this, staleness is recorded but
 # retries are deferred — no point burning Odds API credits at 3am.
-ACTIVE_HOUR_START = 9
+# Window starts at 7am so the first morning tick can auto-trigger
+# GH Actions (settle yesterday + project today) if nobody's run the
+# pipeline locally yet.
+ACTIVE_HOUR_START = 7
 ACTIVE_HOUR_END = 21
 
-# Hour after which a missing slate is "stale". Before this, the laptop
-# may simply not have run the morning pipeline yet.
-SLATE_EXPECTED_HOUR = 11
+# Hour after which a missing slate is "stale". Matched to ACTIVE_HOUR_START
+# so the morning auto-trigger fires immediately rather than waiting until
+# late morning. Idempotent: if the laptop already produced today's CSV
+# before 7am, the watcher sees fresh and no-ops.
+SLATE_EXPECTED_HOUR = 7
 
 # Hour after which missing lineups are "stale". MLB usually posts
 # lineups 2-3 hours before first pitch.
