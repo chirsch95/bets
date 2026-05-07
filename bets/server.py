@@ -23,7 +23,17 @@ import time
 from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, request, send_file, send_from_directory
+import re
+
+from flask import (
+    Flask,
+    Response,
+    jsonify,
+    redirect,
+    request,
+    send_file,
+    send_from_directory,
+)
 
 from . import health, live, notify, wagers
 from .config import OUTPUT_DIR, PROJECT_ROOT
@@ -63,6 +73,9 @@ def index():
     return send_file(out_path)
 
 
+_PITCHER_KS_LIVE_RE = re.compile(r"^pitcher_ks_(\d{4}-\d{2}-\d{2})\.csv$")
+
+
 @app.get("/<path:filename>")
 def output_file(filename: str):
     """Serve any other file from output/ as a static asset (CSVs, etc.).
@@ -70,9 +83,30 @@ def output_file(filename: str):
     The dashboard's JS fetches `./pitcher_ks_<date>.csv` etc. when running
     on localhost; this route handles those requests. Restricts to the
     output directory to prevent path-traversal escapes.
+
+    Special case: the live `pitcher_ks_<date>.csv` is served through
+    `live.pinned_csv_text()` so already-started pitchers display the
+    morning slate's edge/p_over/line rather than the model's drifted
+    in-progress recompute. Settled CSVs and the slate snapshot are
+    served as-is.
     """
     if ".." in filename or filename.startswith("/"):
         return "forbidden", 403
+    m = _PITCHER_KS_LIVE_RE.match(filename)
+    if m:
+        try:
+            target = datetime.strptime(m.group(1), "%Y-%m-%d").date()
+            text = live.pinned_csv_text(target)
+        except Exception:  # noqa: BLE001
+            text = None
+        if text is not None:
+            return Response(
+                text,
+                mimetype="text/csv",
+                headers={"Cache-Control": "no-cache"},
+            )
+        # Fall through to send_from_directory if pinning failed or the
+        # file doesn't exist — preserves the existing 404 behavior.
     return send_from_directory(OUTPUT_DIR, filename)
 
 

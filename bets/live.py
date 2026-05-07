@@ -17,6 +17,7 @@ Two responsibilities, both backing the local-only Bets tab UI:
 from __future__ import annotations
 
 import csv
+import io
 import time
 from datetime import date
 from pathlib import Path
@@ -105,40 +106,151 @@ def _our_pick_label(cls: str, direction: str) -> str:
     return "—"
 
 
+def _load_slate_snapshot(target_date: date) -> dict[int, dict]:
+    """Load the morning's frozen projection snapshot keyed by pitcher_id.
+
+    The `_slate.csv` is whatever the first main.py run of the day wrote —
+    the line/odds/edge state we'd actually have bet at. Empty dict if
+    the snapshot is missing (early days before the feature, or the
+    morning run hasn't completed yet).
+    """
+    path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}_slate.csv"
+    if not path.exists():
+        return {}
+    out: dict[int, dict] = {}
+    with path.open() as f:
+        for r in csv.DictReader(f):
+            pid = _safe_int(r.get("pitcher_id"))
+            if pid is None:
+                continue
+            out[pid] = r
+    return out
+
+
+def _started_game_pks(target_date_iso: str) -> set[int]:
+    """Return the set of game_pks where first pitch has been thrown.
+
+    We pin to the slate snapshot from first pitch onward — not just from
+    Final — because the rolling K%/BF stats `main.py` re-pulls fold the
+    just-started outing back into the window as soon as the pitcher
+    records any IP, dragging the displayed edge for an already-bet
+    pitcher.
+
+    Wrapped in a try/except so a transient MLB API failure doesn't break
+    /api/slate-pitchers — we just fall through and display live values.
+    """
+    try:
+        statuses = _game_status_map(target_date_iso)
+    except Exception:  # noqa: BLE001
+        return set()
+    return {
+        gpk for gpk, gs in statuses.items()
+        if (gs.get("abstract") or "").strip() in ("Live", "Final")
+    }
+
+
 def slate_pitchers(target_date: date | None = None) -> list[dict]:
     """Read today's projection CSV and project each row into the
     minimal shape the Bets-tab dropdown needs. Returns [] if no slate
     file exists for the date.
+
+    From first pitch onward, we override the volatile fields (edge,
+    p_over, novig_over, line, odds) with the morning-frozen slate
+    snapshot so retrospective views match the state we'd actually
+    have bet at. Rolling stats (last-5 K%, season K%) re-pull live
+    from MLB Stats every refresh, so as soon as the pitcher records
+    any IP today, the live CSV's edge silently drifts as the
+    in-progress outing folds back into his own history.
     """
     target_date = target_date or date.today()
     path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}.csv"
     if not path.exists():
         return []
+    snapshot = _load_slate_snapshot(target_date)
+    started_pks = (
+        _started_game_pks(target_date.isoformat()) if snapshot else set()
+    )
     out: list[dict] = []
     with path.open() as f:
         for r in csv.DictReader(f):
-            edge = _safe_float(r.get("edge"))
+            pid = _safe_int(r.get("pitcher_id"))
+            game_pk = _safe_int(r.get("game_pk"))
+            pinned = (
+                pid is not None
+                and game_pk in started_pks
+                and pid in snapshot
+            )
+            src = snapshot[pid] if pinned else r
+            edge = _safe_float(src.get("edge"))
             cls, direction = _classify_edge(edge)
             out.append({
-                "pitcher_id": _safe_int(r.get("pitcher_id")),
+                "pitcher_id": pid,
                 "pitcher": (r.get("pitcher") or "").strip(),
                 "opp": (r.get("opp") or "").strip(),
                 "is_home": _parse_is_home(r.get("is_home")),
-                "game_pk": _safe_int(r.get("game_pk")),
-                "line": _safe_float(r.get("line")),
+                "game_pk": game_pk,
+                "line": _safe_float(src.get("line")),
                 "edge": edge,
-                "over_odds": _safe_int(r.get("over_odds")),
-                "under_odds": _safe_int(r.get("under_odds")),
-                "over_book": (r.get("over_book") or "").strip(),
-                "under_book": (r.get("under_book") or "").strip(),
-                "p_over": _safe_float(r.get("p_over")),
-                "novig_over": _safe_float(r.get("novig_over")),
+                "over_odds": _safe_int(src.get("over_odds")),
+                "under_odds": _safe_int(src.get("under_odds")),
+                "over_book": (src.get("over_book") or "").strip(),
+                "under_book": (src.get("under_book") or "").strip(),
+                "p_over": _safe_float(src.get("p_over")),
+                "novig_over": _safe_float(src.get("novig_over")),
                 "our_pick_class": cls,
                 "our_pick_dir": direction,
                 "our_pick_label": _our_pick_label(cls, direction),
+                "pinned": pinned,
             })
     out.sort(key=lambda x: x["pitcher"].lower())
     return out
+
+
+def pinned_csv_text(target_date: date) -> str | None:
+    """Return the live `pitcher_ks_YYYY-MM-DD.csv` text with already-
+    started pitchers' rows replaced by the morning slate snapshot.
+
+    The dashboard JS (web.py) fetches this CSV directly off the file
+    server to render its pitcher cards/tables — meaning the same
+    silent-edge-drift problem `slate_pitchers()` solves for the Bets
+    tab applies to every other view too. This function gives the
+    Flask route a pinned-view of the same file without mutating disk.
+
+    Returns None if the live CSV doesn't exist for the date.
+    """
+    path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}.csv"
+    if not path.exists():
+        return None
+    snapshot = _load_slate_snapshot(target_date)
+    if not snapshot:
+        # No slate to pin against — caller can fall through to
+        # send_from_directory and stream the file as-is.
+        return path.read_text()
+    started_pks = _started_game_pks(target_date.isoformat())
+    if not started_pks:
+        return path.read_text()
+    with path.open() as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or []
+        rows = list(reader)
+    if not fieldnames:
+        return path.read_text()
+    for row in rows:
+        pid = _safe_int(row.get("pitcher_id"))
+        game_pk = _safe_int(row.get("game_pk"))
+        if pid is None or game_pk not in started_pks or pid not in snapshot:
+            continue
+        slate_row = snapshot[pid]
+        # Overwrite only fields we have in the slate. Leaves any
+        # downstream-added columns (e.g., future settle artifacts) alone.
+        for k in fieldnames:
+            if k in slate_row:
+                row[k] = slate_row[k]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
 
 
 def _fetch_schedule(target_date_iso: str) -> dict:
