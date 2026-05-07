@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import threading
 import time
 from datetime import date, datetime, timedelta
@@ -26,10 +27,13 @@ from flask import Flask, jsonify, redirect, request, send_file, send_from_direct
 
 from . import health, live, notify, wagers
 from .config import OUTPUT_DIR, PROJECT_ROOT
-from .hitters import run as run_hitter_projections
-from .main import run as run_projections
 from .settle import settle_date, settle_hitters_date
-from .web import generate as generate_dashboard
+
+# The pipeline (bets.main) and dashboard renderer (bets.web) are invoked
+# as subprocesses, not direct calls. A long-running Flask process freezes
+# its `from .web import generate` binding at startup, so an in-process
+# call would clobber output/index.html with whatever web.py looked like
+# when this server booted — even if the file has since been edited.
 
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -46,7 +50,11 @@ def index():
     target = _today()
     out_path = OUTPUT_DIR / "index.html"
     if not out_path.exists():
-        generate_dashboard(target)
+        subprocess.run(
+            [sys.executable, "-m", "bets.web", target.isoformat()],
+            cwd=PROJECT_ROOT,
+            check=False,
+        )
     if not out_path.exists():
         return (
             "<p>No dashboard yet. POST /refresh to generate today's slate.</p>",
@@ -73,24 +81,18 @@ def refresh():
     if not _pipeline_lock.acquire(blocking=False):
         return "<pre>A refresh is already running. Wait for it to finish.</pre>", 409
     try:
-        errors: list[str] = []
-        try:
-            run_projections()
-        except Exception as e:  # noqa: BLE001
-            errors.append(f"pitcher refresh failed: {e}")
-        # Hitter pipeline paused — re-enable by un-commenting once the
-        # pitcher model is validated and you've flipped SHOW_HITTERS in web.py.
-        # try:
-        #     run_hitter_projections()
-        # except Exception as e:  # noqa: BLE001
-        #     errors.append(f"hitter refresh failed: {e}")
-        try:
-            generate_dashboard(_today())
-        except Exception as e:  # noqa: BLE001
-            errors.append(f"dashboard regen failed: {e}")
-        if errors:
-            body = "<pre>" + "\n".join(errors) + "</pre>"
-            return body, 500
+        # bets.main runs the pitcher pipeline and ends with a dashboard
+        # regen, so this single subprocess covers both. Hitter pipeline
+        # is paused — re-enable inside bets.main when ready.
+        proc = subprocess.run(
+            [sys.executable, "-m", "bets.main"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            body = (proc.stderr or proc.stdout or "pipeline exited non-zero").strip()
+            return f"<pre>refresh failed:\n{body}</pre>", 500
         return redirect("/")
     finally:
         _pipeline_lock.release()
@@ -118,10 +120,17 @@ def settle():
             settle_hitters_date(target)
         except Exception as e:  # noqa: BLE001
             errors.append(f"hitter settle failed: {e}")
-        try:
-            generate_dashboard(_today())
-        except Exception as e:  # noqa: BLE001
-            errors.append(f"dashboard regen failed: {e}")
+        proc = subprocess.run(
+            [sys.executable, "-m", "bets.web", _today().isoformat()],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            errors.append(
+                "dashboard regen failed: "
+                + (proc.stderr or proc.stdout or "non-zero exit").strip()
+            )
         if errors:
             body = "<pre>" + "\n".join(errors) + "</pre>"
             return body, 500
