@@ -132,6 +132,34 @@ CSS = """
   .quota-pill.warn strong { color: var(--yellow); }
   .quota-pill.danger { border-color: var(--red); color: var(--red); }
   .quota-pill.danger strong { color: var(--red); }
+  /* Health pill: same shape as quota-pill, fed by GET /api/health.
+     Hidden until loadHealth() succeeds — on Netlify the API doesn't
+     exist so the pill never reveals (consistent with .local-only /
+     .bets-only being scope-aware UI). */
+  .health-pill {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--panel);
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1;
+    cursor: help;
+  }
+  .health-pill.visible { display: inline-flex; }
+  .health-pill .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+  }
+  .health-pill.ok { border-color: var(--green); color: var(--green); }
+  .health-pill.ok .dot { background: var(--green); }
+  .health-pill.warn { border-color: var(--yellow); color: var(--yellow); }
+  .health-pill.warn .dot { background: var(--yellow); }
+  .health-pill.danger { border-color: var(--red); color: var(--red); }
+  .health-pill.danger .dot { background: var(--red); }
   .tabs {
     display: flex;
     gap: 4px;
@@ -1763,6 +1791,7 @@ def _action_buttons_html() -> str:
     <button type="button" id="refresh-btn" class="primary">Refresh data</button>
     <span class="last-refresh" id="last-refresh"></span>
     <span class="quota-pill" id="quota-pill" title=""></span>
+    <span class="health-pill" id="health-pill" title=""><span class="dot"></span><span class="label">Health</span></span>
     <form class="local-only" action="/refresh" method="post" onsubmit="document.body.classList.add('loading');">
       <button type="submit">Re-run pipeline</button>
     </form>
@@ -5480,6 +5509,65 @@ def _render_js() -> str:
     }}
   }}
 
+  // Reads /api/health (Flask) and renders a green/yellow/red pill in
+  // the actions row. Same-origin fetch, so on Netlify (static, no API)
+  // it 404s and the pill stays hidden — matching how Bets tab + the
+  // local-only buttons scope themselves to laptop/Tailscale contexts.
+  async function loadHealth() {{
+    const pill = document.getElementById("health-pill");
+    if (!pill) return;
+    try {{
+      const r = await fetch("/api/health", {{ cache: "no-cache" }});
+      if (!r.ok) return;
+      const data = await r.json();
+      const sources = data && data.sources ? data.sources : {{}};
+      const names = Object.keys(sources);
+      if (!names.length) {{
+        pill.classList.remove("ok", "warn", "danger");
+        pill.querySelector(".label").textContent = "Health: —";
+        pill.title = "Watcher hasn't run yet today.";
+        pill.classList.add("visible");
+        return;
+      }}
+
+      const stale = names.filter(n => !sources[n].fresh);
+      const alerted = names.filter(n => sources[n].alerted);
+
+      pill.classList.remove("ok", "warn", "danger");
+      let label;
+      if (alerted.length) {{
+        pill.classList.add("danger");
+        label = `Alert: ${{alerted.join(" + ")}}`;
+      }} else if (stale.length) {{
+        pill.classList.add("warn");
+        label = `Stale: ${{stale.join(" + ")}}`;
+      }} else {{
+        pill.classList.add("ok");
+        label = "Healthy";
+      }}
+      pill.querySelector(".label").textContent = label;
+
+      const lines = [];
+      for (const n of names) {{
+        const s = sources[n];
+        const tag = s.alerted ? "ALERTED" : (s.fresh ? "fresh" : "stale");
+        const retries = `${{s.retries || 0}}/${{s.retry_cap || 3}}`;
+        lines.push(`${{n}}: ${{tag}} (${{s.detail || "—"}}, retries ${{retries}})`);
+        if (s.last_attempt_detail) lines.push(`  last attempt: ${{s.last_attempt_detail}}`);
+      }}
+      const winLine = data.in_active_window
+        ? "Active window (9am-9pm) — retries may fire."
+        : "Off-hours — staleness recorded but retries deferred.";
+      const checkedLine = data.checked_at
+        ? `Last check: ${{new Date(data.checked_at).toLocaleString("en-US", {{ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }})}}`
+        : "Last check: —";
+      pill.title = [checkedLine, winLine, "", ...lines].join("\\n");
+      pill.classList.add("visible");
+    }} catch (e) {{
+      // Silent — endpoint not reachable (e.g. Netlify static deploy).
+    }}
+  }}
+
   document.addEventListener("DOMContentLoaded", () => {{
     updateHeaderDate();
     applyNoisePreference();
@@ -5508,6 +5596,11 @@ def _render_js() -> str:
 
     loadAndRender();
     loadOddsQuota();
+    loadHealth();
+    // Watcher runs every 30 min, but a manual kickstart or a recent
+    // retry can change the snapshot mid-window. 60s polling is cheap
+    // (read-only file lookup) and matches the bets tab's poll cadence.
+    setInterval(loadHealth, 60000);
 
     // Tick the gametime cells every minute so "in NN min" stays
     // accurate and a row flips to row-locked the moment first pitch
