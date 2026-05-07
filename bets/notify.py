@@ -427,7 +427,7 @@ def check_quota_alerts() -> None:
     # Highest first: a single tick that crosses 80→90 should alert at
     # 90, not 80 (90 is more useful info). Lower thresholds get marked
     # claimed silently so they don't fire later in the same month.
-    THRESHOLDS = [(0.95, "95"), (0.90, "90"), (0.80, "80")]
+    THRESHOLDS = [(0.95, "95"), (0.90, "90"), (0.80, "80"), (0.50, "50")]
     fired_label = None
     fired_threshold = None
     for threshold, label in THRESHOLDS:
