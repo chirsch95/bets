@@ -160,6 +160,36 @@ CSS = """
   .health-pill.warn .dot { background: var(--yellow); }
   .health-pill.danger { border-color: var(--red); color: var(--red); }
   .health-pill.danger .dot { background: var(--red); }
+  /* Pull-to-refresh indicator. Standalone PWAs disable Safari's native
+     overscroll PTR, so we render our own. Hidden by default; the JS
+     translates it down with the finger and snaps to a fixed spot when
+     refreshing. Stays out of the document flow (position: fixed) so it
+     can never push content around. */
+  .ptr-indicator {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    width: 36px;
+    height: 36px;
+    margin-left: -18px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    transform: translateY(-60px);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.25s ease, opacity 0.2s ease;
+    -webkit-user-select: none;
+  }
+  .ptr-indicator.dragging { transition: none; }
+  .ptr-indicator.ready { color: var(--green); border-color: var(--green); }
+  .ptr-indicator.refreshing svg { animation: ptr-spin 0.8s linear infinite; }
+  @keyframes ptr-spin { to { transform: rotate(360deg); } }
   .tabs {
     display: flex;
     gap: 4px;
@@ -5568,6 +5598,112 @@ def _render_js() -> str:
     }}
   }}
 
+  // Wraps a full re-fetch + repaint. Used by visibilitychange and
+  // pull-to-refresh; both call this instead of loadAndRender() directly
+  // so the timestamp + side fetches (quota, health) stay in sync.
+  let lastRefreshAt = 0;
+  async function doSoftRefresh() {{
+    lastRefreshAt = Date.now();
+    try {{
+      await loadAndRender();
+    }} finally {{
+      loadOddsQuota();
+      loadHealth();
+    }}
+  }}
+
+  // #1 — auto-refresh when the PWA returns to foreground. Skips if a
+  // refresh just ran (debounce 30s) so rapid app-switching doesn't
+  // hammer the network.
+  function setupVisibilityRefresh() {{
+    document.addEventListener("visibilitychange", () => {{
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastRefreshAt < 30000) return;
+      doSoftRefresh();
+    }});
+  }}
+
+  // #2 — custom pull-to-refresh, gated on PWA standalone mode (Safari
+  // in-browser still has the native overscroll PTR; injecting ours
+  // there would double-trigger). Threshold 70px, 0.5x damping so the
+  // indicator feels weighty rather than rubbery.
+  function setupPullToRefresh() {{
+    const standalone = window.matchMedia("(display-mode: standalone)").matches
+      || window.navigator.standalone === true;
+    if (!standalone) return;
+
+    const indicator = document.getElementById("ptr-indicator");
+    if (!indicator) return;
+
+    const THRESHOLD = 70;
+    const DAMPING = 0.5;
+    let startY = 0;
+    let pulling = false;
+    let pullDistance = 0;
+    let refreshing = false;
+
+    function reset() {{
+      indicator.classList.remove("dragging", "ready");
+      indicator.style.transform = "";
+      indicator.style.opacity = "";
+      pullDistance = 0;
+    }}
+
+    document.addEventListener("touchstart", (e) => {{
+      if (refreshing) return;
+      if (e.touches.length !== 1) return;
+      // Only intercept when the page is at the top — otherwise let
+      // native scroll work. window.scrollY is the cross-browser way
+      // to read the document scroll offset.
+      if ((window.scrollY || document.documentElement.scrollTop || 0) > 0) return;
+      startY = e.touches[0].clientY;
+      pulling = true;
+      pullDistance = 0;
+      indicator.classList.add("dragging");
+    }}, {{ passive: true }});
+
+    document.addEventListener("touchmove", (e) => {{
+      if (!pulling || refreshing) return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0) {{
+        // User swiped up — abort the pull and let native scroll resume.
+        pulling = false;
+        reset();
+        return;
+      }}
+      pullDistance = dy * DAMPING;
+      indicator.style.transform = `translateY(${{Math.min(pullDistance, 100)}}px)`;
+      indicator.style.opacity = String(Math.min(pullDistance / 40, 1));
+      indicator.classList.toggle("ready", pullDistance >= THRESHOLD);
+    }}, {{ passive: true }});
+
+    document.addEventListener("touchend", () => {{
+      if (!pulling) return;
+      pulling = false;
+      indicator.classList.remove("dragging");
+      if (pullDistance >= THRESHOLD) {{
+        refreshing = true;
+        indicator.classList.add("refreshing");
+        indicator.classList.remove("ready");
+        indicator.style.transform = "translateY(40px)";
+        indicator.style.opacity = "1";
+        doSoftRefresh().finally(() => {{
+          refreshing = false;
+          indicator.classList.remove("refreshing");
+          reset();
+        }});
+      }} else {{
+        reset();
+      }}
+    }}, {{ passive: true }});
+
+    document.addEventListener("touchcancel", () => {{
+      if (!pulling) return;
+      pulling = false;
+      reset();
+    }}, {{ passive: true }});
+  }}
+
   document.addEventListener("DOMContentLoaded", () => {{
     updateHeaderDate();
     applyNoisePreference();
@@ -5597,6 +5733,9 @@ def _render_js() -> str:
     loadAndRender();
     loadOddsQuota();
     loadHealth();
+    lastRefreshAt = Date.now();
+    setupVisibilityRefresh();
+    setupPullToRefresh();
     // Watcher runs every 30 min, but a manual kickstart or a recent
     // retry can change the snapshot mid-window. 60s polling is cheap
     // (read-only file lookup) and matches the bets tab's poll cadence.
@@ -5667,6 +5806,12 @@ def generate(target_date: date | None = None) -> Path | None:
 <script>{js}</script>
 </head>
 <body>
+<div id="ptr-indicator" class="ptr-indicator" aria-hidden="true">
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+    <path d="M21 12a9 9 0 1 1-3.5-7.1"/>
+    <polyline points="21 4 21 9 16 9"/>
+  </svg>
+</div>
 <header>
   <div>
     <h1>MLB K Prop Projections</h1>
