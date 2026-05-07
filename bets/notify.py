@@ -14,6 +14,7 @@ data/notify_state.json so the same event fires at most once per day.
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import math
@@ -23,7 +24,7 @@ from datetime import date, timedelta
 
 import requests
 
-from .config import PROJECT_ROOT
+from .config import OUTPUT_DIR, PROJECT_ROOT
 
 PUSHOVER_URL = "https://api.pushover.net/1/messages.json"
 NOTIFY_STATE_PATH = PROJECT_ROOT / "data" / "notify_state.json"
@@ -263,3 +264,191 @@ def check_live_alerts(live_results: dict, target_iso: str) -> None:
             line_str = f"{line:g}" if line is not None else "?"
             verb = "hit" if s == "hit" else "miss"
             send_pushover(f"Leg {verb}: {name}", f"{name} {ou}{line_str} · {ks}K")
+
+
+# ---------- pre-game scratch alerts ----------
+
+
+def check_scratch_alerts(target_iso: str) -> None:
+    """Compare today's probable starters against pending bets; fire one
+    Pushover per scratched pitcher. The slate snapshot is used to find
+    the replacement on the same side of the matchup so the message can
+    name who's starting instead.
+
+    Bet-level filtering: only today's pending bets count (matches
+    check_live_alerts). Wrapped in broad try/except by the caller so a
+    transient MLB Stats API failure never breaks the alerts loop.
+    """
+    # Local imports: avoids a circular dep at module-import time and
+    # keeps notify.py importable in contexts that don't want the full
+    # data layer (e.g., tooling, simple settle scripts).
+    from . import wagers
+    from .fetch import todays_probable_starters
+
+    try:
+        target = date.fromisoformat(target_iso)
+    except ValueError:
+        return
+
+    bets = wagers.load_bets()["bets"]
+    todays_pending = [
+        b for b in bets
+        if b.get("result") not in ("W", "L") and (b.get("date") or "") == target_iso
+    ]
+    if not todays_pending:
+        return
+
+    bet_pids: set[int] = set()
+    for b in todays_pending:
+        for leg in b.get("legs") or []:
+            pid = leg.get("pitcher_id")
+            if isinstance(pid, int):
+                bet_pids.add(pid)
+    if not bet_pids:
+        return
+
+    try:
+        starters = todays_probable_starters(target)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("scratch check: probable_starters failed: %s", exc)
+        return
+
+    starter_ids = {s["pitcher_id"] for s in starters}
+    starters_by_game: dict[int, list[dict]] = {}
+    for s in starters:
+        starters_by_game.setdefault(s["game_pk"], []).append(s)
+
+    # Slate snapshot maps the bet's original pitcher_id → game_pk + side,
+    # so we can name the replacement starter on the same matchup side
+    # (home vs away) rather than guessing.
+    slate_path = OUTPUT_DIR / f"pitcher_ks_{target_iso}_slate.csv"
+    slate_by_id: dict[int, dict] = {}
+    if slate_path.exists():
+        try:
+            with slate_path.open() as f:
+                for row in csv.DictReader(f):
+                    try:
+                        pid = int(row["pitcher_id"])
+                    except (KeyError, ValueError, TypeError):
+                        continue
+                    slate_by_id[pid] = row
+        except OSError as exc:
+            logger.warning("scratch check: slate read failed: %s", exc)
+
+    for b in todays_pending:
+        for leg in b.get("legs") or []:
+            pid = leg.get("pitcher_id")
+            if not isinstance(pid, int):
+                continue
+            if pid in starter_ids:
+                continue  # still on the card
+            if not _claim_key(f"{target_iso}:scratch:{pid}", target_iso):
+                continue
+
+            original_name = leg.get("pitcher") or "?"
+            replacement_name = None
+            slate_row = slate_by_id.get(pid)
+            if slate_row:
+                try:
+                    game_pk = int(slate_row.get("game_pk") or 0) or None
+                except (TypeError, ValueError):
+                    game_pk = None
+                if game_pk is not None:
+                    same_side = str(slate_row.get("is_home", "")).strip().lower() in ("true", "1")
+                    candidates = [
+                        s for s in starters_by_game.get(game_pk, [])
+                        if bool(s.get("is_home")) == same_side
+                    ]
+                    if candidates:
+                        replacement_name = candidates[0].get("pitcher_name")
+
+            line = leg.get("line")
+            ou = leg.get("ou") or ""
+            line_tag = ""
+            if line is not None and ou:
+                line_tag = f" ({ou}{line:g})"
+
+            title = f"Scratched: {original_name}{line_tag}"
+            if replacement_name:
+                msg = f"Now starting: {replacement_name}"
+            else:
+                msg = "No replacement listed yet"
+            send_pushover(title, msg)
+
+
+# ---------- Odds API quota threshold alerts ----------
+
+
+def _claim_quota_threshold(month_iso: str, label: str) -> bool:
+    """Track which quota thresholds have already alerted this month.
+    Separate namespace from the daily 'seen' map so the 7-day prune in
+    _claim_key doesn't wipe monthly state."""
+    state = _load_notify_state()
+    quota = state.setdefault("quota_alerted", {})
+    # Drop entries from any month other than current — keeps state lean
+    # and ensures a new month resets the alert budget cleanly.
+    for k in list(quota.keys()):
+        if k != month_iso:
+            del quota[k]
+    fired = quota.setdefault(month_iso, [])
+    if label in fired:
+        return False
+    fired.append(label)
+    _save_notify_state(state)
+    return True
+
+
+def check_quota_alerts() -> None:
+    """Fire one Pushover per crossed threshold (80% / 90% / 95%) per
+    month based on output/odds_api_usage.json. Only the highest-yet
+    threshold fires — lower ones already fired earlier in the month
+    (or are claimed silently if usage jumped past them in one call).
+    """
+    path = OUTPUT_DIR / "odds_api_usage.json"
+    if not path.exists():
+        return
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return
+
+    try:
+        used = float(data.get("used") or 0)
+        cap = float(data.get("cap") or 0)
+    except (TypeError, ValueError):
+        return
+    if cap <= 0:
+        return
+    pct = used / cap
+
+    today = date.today()
+    month_iso = f"{today.year:04d}-{today.month:02d}"
+
+    # Highest first: a single tick that crosses 80→90 should alert at
+    # 90, not 80 (90 is more useful info). Lower thresholds get marked
+    # claimed silently so they don't fire later in the same month.
+    THRESHOLDS = [(0.95, "95"), (0.90, "90"), (0.80, "80")]
+    fired_label = None
+    fired_threshold = None
+    for threshold, label in THRESHOLDS:
+        if pct >= threshold:
+            fired_label = label
+            fired_threshold = threshold
+            break
+    if fired_label is None:
+        return
+
+    if not _claim_quota_threshold(month_iso, fired_label):
+        return
+    # Silently claim every LOWER threshold so a later tick doesn't ping
+    # at "80" once we're past 90 — they're redundant. Higher thresholds
+    # stay open: usage might keep rising and warrant a more urgent ping.
+    for threshold, label in THRESHOLDS:
+        if threshold < fired_threshold:
+            _claim_quota_threshold(month_iso, label)
+
+    remaining = max(0, int(cap - used))
+    send_pushover(
+        f"Odds API: {int(pct * 100)}% used",
+        f"{int(used)}/{int(cap)} this month · {remaining} credits left",
+    )

@@ -304,14 +304,42 @@ def _parlay_verdict(leg_states: list) -> str | None:
     return None
 
 
+_last_scratch_check_at = 0.0
+
+
 def _alerts_tick() -> None:
     """One pass of the background loop: fetch live K for any pending
     bets, fire pulled-starter / parlay-one-to-go alerts, then auto-settle
     any bets with definitive verdicts (which fires the bet-settled alert
-    via _settle_bet_with_notify). No-op when no pending bets."""
+    via _settle_bet_with_notify). Also runs the bet-independent quota
+    threshold check and (when there are pending bets today) the
+    pre-game scratch check on a 5-min cooldown."""
+    global _last_scratch_check_at
     target = _today()
+    target_iso = target.isoformat()
+
+    # Quota-threshold alerts run every tick — file read only, doesn't
+    # depend on bets. Skipped on errors, never breaks the tick.
+    try:
+        notify.check_quota_alerts()
+    except Exception as exc:  # noqa: BLE001
+        app.logger.warning("alerts tick: check_quota_alerts failed: %s", exc)
+
     state = wagers.load_bets()
     pending = [b for b in state["bets"] if not b.get("result")]
+
+    # Scratch check: needs at least one pending bet for today, and is
+    # rate-limited to 5 min so we don't pummel the MLB Stats API every
+    # 60s. Scratches usually announce 1-3 hours pre-game so the cooldown
+    # is plenty of resolution.
+    todays_pending = [b for b in pending if (b.get("date") or "") == target_iso]
+    if todays_pending and time.time() - _last_scratch_check_at >= 300:
+        _last_scratch_check_at = time.time()
+        try:
+            notify.check_scratch_alerts(target_iso)
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning("alerts tick: check_scratch_alerts failed: %s", exc)
+
     pids: set[int] = set()
     for b in pending:
         for leg in b.get("legs") or []:
@@ -326,7 +354,7 @@ def _alerts_tick() -> None:
         app.logger.warning("alerts tick: live_ks failed: %s", exc)
         return
     try:
-        notify.check_live_alerts(results, target.isoformat())
+        notify.check_live_alerts(results, target_iso)
     except Exception as exc:  # noqa: BLE001
         app.logger.warning("alerts tick: check_live_alerts failed: %s", exc)
     for bet in pending:
