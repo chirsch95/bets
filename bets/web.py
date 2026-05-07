@@ -1952,9 +1952,19 @@ def _render_js() -> str:
     return escapeHTML(String(v));
   }}
 
-  // Parlay math — independent-leg approximation. Two pitchers in the
-  // same game face different lineups (their opponent's), so independence
-  // is a fine assumption for K props.
+  // Format a 0..1 probability as a 1-decimal percent, with the same
+  // null/empty behavior as dash(). Use this for any cell whose column
+  // header carries a "%" — never let a raw decimal leak under a % label.
+  function pct1(v) {{
+    const n = f(v);
+    if (n === null) return "—";
+    return (n * 100).toFixed(1) + "%";
+  }}
+
+  // Parlay math — independent-leg approximation across games. Two
+  // starters in the *same* game share K-environment (umpire zone,
+  // weather, wind, scorekeeper) so independence breaks down there;
+  // renderParlaySuggestions filters same-game combos before scoring.
   function americanToDecimal(odds) {{
     const o = f(odds);
     // o === 0 is meaningless ("0 American") — bad CSV, treat as no price.
@@ -2128,7 +2138,8 @@ def _render_js() -> str:
     }}
     const diffMin = Math.round(diffMs / 60000);
     let rel = "";
-    if (diffMin < 60) rel = `in ${{diffMin}}m`;
+    if (diffMin === 0) rel = "starting now";
+    else if (diffMin < 60) rel = `in ${{diffMin}}m`;
     else if (diffMin < 60 * 24) {{
       const h = Math.floor(diffMin / 60);
       const m = diffMin % 60;
@@ -2553,7 +2564,7 @@ def _render_js() -> str:
     const edge = f(r.edge);
     const cls = classify(edge);
     const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
-    const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + edge.toFixed(3);
+    const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + (edge * 100).toFixed(1) + "%";
     const proj = r.proj_ks_v2 || r.proj_ks_v1 || "";
     const projTip = projTooltip(r);
     const projAttr = projTip ? ` title="${{escapeHTML(projTip)}}"` : "";
@@ -2581,8 +2592,8 @@ def _render_js() -> str:
       <td class="num">${{dash(r.line)}}</td>
       <td class="num"${{overTitle}}>${{dash(r.over_odds)}}</td>
       <td class="num"${{underTitle}}>${{dash(r.under_odds)}}</td>
-      <td class="num">${{dash(r.p_over)}}</td>
-      <td class="num"${{novigTitle}}>${{dash(r.novig_over)}}</td>
+      <td class="num">${{pct1(r.p_over)}}</td>
+      <td class="num"${{novigTitle}}>${{pct1(r.novig_over)}}</td>
       <td class="num edge ${{dir}}">${{edgeStr}}</td>
       <td class="badge"><span class="tag ${{tagCls}}">${{label(cls, dir)}}</span></td>
     </tr>`;
@@ -2788,7 +2799,12 @@ def _render_js() -> str:
         </div>
         <div class="pick-card-stat">
           <span class="pick-card-stat-label">Our %</span>
-          <span class="pick-card-stat-val">${{dash(r.p_over)}}</span>
+          <span class="pick-card-stat-val">${{(() => {{
+            const p = f(r.p_over);
+            if (p === null) return "—";
+            const conf = dir === "over" ? p : 1 - p;
+            return (conf * 100).toFixed(1) + "%";
+          }})()}}</span>
         </div>
         <div class="pick-card-stat">
           <span class="pick-card-stat-label card-live-label">${{escapeHTML(liveCell.label)}}</span>
@@ -2961,7 +2977,7 @@ def _render_js() -> str:
     const edge = f(r.edge);
     const cls = classify(edge);
     const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
-    const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + edge.toFixed(3);
+    const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + (edge * 100).toFixed(1) + "%";
     const rowCls = `row-${{cls}}` + (dir ? ` dir-${{dir}}` : "");
     const tagCls = `tag-${{cls}}` + (dir ? ` tag-dir-${{dir}}` : "");
     const overTitle = r.over_book ? ` title="Best price at ${{escapeHTML(r.over_book)}}"` : "";
@@ -2976,8 +2992,8 @@ def _render_js() -> str:
       <td class="num">${{dash(r.line)}}</td>
       <td class="num"${{overTitle}}>${{dash(r.over_odds)}}</td>
       <td class="num"${{underTitle}}>${{dash(r.under_odds)}}</td>
-      <td class="num">${{dash(r.p_over)}}</td>
-      <td class="num"${{novigTitle}}>${{dash(r.novig_over)}}</td>
+      <td class="num">${{pct1(r.p_over)}}</td>
+      <td class="num"${{novigTitle}}>${{pct1(r.novig_over)}}</td>
       <td class="num edge ${{dir}}">${{edgeStr}}</td>
       <td class="badge"><span class="tag ${{tagCls}}">${{label(cls, dir)}}</span></td>
     </tr>`;
@@ -4201,7 +4217,7 @@ def _render_js() -> str:
         </div>
         <div class="bets-field"><label>Stake</label><input id="bf-stake" type="number" step="0.01" placeholder="10.00"></div>
         <div class="bets-field"><label>Odds</label><input id="bf-odds" type="number" step="0.01" placeholder="2.40"></div>
-        <div class="bets-field"><label>Boost (free text)</label><input id="bf-boost" placeholder="Free entry / +30%"></div>
+        <div class="bets-field"><label>Boost (free text)</label><input id="bf-boost" placeholder="+30%"></div>
       </div>
       <div class="bets-form-actions">
         <button id="bf-save" type="button">Save bet</button>
