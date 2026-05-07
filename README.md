@@ -220,8 +220,21 @@ A **personal parlay ledger** for tracking actual DFS bets, hidden on the public 
 - **Free-entry flag**: tickets marked as free entries are excluded from `staked` and `ROI` totals (their winnings still count toward `returned`). Shown separately on a secondary totals line.
 - **Per-site P&L row**: under the totals strip, a "By site:" line breaks out tickets · W–L–pending · net · ROI for each of PP / UD / DK separately, so you can see whether one site is actually paying off differently. Tickets with no site tag are excluded from the row.
 - **Phone-friendly layout**: below 600px viewport width the ledger drops the 8-column table and re-lays each bet as a stacked card (date + W/L badge on top, parlay summary, then stake / odds / payout each on their own captioned line, with full-width W/L/Edit/× action buttons at the bottom). Same `<table>` DOM so handlers, expand/collapse, W/L tints, and live-K painting keep working unchanged. Bets list is also visually reordered above the totals/heatmap on phones — current bet status is what you want at a glance, totals are reflective context further down.
+- **Mobile quick-status strip** (≤600px only): a compact band above the toolbar shows one tappable row per still-pending bet, one chip per leg. Each chip leads with the wagered side + line (`U7.5`, `O8.5`) so the K count reads against what was bet, then appends `5K · 87P · 4th` while live or settles to `5K ✓` / `9K ✗` once `legHitState` locks in. Chip color = verdict (green/red/yellow/gray); tooltip carries the longer state. Tap a row to expand + scroll to the matching ledger card. Strip is hidden on desktop.
 
 The Flask server's `/api/bets` (CRUD), `/api/slate-pitchers`, and `/api/live-ks` routes serve the tab. None of these reach the public URL — the tab itself is hidden via the `local-only` CSS class plus a synchronous head script that adds `is-local` to `<html>` only when `location.hostname` matches localhost. (The Caddyfile on the M1 Air also 404s any path other than `/`, `/index.html`, the PNG icons, and `/manifest.webmanifest`, so even the API routes can't be reached publicly even if the JS were tampered with.)
+
+### Install as an iPhone app (PWA)
+
+The dashboard ships a web app manifest + apple-touch icons, so it installs from Safari as a standalone home-screen app — no App Store, no Apple Developer account, no Xcode.
+
+1. Open the **Tailscale URL** (`https://chadhirschs-macbook-air.tail4082dd.ts.net/`) in Safari on your iPhone. Install from this URL specifically — the public Cloudflare URL also serves the manifest, but it doesn't have the Bets tab, so the app would be missing your most-used surface.
+2. Tap **Share → Add to Home Screen**. Default name is "K Props".
+3. Tap the new icon — it opens full-screen with no Safari chrome, dark theme matching the dashboard, and your phone treats it like any other app (icon on the home screen, lives in the app switcher).
+
+**Refresh patterns:** in-app **Refresh data** / **↻ Refresh live** buttons reload data only. Pull-to-refresh from the top of the screen does a full page reload (iOS 16+). After a deploy that changes UI, force-quit + re-open the app via the app switcher to guarantee a fresh load of HTML/JS.
+
+**Files involved:** `output/manifest.webmanifest` declares the app; `output/apple-touch-icon.png` (180×180) is what iOS pins to the home screen; `icon-192.png` / `icon-512.png` are referenced by the manifest for non-iOS contexts. Caddy's allowlist on the Air is extended to serve all of these so the manifest also resolves from the public URL.
 
 ### Pushover notifications (optional, local-only)
 
