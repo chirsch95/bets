@@ -5,13 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MLB K Props</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315803d'/%3E%3Ctext x='16' y='24' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='900' font-size='24' fill='white'%3E%24%3C/text%3E%3C/svg%3E">
-<!-- PWA: install via Safari → Share → "Add to Home Screen". -->
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#0e1015">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="K Props">
 <script>(function(){var h=location.hostname;var d=document.documentElement;if(h===''||h==='localhost'||h==='127.0.0.1')d.classList.add('is-local');if(/\.ts\.net$/i.test(h))d.classList.add('is-bets');})();</script>
 <style>
   :root {
@@ -1148,48 +1141,6 @@
     color: var(--muted);
     border: 1px solid var(--border);
   }
-  /* Mobile-only "Live now" quick-status strip at the top of the bets
-     panel: one tappable row per still-pending bet, one chip per leg.
-     Hidden on desktop where the full ledger is already at the top. */
-  .bets-quickstatus { display: none; }
-  .bets-quickstatus-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 0;
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-  }
-  .bets-quickstatus-row:last-child { border-bottom: none; }
-  .bets-quickstatus-row .qs-meta {
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-right: 2px;
-    flex: 0 0 auto;
-  }
-  .bets-qs-chip {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 4px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    background: transparent;
-    white-space: nowrap;
-  }
-  .bets-qs-chip .qs-name { font-weight: 600; color: var(--text); }
-  .bets-qs-chip.hit { background: rgba(74, 222, 128, 0.15); border-color: var(--green); color: var(--green); }
-  .bets-qs-chip.hit .qs-name { color: var(--green); }
-  .bets-qs-chip.miss { background: rgba(248, 113, 113, 0.15); border-color: var(--red); color: var(--red); }
-  .bets-qs-chip.miss .qs-name { color: var(--red); }
-  .bets-qs-chip.live { background: rgba(251, 191, 36, 0.12); border-color: var(--yellow); color: var(--yellow); }
-  .bets-qs-chip.live .qs-name { color: var(--text); }
   .bets-toolbar {
     display: flex;
     justify-content: space-between;
@@ -1544,181 +1495,6 @@
     .track-summary { grid-template-columns: 1fr 1fr; }
     .report-card { grid-template-columns: 1fr 1fr; }
     .actions button { flex: 1; min-width: 0; }
-  }
-  /* Phone-sized bets ledger: keep the same <table> DOM (so event
-     handlers, expand/collapse, W/L tints, and live-K painting all
-     keep working) but visually re-layout each row as a stacked card.
-     Each parlay-row td maps to a grid-area; the parlay-detail row
-     becomes a continuation block joined to its summary card. */
-  @media (max-width: 600px) {
-    .bets-table-wrap { overflow: visible; -webkit-overflow-scrolling: auto; }
-    table.bets-ledger { min-width: 0; width: 100%; border-collapse: separate; border-spacing: 0; }
-    table.bets-ledger thead { display: none; }
-    table.bets-ledger,
-    table.bets-ledger tbody { display: block; }
-    table.bets-ledger tr.parlay-row {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      grid-template-areas:
-        "date    result"
-        "parlay  parlay"
-        "stake   stake"
-        "odds    odds"
-        "payout  payout"
-        "actions actions";
-      gap: 4px 10px;
-      align-items: center;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 14px;
-      margin: 0 0 10px;
-    }
-    table.bets-ledger tr.parlay-row > td {
-      display: block;
-      border: none;
-      padding: 0;
-      white-space: normal;
-      background: transparent;
-    }
-    table.bets-ledger tr.parlay-row > td:nth-child(1) {
-      grid-area: date;
-      font-size: 12px;
-      color: var(--muted);
-      font-weight: 600;
-    }
-    table.bets-ledger tr.parlay-row > td:nth-child(2) {
-      grid-area: parlay;
-      font-size: 13px;
-      line-height: 1.45;
-    }
-    table.bets-ledger tr.parlay-row > td:nth-child(3) { grid-area: stake; }
-    table.bets-ledger tr.parlay-row > td:nth-child(4) { grid-area: odds; }
-    table.bets-ledger tr.parlay-row > td:nth-child(5) { display: none; }  /* Boost — rarely used, hidden on phones */
-    table.bets-ledger tr.parlay-row > td:nth-child(6) {
-      grid-area: result;
-      text-align: right;
-      font-size: 14px;
-      justify-self: end;
-    }
-    table.bets-ledger tr.parlay-row > td:nth-child(7) { grid-area: payout; }
-    /* Stake / Odds / Payout: caption + value on one row each. */
-    table.bets-ledger tr.parlay-row > td:nth-child(3),
-    table.bets-ledger tr.parlay-row > td:nth-child(4),
-    table.bets-ledger tr.parlay-row > td:nth-child(7) {
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
-      font-size: 13px;
-      font-variant-numeric: tabular-nums;
-      text-align: left;
-    }
-    table.bets-ledger tr.parlay-row > td:nth-child(3)::before,
-    table.bets-ledger tr.parlay-row > td:nth-child(4)::before,
-    table.bets-ledger tr.parlay-row > td:nth-child(7)::before {
-      display: inline-block;
-      min-width: 56px;
-      font-size: 10px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--muted);
-      font-weight: 600;
-    }
-    table.bets-ledger tr.parlay-row > td:nth-child(3)::before { content: "Stake"; }
-    table.bets-ledger tr.parlay-row > td:nth-child(4)::before { content: "Odds"; }
-    table.bets-ledger tr.parlay-row > td:nth-child(7)::before { content: "Payout"; }
-    table.bets-ledger tr.parlay-row > td.actions {
-      grid-area: actions;
-      text-align: left;
-      display: flex;
-      gap: 6px;
-      margin-top: 6px;
-      padding-top: 8px;
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
-    }
-    table.bets-ledger tr.parlay-row > td.actions button.act {
-      flex: 1;
-      margin: 0;
-      padding: 9px 0;
-      font-size: 12px;
-    }
-    /* Apply W/L tint at the row level (desktop's per-cell tints don't
-       paint anything because td backgrounds are now transparent). */
-    table.bets-ledger tr.parlay-row.result-W { background: rgba(74, 222, 128, 0.10); border-color: rgba(74, 222, 128, 0.40); }
-    table.bets-ledger tr.parlay-row.result-L { background: rgba(248, 113, 113, 0.10); border-color: rgba(248, 113, 113, 0.40); }
-    /* Expanded: merge summary card and detail block into one card. */
-    table.bets-ledger tr.parlay-row.expanded {
-      margin-bottom: 0;
-      border-bottom-left-radius: 0;
-      border-bottom-right-radius: 0;
-    }
-    table.bets-ledger tr.parlay-detail { display: block; }
-    table.bets-ledger tr.parlay-detail.hidden { display: none; }
-    table.bets-ledger tr.parlay-detail > td {
-      display: block;
-      border: 1px solid var(--border);
-      border-top: none;
-      border-radius: 0 0 8px 8px;
-      padding: 6px 14px 10px;
-      margin-bottom: 10px;
-      background: rgba(0, 0, 0, 0.20);
-    }
-    table.bets-ledger tr.parlay-detail.result-W > td { background: rgba(74, 222, 128, 0.06); border-color: rgba(74, 222, 128, 0.40); }
-    table.bets-ledger tr.parlay-detail.result-L > td { background: rgba(248, 113, 113, 0.06); border-color: rgba(248, 113, 113, 0.40); }
-    /* "Show older bets" toggle and empty-state row need to render as
-       full-width blocks since the table is no longer a grid of cells. */
-    table.bets-ledger tr.bets-older-toggle { display: block; }
-    table.bets-ledger tr.bets-older-toggle > td {
-      display: block;
-      border: none;
-      padding: 6px 0 12px;
-      text-align: center;
-      background: transparent;
-    }
-    table.bets-ledger tr.bets-older-row.older-hidden { display: none; }
-    table.bets-ledger td.empty-msg {
-      display: block;
-      border: none;
-      text-align: center;
-      padding: 24px 8px;
-    }
-    /* Tighten leg detail rows: stack live status under the pitcher
-       name so name + O/U + live K all fit on a phone. */
-    .parlay-leg-list li {
-      grid-template-columns: 24px 1fr auto;
-      grid-template-areas:
-        "leg name ou"
-        "leg live live";
-      gap: 2px 8px;
-    }
-    .parlay-leg-list li > :nth-child(1) { grid-area: leg; align-self: start; }
-    .parlay-leg-list li > :nth-child(2) { grid-area: name; }
-    .parlay-leg-list li > :nth-child(3) { grid-area: ou; text-align: right; }
-    .parlay-leg-list li > :nth-child(4) { grid-area: live; font-size: 11px; }
-    /* Bets toolbar: stamp + refresh button stack instead of competing. */
-    .bets-toolbar { flex-wrap: wrap; gap: 6px; }
-    .bets-toolbar > div { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; }
-    /* 5 totals cards: 3 cols fits Bets/Staked/Returned in row 1 and
-       Net/ROI in row 2 without leaving a half-empty trailing row. */
-    .bets-totals-card { grid-template-columns: repeat(3, 1fr); gap: 6px; }
-    .bets-totals-card .report-stat { padding: 8px 10px; }
-    .bets-totals-card .report-val { font-size: 16px; }
-    .bets-totals-card .report-label { font-size: 10px; }
-    .bets-totals-card .report-sub { font-size: 10px; }
-    /* Reorder bets panel on phones: bets list first (with the live-K
-       toolbar above it, since they're functionally tied), then totals
-       and heatmap below, then the add-bet form at the bottom. DOM
-       order stays the same so handlers + accessibility tree are
-       unchanged — only visual order shifts. */
-    #bets-panel { display: flex; flex-direction: column; }
-    #bets-panel > .bets-quickstatus     { order: 0; display: block; margin-bottom: 10px; }
-    #bets-panel > .bets-quickstatus:empty { display: none; }
-    #bets-panel > .bets-toolbar         { order: 1; }
-    #bets-panel > .bets-table-wrap      { order: 2; }
-    #bets-panel > .bets-totals-card     { order: 3; margin-top: 14px; }
-    #bets-panel > .totals-card-secondary { order: 4; }
-    #bets-panel > .cal-wrap             { order: 5; }
-    #bets-panel > .bets-form-card       { order: 6; }
   }
 </style>
 <script>
@@ -3862,110 +3638,6 @@
     return legs;
   }
 
-  // Mobile-only quick-status strip: one row per still-pending bet,
-  // one chip per leg. Each chip shows the pitcher's last name plus
-  // K count + pitch count when available; row colors reflect the
-  // legHitState verdict (green/red/yellow/gray). The strip is hidden
-  // by CSS on desktop, so this code runs unconditionally.
-  function qsLastName(full) {
-    if (!full) return "?";
-    const parts = String(full).trim().split(/\s+/);
-    let last = parts[parts.length - 1] || full;
-    if (last.length > 8) last = last.slice(0, 8);
-    return last;
-  }
-
-  function renderQuickStatus(state) {
-    const open = (state.bets || []).filter(b =>
-      b.result === null || b.result === undefined || b.result === ""
-    ).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-    if (!open.length) {
-      return '<div class="bets-quickstatus" id="bets-quickstatus"></div>';
-    }
-    const rows = open.map(b => {
-      const legCount = (b.legs || []).length;
-      const chips = (b.legs || []).map(l => {
-        const name = qsLastName(l.pitcher);
-        const lineAttr = (l.line === null || l.line === undefined) ? "" : l.line;
-        return `<span class="bets-qs-chip" data-pitcher-id="${l.pitcher_id || ''}" data-ou="${l.ou || ''}" data-line="${lineAttr}">
-          <span class="qs-name">${escapeHTML(name)}</span>
-          <span class="qs-body">—</span>
-        </span>`;
-      }).join("");
-      return `<div class="bets-quickstatus-row" data-qs-bet-id="${escapeHTML(b.id)}">
-        <span class="qs-meta">${legCount}L</span>
-        ${chips}
-      </div>`;
-    }).join("");
-    return `<div class="bets-quickstatus" id="bets-quickstatus">${rows}</div>`;
-  }
-
-  function paintQuickStatus() {
-    const root = document.getElementById("bets-quickstatus");
-    if (!root) return;
-    root.querySelectorAll(".bets-qs-chip[data-pitcher-id]").forEach(chip => {
-      const pid = parseInt(chip.dataset.pitcherId, 10);
-      const ou = chip.dataset.ou || "O";
-      const line = chip.dataset.line ? parseFloat(chip.dataset.line) : null;
-      const body = chip.querySelector(".qs-body");
-      chip.classList.remove("hit", "miss", "live");
-      chip.removeAttribute("title");
-      // Pitcher's wagered side + line (e.g. "U7.5"). Prefixed onto every
-      // body so the user can read current Ks against what they bet
-      // without expanding the parlay row.
-      const ouLine = (line !== null && !isNaN(line))
-        ? `${ou}${line.toFixed(1)}` : "";
-      const withLine = (s) => (ouLine && s) ? `${ouLine} · ${s}` : (ouLine || s || "—");
-      if (!pid) {
-        if (body) body.textContent = withLine("");
-        return;
-      }
-      const live = liveKsByPid.get(pid);
-      if (!live) {
-        if (body) body.textContent = withLine("");
-        return;
-      }
-      const ks = live.ks;
-      const verdict = legHitState(ks, line, ou, live.status, live.done);
-      const ksTxt = (ks !== null && ks !== undefined) ? `${ks}K` : "";
-      const pTxt = (live.pitches !== null && live.pitches !== undefined) ? `${live.pitches}P` : "";
-      let cls = "";
-      let txt;
-      let title = "";
-      if (verdict === "hit") {
-        cls = "hit";
-        txt = withLine(ksTxt ? `${ksTxt} ✓` : "✓");
-        title = live.current_inning ? `Hit · ${live.current_inning}` : "Hit";
-      } else if (verdict === "miss") {
-        cls = "miss";
-        txt = withLine(ksTxt ? `${ksTxt} ✗` : "✗");
-        title = live.current_inning ? `Miss · ${live.current_inning}` : "Miss";
-      } else if (live.status === "Live") {
-        cls = "live";
-        const parts = [ksTxt, pTxt].filter(Boolean).join(" · ");
-        const inning = live.current_inning ? ` ${live.current_inning}` : "";
-        const stat = parts ? `${parts}${inning}` : `Live${inning}`;
-        txt = withLine(stat);
-        title = `Live${live.current_inning ? " · " + live.current_inning : ""}`;
-      } else if (live.status === "Preview") {
-        const t = live.first_pitch
-          ? new Date(live.first_pitch).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" })
-          : "TBD";
-        txt = withLine(t);
-        title = "Scheduled";
-      } else if (live.status === "Final") {
-        txt = withLine(ksTxt || "Final");
-        title = "Final";
-      } else {
-        txt = withLine(live.detailed || live.status || "");
-        title = live.detailed || live.status || "—";
-      }
-      if (cls) chip.classList.add(cls);
-      if (body) body.textContent = txt;
-      if (title) chip.title = title;
-    });
-  }
-
   function renderBetsTab(state) {
     const bets = state.bets || [];
     const totals = state.totals;
@@ -4063,8 +3735,7 @@
     const dailyPnl = computeDailyBetsPnl(sorted);
     const heatmapHTML = renderBetsCalendar(dailyPnl, 14);
 
-    return `${renderQuickStatus(state)}
-      ${toolbar}
+    return `${toolbar}
       ${renderBetsTotals(totals)}
       ${heatmapHTML}
       <div class="bets-table-wrap"><table class="bets-ledger">
@@ -4321,9 +3992,6 @@
         autoSettleQueue.push({ betId, verdict: verdictCls });
       }
     });
-    // Mobile-only quick-status strip uses the same liveKsByPid map —
-    // repaint it here so it always stays in sync with the detail rows.
-    paintQuickStatus();
     // Fire auto-settles asynchronously after painting completes.
     if (autoSettleQueue.length) maybeAutoSettle(autoSettleQueue);
   }
@@ -4846,22 +4514,6 @@
     panel.dataset.clickAttached = "true";
 
     panel.addEventListener("click", async (e) => {
-      // Tap on the mobile quick-status strip: expand the matching
-      // ledger row (if collapsed) and scroll it into view so the user
-      // can drill in without thumb-scrolling through the full list.
-      const qsRow = e.target.closest(".bets-quickstatus-row");
-      if (qsRow) {
-        const id = qsRow.dataset.qsBetId;
-        const row = panel.querySelector(`tr.parlay-row[data-id="${id}"]`);
-        const detail = panel.querySelector(`tr.parlay-detail[data-detail-for="${id}"]`);
-        if (detail && detail.classList.contains("hidden")) {
-          if (row) row.classList.add("expanded");
-          detail.classList.remove("hidden");
-          paintLiveKs();
-        }
-        if (row) row.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
       // Action buttons take priority — don't toggle expand on button clicks.
       const btn = e.target.closest("button.act");
       if (!btn) {
