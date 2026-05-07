@@ -971,6 +971,17 @@ CSS = """
   table.bets-ledger button.act.win:hover { color: var(--green); border-color: var(--green); }
   table.bets-ledger button.act.lose:hover { color: var(--red); border-color: var(--red); }
   table.bets-ledger button.act.del:hover { color: var(--red); border-color: var(--red); }
+  /* iPad landscape (and other tablet-class touch devices): the
+     phone-only stacked layout at max-width: 600px doesn't fire here,
+     but the desktop 11px buttons are still too small for thumbs. Bump
+     padding/font-size on any coarse-pointer device above phone width. */
+  @media (pointer: coarse) and (min-width: 601px) {{
+    table.bets-ledger button.act {{
+      padding: 8px 12px;
+      font-size: 13px;
+      margin-left: 6px;
+    }}
+  }}
   table.bets-ledger td.result.W { color: var(--green); font-weight: 600; }
   table.bets-ledger td.result.L { color: var(--red); font-weight: 600; }
   table.bets-ledger td.result.pending { color: var(--muted); }
@@ -989,7 +1000,7 @@ CSS = """
     box-sizing: border-box;
     font-variant-numeric: tabular-nums;
   }
-  /* Parlay form (Phase 1) — leg-count selector + N leg rows. */
+  /* Parlay form — leg-count selector + N leg rows. */
   .bets-form-top {
     display: flex;
     gap: 14px;
@@ -1157,7 +1168,7 @@ CSS = """
   tr.parlay-row.result-L.expanded td { background: rgba(248, 113, 113, 0.20); }
   tr.parlay-detail.result-W td { background: rgba(74, 222, 128, 0.18); }
   tr.parlay-detail.result-L td { background: rgba(248, 113, 113, 0.16); }
-  /* Phase 2: Pitcher picker (select + custom-text fallback). */
+  /* Pitcher picker (select + custom-text fallback). */
   .leg-picker { position: relative; }
   .leg-picker select.pitcher-select {
     background: var(--bg);
@@ -1198,7 +1209,7 @@ CSS = """
   .leg-picker .leg-context.over { color: var(--green); }
   .leg-picker .leg-context.under { color: var(--red); }
   .leg-picker .leg-context.investigate { color: var(--yellow); }
-  /* Phase 3: live K display in expanded parlay detail. */
+  /* Live K display in expanded parlay detail. */
   .parlay-leg-list li {
     grid-template-columns: 24px 1fr 80px 1fr;
   }
@@ -1266,11 +1277,21 @@ CSS = """
     flex-wrap: wrap;
     align-items: center;
     gap: 4px;
-    padding: 6px 0;
+    padding: 6px 4px 6px 0;
     border-bottom: 1px solid var(--border);
     cursor: pointer;
   }
   .bets-quickstatus-row:last-child { border-bottom: none; }
+  .bets-quickstatus-row:active { background: rgba(255, 255, 255, 0.04); }
+  .bets-quickstatus-row .qs-chevron {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    flex: 0 0 auto;
+    align-self: center;
+    padding-left: 4px;
+  }
   .bets-quickstatus-row .qs-meta {
     font-size: 10px;
     color: var(--muted);
@@ -4096,6 +4117,7 @@ def _render_js() -> str:
       return `<div class="bets-quickstatus-row" data-qs-bet-id="${{escapeHTML(b.id)}}">
         <span class="qs-meta">${{legCount}}L</span>
         ${{chips}}
+        <span class="qs-chevron" aria-hidden="true">›</span>
       </div>`;
     }}).join("");
     return `<div class="bets-quickstatus" id="bets-quickstatus">${{rows}}</div>`;
