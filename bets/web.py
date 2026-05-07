@@ -58,6 +58,27 @@ CSS = """
     --red-solid: #b91c1c;
     --yellow: #fbbf24;
     --yellow-bg: rgba(251, 191, 36, 0.1);
+    /* Subtle overlays used for hover/header tints. White-on-dark in
+       dark mode; flipped to black-on-light below. */
+    --hover-overlay: rgba(255,255,255,0.04);
+    --header-tint: rgba(255,255,255,0.02);
+  }
+  :root[data-theme="light"] {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --text: #1a1d24;
+    --muted: #6b7280;
+    --border: #e2e5eb;
+    --green: #16a34a;
+    --green-bg: rgba(22, 163, 74, 0.12);
+    --green-solid: #15803d;
+    --red: #dc2626;
+    --red-bg: rgba(220, 38, 38, 0.12);
+    --red-solid: #b91c1c;
+    --yellow: #d97706;
+    --yellow-bg: rgba(217, 119, 6, 0.14);
+    --hover-overlay: rgba(0,0,0,0.05);
+    --header-tint: rgba(0,0,0,0.03);
   }
   * { box-sizing: border-box; }
   body {
@@ -92,7 +113,7 @@ CSS = """
     cursor: pointer;
     font-family: inherit;
   }
-  .actions button:hover { background: rgba(255,255,255,0.04); }
+  .actions button:hover { background: var(--hover-overlay); }
   .actions button.primary {
     background: var(--green);
     color: #001a00;
@@ -322,7 +343,7 @@ CSS = """
   /* Projection cells with a v0/v1/v2/ML breakdown tooltip — subtle
      dotted underline on the value hints that hover reveals more. */
   td.num.proj-cell { cursor: help; }
-  td.num.proj-cell:hover { background: rgba(255,255,255,0.04); }
+  td.num.proj-cell:hover { background: var(--hover-overlay); }
   .pick-card-stat.proj-cell { cursor: help; }
   .pick-card-stat.proj-cell .pick-card-stat-val {
     text-decoration: underline dotted rgba(255,255,255,0.3);
@@ -1351,7 +1372,7 @@ CSS = """
   }
   tr:last-child td { border-bottom: none; }
   th {
-    background: rgba(255,255,255,0.02);
+    background: var(--header-tint);
     font-weight: 500;
     color: var(--muted);
     font-size: 11px;
@@ -1819,6 +1840,7 @@ def _action_buttons_html() -> str:
     and locally without environment-dependent generation."""
     return """<div class="actions">
     <button type="button" id="refresh-btn" class="primary">Refresh data</button>
+    <button type="button" id="theme-toggle" title="Toggle light/dark">Light</button>
     <span class="last-refresh" id="last-refresh"></span>
     <span class="quota-pill" id="quota-pill" title=""></span>
     <span class="health-pill" id="health-pill" title=""><span class="dot"></span><span class="label">Health</span></span>
@@ -5730,6 +5752,26 @@ def _render_js() -> str:
     const btn = document.getElementById("refresh-btn");
     if (btn) btn.addEventListener("click", loadAndRender);
 
+    // Theme toggle. Head script already applied saved theme; this
+    // syncs the button label + reacts to clicks. localStorage persists
+    // across reloads; the head script reads it back next visit.
+    const themeBtn = document.getElementById("theme-toggle");
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    function syncThemeUI() {{
+      const isLight = document.documentElement.getAttribute("data-theme") === "light";
+      if (themeBtn) themeBtn.textContent = isLight ? "Dark" : "Light";
+      if (metaTheme) metaTheme.setAttribute("content", isLight ? "#f7f8fa" : "#0e1015");
+    }}
+    if (themeBtn) {{
+      themeBtn.addEventListener("click", () => {{
+        const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", next);
+        try {{ localStorage.setItem("bets-theme", next); }} catch (e) {{}}
+        syncThemeUI();
+      }});
+    }}
+    syncThemeUI();
+
     loadAndRender();
     loadOddsQuota();
     loadHealth();
@@ -5780,10 +5822,15 @@ def generate(target_date: date | None = None) -> Path | None:
     #   is-local → laptop's Flask (refresh/settle/push buttons)
     #   is-bets  → Air's Flask via Tailscale Serve (bets tab + add-to-bets)
     # Mirrored in baseUrl() / isBets() / isLocal() in the JS.
+    # Theme init runs in the same synchronous block so the saved choice
+    # is applied to <html data-theme="..."> before first paint, avoiding
+    # a flash of the wrong palette on each load.
     local_check = (
         "(function(){var h=location.hostname;var d=document.documentElement;"
         "if(h===''||h==='localhost'||h==='127.0.0.1')d.classList.add('is-local');"
         "if(/\\.ts\\.net$/i.test(h))d.classList.add('is-bets');"
+        "try{var t=localStorage.getItem('bets-theme');"
+        "if(t==='light'||t==='dark')d.setAttribute('data-theme',t);}catch(e){}"
         "})();"
     )
 
