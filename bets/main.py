@@ -50,7 +50,7 @@ from .web import generate as generate_dashboard
 load_dotenv(PROJECT_ROOT / ".env")
 
 
-def run(target_date: date | None = None) -> None:
+def run(target_date: date | None = None, force_fetch: bool = False) -> None:
     target_date = target_date or date.today()
     season = target_date.year
     starters = todays_probable_starters(target_date)
@@ -66,7 +66,7 @@ def run(target_date: date | None = None) -> None:
     covered = {normalize_name(p["pitcher_name"]) for p in preserved}
 
     skip_pairs: set[frozenset[str]] = set()
-    if covered:
+    if covered and not force_fetch:
         # Group starters by game and skip a game only if BOTH starters
         # are already covered (otherwise we still need the event call to
         # pick up the missing side).
@@ -86,10 +86,16 @@ def run(target_date: date | None = None) -> None:
     # Even when every event would be filtered by skip_pairs, the underlying
     # /events list call still costs 1 credit. Short-circuit when every
     # starter is already priced — preserved data flows through merge_lines
-    # and we spend zero credits on the re-run.
-    all_covered = bool(covered) and all(
-        normalize_name(s["pitcher_name"]) in covered for s in starters
+    # and we spend zero credits on the re-run. --force-fetch bypasses for
+    # mid-day line-movement re-runs.
+    all_covered = (
+        not force_fetch
+        and bool(covered)
+        and all(normalize_name(s["pitcher_name"]) in covered for s in starters)
     )
+
+    if force_fetch:
+        print("--force-fetch: re-pulling every game (bypassing all_covered guard).\n")
 
     if all_covered:
         print(
@@ -318,4 +324,4 @@ if __name__ == "__main__":
     if "--train-ml" in sys.argv:
         model_ml.train_cli()
     else:
-        run()
+        run(force_fetch="--force-fetch" in sys.argv)
