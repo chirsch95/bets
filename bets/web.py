@@ -153,6 +153,7 @@ CSS = """
     background: var(--green);
     filter: brightness(1.08);
   }
+  header .float-btn.loading svg { animation: ptr-spin 0.8s linear infinite; }
   header .float-btn:disabled { opacity: 0.5; cursor: wait; }
   header .float-btn .theme-sun { display: block; }
   header .float-btn .theme-moon { display: none; }
@@ -5594,7 +5595,7 @@ def _render_js() -> str:
 
   async function loadAndRender() {{
     const btn = document.getElementById("refresh-btn");
-    if (btn) {{ btn.disabled = true; btn.textContent = "Refreshing…"; }}
+    if (btn) {{ btn.disabled = true; btn.classList.add("loading"); }}
     document.body.classList.add("loading");
 
     const TRACK_DAYS = 14;
@@ -5662,7 +5663,7 @@ def _render_js() -> str:
       if (lr) lr.textContent = "Refresh failed — check your connection.";
     }} finally {{
       document.body.classList.remove("loading");
-      if (btn) {{ btn.disabled = false; btn.textContent = "Refresh data"; }}
+      if (btn) {{ btn.disabled = false; btn.classList.remove("loading"); }}
     }}
   }}
 
