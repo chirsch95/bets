@@ -251,6 +251,38 @@ def _settle_bet_with_notify(bet_id: str, payload: dict) -> dict | None:
 @app.put("/api/bets/<bet_id>")
 def api_update_bet(bet_id: str):
     payload = request.get_json(silent=True) or {}
+    # Defense in depth against the bets-tab auto-settle bug fixed in
+    # 04a3b9f: refuse to flip an already-settled bet between W and L
+    # when the bet's date is not today. An open browser tab still
+    # running pre-fix JS would otherwise re-grade old bets against
+    # today's K count for the same pitcher_id.
+    prior = next(
+        (b for b in wagers.load_bets()["bets"] if b.get("id") == bet_id),
+        None,
+    )
+    if prior is not None and "result" in payload:
+        prior_result = prior.get("result")
+        new_result = payload.get("result")
+        bet_date = prior.get("date") or ""
+        today_iso = _today().isoformat()
+        if (
+            bet_date != today_iso
+            and prior_result in ("W", "L")
+            and new_result in ("W", "L")
+            and new_result != prior_result
+        ):
+            return (
+                jsonify(
+                    {
+                        "error": "settled-bet flip refused for non-today bet",
+                        "bet_date": bet_date,
+                        "today": today_iso,
+                        "prior_result": prior_result,
+                        "new_result": new_result,
+                    }
+                ),
+                409,
+            )
     updated = _settle_bet_with_notify(bet_id, payload)
     if updated is None:
         return jsonify({"error": "not found"}), 404
