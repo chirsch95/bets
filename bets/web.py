@@ -3087,7 +3087,7 @@ def _render_js() -> str:
     const PARLAY_INPUT_CAP = 8;       // cap focus pool before exploding combos
     const TOP_TWO = 5;
     const TOP_THREE = 3;
-    const MAX_APPEARANCES = 2;        // any one pitcher can appear in at most
+    const MAX_APPEARANCES = 1;        // any one pitcher can appear in at most
                                        // this many cards within a section
     const focus = rows.filter(r => {{
       const e = f(r.edge);
