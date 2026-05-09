@@ -1505,7 +1505,7 @@ CSS = """
   td.error.over { color: var(--green); }
   td.error.under { color: var(--red); }
   td.error.zero { color: var(--muted); }
-  main { padding: 24px 32px; max-width: 1280px; }
+  main { padding: 24px 32px; }
   .summary {
     background: var(--panel);
     border: 1px solid var(--border);
