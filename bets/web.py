@@ -66,7 +66,7 @@ CSS = """
     --header-tint: rgba(255,255,255,0.02);
   }
   :root[data-theme="light"] {
-    --bg: #f7f8fa;
+    --bg: #ffffff;
     --panel: #ffffff;
     --text: #1a1d24;
     --muted: #6b7280;
@@ -110,6 +110,9 @@ CSS = """
     display: block;
     filter: drop-shadow(0 2px 14px rgba(45, 212, 255, 0.22));
   }
+  header .brand-logo-light { display: none; }
+  :root[data-theme="light"] header .brand-logo-dark { display: none; }
+  :root[data-theme="light"] header .brand-logo-light { display: block; }
   @media (max-width: 768px) {
     header { padding: 16px 16px 0; }
     header .brand-logo { height: 110px; }
@@ -6027,7 +6030,7 @@ def _render_js() -> str:
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     function syncThemeUI() {{
       const isLight = document.documentElement.getAttribute("data-theme") === "light";
-      if (metaTheme) metaTheme.setAttribute("content", isLight ? "#f7f8fa" : "#0a1628");
+      if (metaTheme) metaTheme.setAttribute("content", isLight ? "#ffffff" : "#0a1628");
     }}
     if (themeBtn) {{
       themeBtn.addEventListener("click", () => {{
@@ -6134,7 +6137,7 @@ def generate(target_date: date | None = None) -> Path | None:
 </div>
 <header>
   <div class="brand-area">
-    <h1 class="brand"><img src="/k-edge-logo.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo"></h1>
+    <h1 class="brand"><img src="/k-edge-logo.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo brand-logo-dark"><img src="/k-edge-logo-light.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo brand-logo-light"></h1>
     {actions_block}
   </div>
   <nav class="segmented" role="tablist">
