@@ -144,18 +144,15 @@ CSS = """
   header .float-btn.theme-btn { left: 0; width: 36px; }
   header .float-btn.refresh-btn {
     right: 0;
+    width: 36px;
     background: var(--green);
     border-color: var(--green);
     color: #001a00;
-    padding: 0 14px;
-    font-size: 13px;
-    font-weight: 600;
   }
   header .float-btn.refresh-btn:hover {
     background: var(--green);
     filter: brightness(1.08);
   }
-  header .float-btn.refresh-btn .label { display: inline-block; }
   header .float-btn:disabled { opacity: 0.5; cursor: wait; }
   header .float-btn .theme-sun { display: block; }
   header .float-btn .theme-moon { display: none; }
@@ -164,8 +161,7 @@ CSS = """
   @media (max-width: 480px) {
     header .float-btn { height: 32px; min-width: 32px; top: 0; }
     header .float-btn.theme-btn { width: 32px; }
-    header .float-btn.refresh-btn { width: 32px; padding: 0; }
-    header .float-btn.refresh-btn .label { display: none; }
+    header .float-btn.refresh-btn { width: 32px; }
   }
   /* Admin overflow (local-only). Native <details> for zero-JS dropdown. */
   header .admin-menu {
@@ -2026,7 +2022,7 @@ def _action_buttons_html() -> str:
         '<path d="M21 12a9 9 0 1 1-3.5-7.1"/><polyline points="21 4 21 9 16 9"/></svg>'
     )
     return f"""<button type="button" id="theme-toggle" class="float-btn theme-btn" aria-label="Toggle light/dark" title="Toggle light/dark">{sun_svg}{moon_svg}</button>
-    <button type="button" id="refresh-btn" class="float-btn refresh-btn" aria-label="Refresh data" title="Refresh data">{refresh_svg}<span class="label">Refresh</span></button>
+    <button type="button" id="refresh-btn" class="float-btn refresh-btn" aria-label="Refresh data" title="Refresh data">{refresh_svg}</button>
     <div class="status-row">
       <span class="last-refresh" id="last-refresh"></span>
       <span class="quota-pill" id="quota-pill" title=""></span>

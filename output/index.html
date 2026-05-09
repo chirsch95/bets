@@ -114,18 +114,15 @@
   header .float-btn.theme-btn { left: 0; width: 36px; }
   header .float-btn.refresh-btn {
     right: 0;
+    width: 36px;
     background: var(--green);
     border-color: var(--green);
     color: #001a00;
-    padding: 0 14px;
-    font-size: 13px;
-    font-weight: 600;
   }
   header .float-btn.refresh-btn:hover {
     background: var(--green);
     filter: brightness(1.08);
   }
-  header .float-btn.refresh-btn .label { display: inline-block; }
   header .float-btn:disabled { opacity: 0.5; cursor: wait; }
   header .float-btn .theme-sun { display: block; }
   header .float-btn .theme-moon { display: none; }
@@ -134,8 +131,7 @@
   @media (max-width: 480px) {
     header .float-btn { height: 32px; min-width: 32px; top: 0; }
     header .float-btn.theme-btn { width: 32px; }
-    header .float-btn.refresh-btn { width: 32px; padding: 0; }
-    header .float-btn.refresh-btn .label { display: none; }
+    header .float-btn.refresh-btn { width: 32px; }
   }
   /* Admin overflow (local-only). Native <details> for zero-JS dropdown. */
   header .admin-menu {
@@ -5988,7 +5984,7 @@
   <div class="brand-area">
     <h1 class="brand"><img src="/k-edge-logo.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo"></h1>
     <button type="button" id="theme-toggle" class="float-btn theme-btn" aria-label="Toggle light/dark" title="Toggle light/dark"><svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg><svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
-    <button type="button" id="refresh-btn" class="float-btn refresh-btn" aria-label="Refresh data" title="Refresh data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><polyline points="21 4 21 9 16 9"/></svg><span class="label">Refresh</span></button>
+    <button type="button" id="refresh-btn" class="float-btn refresh-btn" aria-label="Refresh data" title="Refresh data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><polyline points="21 4 21 9 16 9"/></svg></button>
     <div class="status-row">
       <span class="last-refresh" id="last-refresh"></span>
       <span class="quota-pill" id="quota-pill" title=""></span>
