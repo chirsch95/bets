@@ -3670,6 +3670,10 @@ def _render_js() -> str:
   let slatePitchers = [];
   let slateById = new Map();
   let liveKsByPid = new Map();
+  // ISO date the live-ks payload is for (server-supplied). Used to gate
+  // auto-settle so old bets don't get re-graded against today's stats
+  // when the same pitcher is pitching again.
+  let liveKsDate = null;
   let liveLastFetchedAt = null;
   let _betsLivePollTimer = null;
 
@@ -3697,15 +3701,15 @@ def _render_js() -> str:
   }}
 
   async function apiLiveKs(pitcherIds) {{
-    if (!pitcherIds.length) return {{}};
+    if (!pitcherIds.length) return {{ date: null, results: {{}} }};
     const url = `/api/live-ks?ids=${{pitcherIds.join(",")}}`;
     try {{
       const r = await fetch(url, {{ cache: "no-cache" }});
-      if (!r.ok) return {{}};
+      if (!r.ok) return {{ date: null, results: {{}} }};
       const d = await r.json();
-      return d.results || {{}};
+      return {{ date: d.date || null, results: d.results || {{}} }};
     }} catch (e) {{
-      return {{}};
+      return {{ date: null, results: {{}} }};
     }}
   }}
 
@@ -3949,7 +3953,7 @@ def _render_js() -> str:
       <td class="num payout ${{payoutCls}}">${{payoutStr}}</td>
       <td class="actions">${{actions}}</td>
     </tr>
-    <tr class="${{detailCls}}" data-detail-for="${{escapeHTML(b.id)}}">
+    <tr class="${{detailCls}}" data-detail-for="${{escapeHTML(b.id)}}" data-date="${{escapeHTML(b.date || "")}}">
       <td colspan="8">
         <div class="parlay-rollup" id="parlay-rollup-${{escapeHTML(b.id)}}"></div>
         <ol class="parlay-leg-list">
@@ -4369,12 +4373,14 @@ def _render_js() -> str:
       const ids = [...pids];
       if (!ids.length) {{
         liveKsByPid = new Map();
+        liveKsDate = null;
         if (stampEl) stampEl.textContent = "no bets with linked pitchers yet";
         if (refreshBtn) refreshBtn.disabled = false;
         return;
       }}
-      const results = await apiLiveKs(ids);
+      const {{ date: liveDate, results }} = await apiLiveKs(ids);
       liveKsByPid = new Map(Object.entries(results).map(([k, v]) => [parseInt(k, 10), v]));
+      liveKsDate = liveDate;
       // Patch each visible leg's status cell.
       paintLiveKs();
       liveLastFetchedAt = new Date();
@@ -4538,9 +4544,17 @@ def _render_js() -> str:
         const inline = row.querySelector("[data-inline-status]");
         if (inline) inline.innerHTML = inlineStatusHTML(legStates);
       }}
-      // Queue auto-settle if verdict is definitive and bet result is wrong
+      // Queue auto-settle ONLY if verdict is definitive AND the bet's
+      // date matches the date the live-ks data is for. Without this date
+      // gate, an old bet whose pitcher happens to be pitching again
+      // today can be re-graded against today's K count (which uses the
+      // same pitcher_id). The live-cell display still reflects today's
+      // data — that's harmless since the row's stored W/L coloring wins
+      // visually — but never auto-flip the result.
       const verdictCls = parlayRollupClass(legStates);
-      if (verdictCls === "win" || verdictCls === "loss") {{
+      const betDate = tr.dataset.date || "";
+      const dateMatches = liveKsDate && betDate === liveKsDate;
+      if (dateMatches && (verdictCls === "win" || verdictCls === "loss")) {{
         autoSettleQueue.push({{ betId, verdict: verdictCls }});
       }}
     }});
