@@ -45,11 +45,13 @@ INVESTIGATE_EDGE = 0.20
 
 CSS = """
   :root {
-    --bg: #0e1015;
-    --panel: #161922;
-    --text: #e6e8eb;
-    --muted: #8a93a3;
-    --border: #232734;
+    --bg: #0a1628;
+    --panel: #142336;
+    --text: #e6f0ff;
+    --muted: #8aa0bd;
+    --border: #1f3251;
+    --brand-blue: #2ab8e6;
+    --brand-green: #5dfa7a;
     --green: #4ade80;
     --green-bg: rgba(74, 222, 128, 0.1);
     --green-solid: #15803d;
@@ -99,6 +101,16 @@ CSS = """
     flex-wrap: wrap;
   }
   header h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+  header h1.brand { margin: 0 0 6px; padding: 0; line-height: 0; font-size: 0; }
+  header .brand-logo {
+    height: 64px;
+    width: auto;
+    display: block;
+    filter: drop-shadow(0 2px 8px rgba(45, 212, 255, 0.15));
+  }
+  @media (max-width: 768px) {
+    header .brand-logo { height: 46px; }
+  }
   header .date { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
   .actions { display: flex; gap: 8px; padding-top: 4px; align-items: center; flex-wrap: wrap; }
   .actions form { margin: 0; }
@@ -5939,15 +5951,15 @@ def generate(target_date: date | None = None) -> Path | None:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MLB K Props</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315803d'/%3E%3Ctext x='16' y='24' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='900' font-size='24' fill='white'%3E%24%3C/text%3E%3C/svg%3E">
+<title>K-Edge</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a1628'/%3E%3Ctext x='16' y='24' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='900' font-size='22' fill='%235dfa7a'%3EK%3C/text%3E%3C/svg%3E">
 <!-- PWA: install via Safari → Share → "Add to Home Screen". -->
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#0e1015">
+<meta name="theme-color" content="#0a1628">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="K Props">
+<meta name="apple-mobile-web-app-title" content="K-Edge">
 <script>{local_check}</script>
 <style>{CSS}</style>
 <script>{js}</script>
@@ -5961,7 +5973,7 @@ def generate(target_date: date | None = None) -> Path | None:
 </div>
 <header>
   <div>
-    <h1>MLB K Prop Projections</h1>
+    <h1 class="brand"><img src="/k-edge-logo.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo"></h1>
     <div class="date" id="header-date"></div>
   </div>
   {actions_block}

@@ -1,13 +1,13 @@
 {
-  "name": "MLB K Props",
-  "short_name": "K Props",
-  "description": "MLB strikeout prop projections + bets ledger",
+  "name": "K-Edge",
+  "short_name": "K-Edge",
+  "description": "K-Edge — MLB strikeout intelligence + bets ledger",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0e1015",
-  "theme_color": "#0e1015",
+  "background_color": "#0a1628",
+  "theme_color": "#0a1628",
   "icons": [
     {
       "src": "/icon-192.png",
