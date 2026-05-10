@@ -1573,11 +1573,17 @@ CSS = """
      Card body is always tappable; tapping toggles the action drawer
      (W / L / Edit / Reopen / Delete) at the bottom. */
   .bets-cards {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
     gap: 10px;
     margin-top: 4px;
+    align-items: start;
   }
+  /* Full-width children inside the cards grid: empty state message and
+     the "Show older bets" divider should span both columns instead of
+     sitting in one half. */
+  .bets-cards > .empty-msg,
+  .bets-cards > .bets-older-divider { grid-column: 1 / -1; }
   .bet-card {
     background: var(--panel);
     border: 1px solid var(--border);
