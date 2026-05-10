@@ -1886,13 +1886,23 @@ CSS = """
   }
   .parlay-leg-list li {
     display: grid;
-    grid-template-columns: 24px 1fr 60px;
-    gap: 8px;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+    gap: 4px 10px;
     padding: 2px 0;
+    align-items: baseline;
   }
+  /* No wraps inside a leg row — Leg N, O/U, and live status all stay
+     on one line. The pitcher name (the only flexible column) truncates
+     with ellipsis if the row gets too narrow to fit everything. */
+  .parlay-leg-list li > * { white-space: nowrap; }
   .parlay-leg-ou.over { color: var(--green); font-weight: 600; }
   .parlay-leg-ou.under { color: var(--red); font-weight: 600; }
-  .parlay-leg-name { color: var(--text); }
+  .parlay-leg-name {
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
   tr.parlay-detail td { padding-top: 0; padding-bottom: 8px; background: rgba(0,0,0,0.15); }
   tr.parlay-detail.hidden { display: none; }
   tr.parlay-row { cursor: pointer; }
@@ -1952,10 +1962,6 @@ CSS = """
   .leg-picker .leg-context.over { color: var(--green); }
   .leg-picker .leg-context.under { color: var(--red); }
   .leg-picker .leg-context.investigate { color: var(--yellow); }
-  /* Live K display in expanded parlay detail. */
-  .parlay-leg-list li {
-    grid-template-columns: 24px 1fr 80px 1fr;
-  }
   .live-status {
     font-size: 12px;
     font-variant-numeric: tabular-nums;
@@ -2526,7 +2532,7 @@ CSS = """
     /* Tighten leg detail rows: stack live status under the pitcher
        name so name + O/U + live K all fit on a phone. */
     .parlay-leg-list li {
-      grid-template-columns: 24px 1fr auto;
+      grid-template-columns: max-content minmax(0, 1fr) max-content;
       grid-template-areas:
         "leg name ou"
         "leg live live";
@@ -5490,14 +5496,17 @@ def _render_js() -> str:
     if (hitState) {{
       const cls = `live-status ${{hitState}}`;
       const verdict = hitState === "hit" ? "✓" : "✗";
-      // Tag the badge with where in the game it locked in (helpful
-      // context — "in 5th" tells you whether the pitcher was pulled
-      // early or stayed in).
+      // Tag the badge with where in the game it locked in. Compact
+      // inning form ("B5") keeps the suffix short enough that the row
+      // doesn't wrap inside the card layout.
       let inningTag = "";
-      if (live.done && live.current_inning) {{
-        inningTag = ` <span class="muted" style="font-size:10px;">(pulled in ${{escapeHTML(live.current_inning)}})</span>`;
-      }} else if (status === "Live" && live.current_inning) {{
-        inningTag = ` <span class="muted" style="font-size:10px;">(in ${{escapeHTML(live.current_inning)}})</span>`;
+      const compact = live.current_inning
+        ? compactInning(live.inning_state, live.current_inning)
+        : "";
+      if (live.done && compact) {{
+        inningTag = ` <span class="muted" style="font-size:10px;">(pulled ${{escapeHTML(compact)}})</span>`;
+      }} else if (status === "Live" && compact) {{
+        inningTag = ` <span class="muted" style="font-size:10px;">(${{escapeHTML(compact)}})</span>`;
       }}
       return `<span class="${{cls}}"><span class="live-ks">${{ks}} K</span><span class="live-badge">${{verdict}}</span>${{inningTag}}</span>`;
     }}
@@ -5515,16 +5524,20 @@ def _render_js() -> str:
     }} else if (status === "Live" && live.done) {{
       // Pitcher pulled but game still going — Ks locked. Reached when
       // the leg has no line (legHitState couldn't render a verdict).
-      const inning = live.current_inning ? ` ${{escapeHTML(live.current_inning)}}` : "";
+      const inning = live.current_inning
+        ? ` ${{escapeHTML(compactInning(live.inning_state, live.current_inning))}}` : "";
       cls += " preview";
       badge = `<span class="live-badge">Pulled${{inning}}</span>`;
       body = ks !== null ? `<span class="live-ks">${{ks}} K</span>` : "";
     }} else if (status === "Live") {{
       // Game in progress, math not yet settled (ks ≤ line, OVER could
-      // still hit / UNDER could still hold).
-      const inning = live.current_inning ? `${{live.inning_state || ""}} ${{live.current_inning}}`.trim() : "in progress";
+      // still hit / UNDER could still hold). Compact "B5" form keeps
+      // the badge short so the live cell fits on one line.
+      const inning = live.current_inning
+        ? compactInning(live.inning_state, live.current_inning)
+        : "Live";
       cls += " live";
-      badge = `<span class="live-badge">Live · ${{escapeHTML(inning)}}</span>`;
+      badge = `<span class="live-badge">${{escapeHTML(inning)}}</span>`;
       body = ks !== null ? `<span class="live-ks">${{ks}} K</span>` : "";
     }} else if (status === "Final") {{
       // status=Final but no ks recorded — pitcher didn't pitch, scratch,
