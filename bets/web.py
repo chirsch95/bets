@@ -119,12 +119,13 @@ CSS = """
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 12px;
     padding: 0;
   }
   header h1 { margin: 0; font-size: 18px; font-weight: 600; }
   header h1.brand { margin: 0; padding: 0; line-height: 0; font-size: 0; }
   header .brand-logo {
-    height: 120px;
+    height: 144px;
     width: auto;
     display: block;
     filter: drop-shadow(0 2px 14px rgba(45, 212, 255, 0.22));
@@ -132,12 +133,23 @@ CSS = """
   header .brand-logo-light { display: none; }
   :root[data-theme="light"] header .brand-logo-dark { display: none; }
   :root[data-theme="light"] header .brand-logo-light { display: block; }
+  /* Theme / refresh / admin cluster sits directly under the logo on
+     the far left. Centered horizontally against the logo so the brand
+     block reads as one composed unit. */
+  header .brand-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
   @media (max-width: 768px) {
     header { padding: 12px 16px; }
-    header .brand-logo { height: 84px; }
+    header .brand-logo { height: 96px; }
+    header .brand-area { gap: 10px; }
   }
   @media (max-width: 400px) {
-    header .brand-logo { height: 68px; }
+    header .brand-logo { height: 76px; }
+    header .brand-area { gap: 8px; }
   }
   /* Right column inside the header: topbar (tabs + utility) at top,
      scoreboard in the middle, status strip at the bottom. */
@@ -150,15 +162,9 @@ CSS = """
   header .header-topbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 16px;
     flex-wrap: wrap;
-  }
-  header .header-utility {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: nowrap;
   }
   /* Theme + refresh + admin icons. Originally absolute-positioned in
      the corners of the centered brand block — now they sit inline in
@@ -232,7 +238,7 @@ CSS = """
   header .admin-items {
     position: absolute;
     top: calc(100% + 6px);
-    right: 0;
+    left: 0;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -847,7 +853,7 @@ CSS = """
     min-width: 0;
   }
   .pick-card-pitcher .pitcher-name {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -6811,15 +6817,15 @@ def generate(target_date: date | None = None) -> Path | None:
 <header>
   <div class="brand-area">
     <h1 class="brand"><img src="/k-edge-logo.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo brand-logo-dark"><img src="/k-edge-logo-light.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo brand-logo-light"></h1>
+    <div class="brand-actions">
+      {actions_block}
+    </div>
   </div>
   <div class="header-right">
     <div class="header-topbar">
       <nav class="segmented" role="tablist">
 {tabs_nav}
       </nav>
-      <div class="header-utility">
-        {actions_block}
-      </div>
     </div>
     <aside class="header-scoreboard" id="header-scoreboard" aria-label="Performance scoreboard"></aside>
     <div class="status-row">
