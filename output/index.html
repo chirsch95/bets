@@ -496,33 +496,73 @@
     stroke-width: 1.5;
     stroke-linecap: round;
     stroke-linejoin: round;
-    /* Animated draw-in: pathLength="1" attribute on the element normalizes
-       the path to 1 unit; dasharray/offset both 1 starts it invisible.
-       The keyframe sweeps offset to 0 over 1.1s. CSS-only — no JS timing. */
-    stroke-dasharray: 1;
-    stroke-dashoffset: 1;
-    animation: scoreboard-spark-draw 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    /* No dasharray draw-in animation: pathLength + vector-effect:
+       non-scaling-stroke + stroke-dasharray interact badly (dash effects
+       are computed in screen space, which silently ignores pathLength
+       and renders the line as a fragmented dot pattern). The path
+       just appears solid; tip dot still fades in for "freshness" cue. */
   }
   .scoreboard-spark-path.pos  { stroke: var(--green); }
   .scoreboard-spark-path.neg  { stroke: var(--red); }
   .scoreboard-spark-path.flat { stroke: var(--muted); }
-  @keyframes scoreboard-spark-draw {
-    from { stroke-dashoffset: 1; }
-    to   { stroke-dashoffset: 0; }
-  }
   .scoreboard-spark-tip {
-    /* Last-point marker — fades in just after the line finishes drawing. */
-    r: 2.5;
+    /* Last-point marker. Drawn as a 0-length stroked path with round
+       linecap so the marker stays a true circle on screen even though
+       the parent SVG has preserveAspectRatio="none" (which would
+       distort a <circle> into an ellipse). */
+    fill: none;
+    stroke-width: 5;
+    stroke-linecap: round;
     opacity: 0;
-    animation: scoreboard-spark-tip-fade 0.4s ease 0.95s forwards;
+    animation: scoreboard-spark-tip-fade 0.5s ease 0.1s forwards;
   }
-  .scoreboard-spark-tip.pos  { fill: var(--green); }
-  .scoreboard-spark-tip.neg  { fill: var(--red); }
-  .scoreboard-spark-tip.flat { fill: var(--muted); }
+  .scoreboard-spark-tip.pos  { stroke: var(--green); }
+  .scoreboard-spark-tip.neg  { stroke: var(--red); }
+  .scoreboard-spark-tip.flat { stroke: var(--muted); }
   @keyframes scoreboard-spark-tip-fade {
     from { opacity: 0; }
     to   { opacity: 1; }
   }
+  /* Tiny per-day heatmap directly under each sparkline. Cells flex to
+     fill the column width, so the strip reads as a continuous timeline
+     regardless of how many days the column covers. Hovering a cell
+     pops the .scoreboard-heat-tip with date · units/$ · W-L. */
+  .scoreboard-heat {
+    position: relative;
+    display: flex;
+    gap: 2px;
+    margin: 2px 0 4px;
+    height: 10px;
+  }
+  .scoreboard-heat-cell {
+    flex: 1 1 0;
+    min-width: 3px;
+    border-radius: 1px;
+    background: var(--border);
+    cursor: pointer;
+  }
+  .scoreboard-heat-cell.pos { background: rgba(74, 222, 128, var(--cell-i, 0.5)); }
+  .scoreboard-heat-cell.neg { background: rgba(248, 113, 113, var(--cell-i, 0.5)); }
+  .scoreboard-heat-cell.flat { opacity: 0.45; cursor: default; }
+  .scoreboard-heat-cell[data-heat-date]:hover { outline: 1px solid var(--text); }
+  .scoreboard-heat-tip {
+    position: absolute;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 6px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+    margin-top: -6px;
+    white-space: nowrap;
+    z-index: 6;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  }
+  .scoreboard-heat-tip strong { color: var(--text); }
+  .scoreboard-heat-tip .tip-units.pos { color: var(--green); }
+  .scoreboard-heat-tip .tip-units.neg { color: var(--red); }
   .scoreboard-supporting {
     display: flex;
     align-items: baseline;
@@ -577,7 +617,9 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 10px;
-    margin-top: 8px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
   }
   .track-stat {
     display: flex;
@@ -705,7 +747,7 @@
      decision surface. Stacks below 1100px so cards don't get squeezed. */
   .daily-decision {
     display: grid;
-    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-columns: minmax(0, 8fr) minmax(0, 5fr);
     gap: 24px;
     margin-bottom: 24px;
     align-items: start;
@@ -736,13 +778,13 @@
   .picks-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 10px;
+    gap: 8px;
   }
   .pick-card {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 8px 10px;
     position: relative;
     overflow: hidden;
   }
@@ -766,8 +808,31 @@
   .pick-card-edge { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .pick-card-edge.over { color: var(--green); }
   .pick-card-edge.under { color: var(--red); }
-  .pick-card-pitcher { font-size: 15px; font-weight: 600; margin-bottom: 1px; }
-  .pick-card-matchup { font-size: 11px; color: var(--muted); margin-bottom: 7px; }
+  .pick-card-pitcher {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 6px;
+    min-width: 0;
+  }
+  .pick-card-pitcher .pitcher-name {
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .pick-card-pitcher .pitcher-meta {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+  }
   .pick-card-stats {
     display: flex;
     justify-content: space-between;
@@ -833,8 +898,8 @@
   .pick-card.miss .pick-card-pitcher,
   .pick-card.hit .pick-card-stat-val,
   .pick-card.miss .pick-card-stat-val { color: #fff; }
-  .pick-card.hit .pick-card-matchup,
-  .pick-card.miss .pick-card-matchup,
+  .pick-card.hit .pitcher-meta,
+  .pick-card.miss .pitcher-meta,
   .pick-card.hit .pick-card-stat-label,
   .pick-card.miss .pick-card-stat-label { color: rgba(255,255,255,0.78); }
   .pick-card.hit .pick-card-stats,
@@ -1006,18 +1071,18 @@
   }
   .parlay-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
   }
   .parlay-card {
     background: var(--panel);
     border: 1px solid var(--border);
     border-left: 3px solid var(--muted);
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 8px 10px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
   }
   .parlay-card.pos { border-left-color: var(--green); }
   .parlay-card.neg { border-left-color: var(--red); }
@@ -1026,8 +1091,8 @@
     display: grid;
     grid-template-columns: auto 1fr auto;
     align-items: baseline;
-    gap: 8px;
-    font-size: 13px;
+    gap: 6px;
+    font-size: 12px;
   }
   .parlay-leg-dir {
     font-size: 10px;
@@ -1150,15 +1215,17 @@
     flex-wrap: wrap;
     margin-top: 4px;
   }
-  /* "Browse all pitchers" twisty around the full slate table. Default-
-     collapsed; open state persisted in localStorage by wireSlateTableToggle. */
-  details.slate-table-wrap {
+  /* Shared twisty chrome for every collapsible deep-dive section
+     (Browse all pitchers, Model accuracy, Yesterday's pitcher detail,
+     Track Record daily table). Each section adds its own X-wrap class
+     for distinct identity, plus this common .twisty-wrap for the chrome. */
+  details.twisty-wrap {
     margin: 16px 0 0;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--panel);
   }
-  details.slate-table-wrap > summary {
+  details.twisty-wrap > summary {
     cursor: pointer;
     user-select: none;
     list-style: none;
@@ -1171,15 +1238,18 @@
     justify-content: space-between;
     gap: 8px;
   }
-  details.slate-table-wrap > summary::-webkit-details-marker { display: none; }
-  details.slate-table-wrap > summary::marker { content: ""; }
-  details.slate-table-wrap > summary::after {
+  details.twisty-wrap > summary::-webkit-details-marker { display: none; }
+  details.twisty-wrap > summary::marker { content: ""; }
+  details.twisty-wrap > summary::after {
     content: "▸";
     color: var(--muted);
     font-size: 11px;
     transition: transform 0.15s ease;
   }
-  details.slate-table-wrap[open] > summary::after { transform: rotate(90deg); }
+  details.twisty-wrap[open] > summary::after { transform: rotate(90deg); }
+  details.twisty-wrap > .twisty-body { padding: 0 14px 14px; }
+  /* Slate-specific extras: legacy .slate-table-body kept as the body
+     selector + a count chip rendered in the summary. */
   details.slate-table-wrap > summary .slate-table-count {
     color: var(--muted);
     font-weight: 500;
@@ -1189,6 +1259,20 @@
   }
   details.slate-table-wrap > .slate-table-body { padding: 0 14px 14px; }
   details.slate-table-wrap > .slate-table-body .slate-toolbar { margin-top: 4px; }
+  /* Track Record: cumulative units + OVER/UNDER split rendered as a
+     single side-by-side row instead of two stacked cards. Stacks below
+     900px so neither chart gets squeezed below readability. */
+  .track-charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+    margin-top: 8px;
+  }
+  .track-charts-row > * { margin-top: 0 !important; }
+  @media (max-width: 900px) {
+    .track-charts-row { grid-template-columns: 1fr; gap: 12px; }
+  }
   /* Free-entry checkbox + row badge. */
   .bets-form-actions label {
     display: inline-flex;
@@ -2427,6 +2511,42 @@
     return "vs ";
   }
 
+  // Full MLB team name → 3-letter code, used in tight card layouts (Today's
+  // Picks) where the full name eats too much horizontal room. Falls through
+  // to the original string if we don't recognize the team.
+  const _TEAM_ABBR = {
+    "Arizona Diamondbacks": "ARI", "Athletics": "ATH",
+    "Atlanta Braves": "ATL", "Baltimore Orioles": "BAL",
+    "Boston Red Sox": "BOS", "Chicago Cubs": "CHC",
+    "Chicago White Sox": "CWS", "Cincinnati Reds": "CIN",
+    "Cleveland Guardians": "CLE", "Colorado Rockies": "COL",
+    "Detroit Tigers": "DET", "Houston Astros": "HOU",
+    "Kansas City Royals": "KC", "Los Angeles Angels": "LAA",
+    "Los Angeles Dodgers": "LAD", "Miami Marlins": "MIA",
+    "Milwaukee Brewers": "MIL", "Minnesota Twins": "MIN",
+    "New York Mets": "NYM", "New York Yankees": "NYY",
+    "Philadelphia Phillies": "PHI", "Pittsburgh Pirates": "PIT",
+    "San Diego Padres": "SD", "San Francisco Giants": "SF",
+    "Seattle Mariners": "SEA", "St. Louis Cardinals": "STL",
+    "Tampa Bay Rays": "TB", "Texas Rangers": "TEX",
+    "Toronto Blue Jays": "TOR", "Washington Nationals": "WSH",
+  };
+  function teamAbbr(name) {
+    if (!name) return "";
+    return _TEAM_ABBR[name] || name;
+  }
+
+  // Compact game time for tight card layouts: "1:10p" instead of "1:10 PM CT".
+  // CT is implied (whole site is CT-anchored) and the lowercase a/p saves
+  // two characters per slot — meaningful when packing 7+ cards across.
+  function formatGameTimeShort(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    const s = _CT_FMT.format(d);
+    return s.replace(" AM", "a").replace(" PM", "p");
+  }
+
   // Compact "Bottom 5th" → "B5" for narrow live-cell slots. Strips the
   // ordinal suffix off the inning ("5th" → "5") and replaces the verbose
   // half-inning state with one letter ("Top"→T, "Bottom"→B). "Mid"/"End"
@@ -2777,10 +2897,10 @@
         if (existing) {
           existing.outerHTML = html;
         } else {
-          // No existing row — inject after the matchup line so badges
+          // No existing row — inject after the pitcher line so badges
           // land in the same slot as on initial render.
-          const matchup = card.querySelector(".pick-card-matchup");
-          if (matchup) matchup.insertAdjacentHTML("afterend", html);
+          const pitcherLine = card.querySelector(".pick-card-pitcher");
+          if (pitcherLine) pitcherLine.insertAdjacentHTML("afterend", html);
         }
       } else if (existing) {
         // Bets removed since last paint — drop the row.
@@ -3146,11 +3266,13 @@
     return `<div class="${cardCls}"${isoAttr}${pidAttr}${lineAttr}${dirAttr}>
       ${banner}
       <div class="pick-card-header">
-        <span class="pick-card-badge ${dir}">BET ${dir.toUpperCase()} ${escapeHTML(r.line || "")}</span>
+        <span class="pick-card-badge ${dir}">${dir.toUpperCase()} ${escapeHTML(r.line || "")}</span>
         <span class="pick-card-edge ${dir}">${edgeStr} edge</span>
       </div>
-      <div class="pick-card-pitcher">${escapeHTML(r.pitcher || "")}</div>
-      <div class="pick-card-matchup">${oppPrefix(r)}${escapeHTML(r.opp || "")} · ${formatGameTime(r.game_datetime_utc)}</div>
+      <div class="pick-card-pitcher">
+        <span class="pitcher-name">${escapeHTML(r.pitcher || "")}</span>
+        <span class="pitcher-meta">${oppPrefix(r)}${escapeHTML(teamAbbr(r.opp))} · ${formatGameTimeShort(r.game_datetime_utc)}</span>
+      </div>
       ${renderBetBadgesRow(pidNum)}
       <div class="pick-card-stats">
         <div class="pick-card-stat proj-cell"${projTooltip(r) ? ` title="${escapeHTML(projTooltip(r))}"` : ""}>
@@ -3206,7 +3328,7 @@
     const legsHTML = p.legs.map(l => {
       const dirCls = l.dir === "over" ? "over" : "under";
       const lineStr = l.line === undefined || l.line === null || l.line === "" ? "" : ` ${escapeHTML(String(l.line))}`;
-      const time = l.gameTimeISO ? `<span class="parlay-leg-time">${formatGameTime(l.gameTimeISO)}</span>` : "";
+      const time = l.gameTimeISO ? `<span class="parlay-leg-time">${formatGameTimeShort(l.gameTimeISO)}</span>` : "";
       return `<div class="parlay-leg">
         <span class="parlay-leg-dir ${dirCls}">${l.dir.toUpperCase()}${lineStr}</span>
         <span class="parlay-leg-name">${escapeHTML(l.pitcher)}</span>
@@ -3762,53 +3884,9 @@
     if (tip) tip.style.display = "none";
   });
 
-  // Daily P&L heatmap — one row of squares for the track-record window.
-  // Days without picks fill the row with muted "no data" cells so the
-  // calendar reads as a continuous timeline (not just the days you bet).
-  function renderCalendar(dailyUnits, maxDays) {
-    if (!dailyUnits.length) return "";
-    const byDate = {};
-    for (const u of dailyUnits) byDate[u.date] = u;
-    const dates = [];
-    for (let i = maxDays; i >= 1; i--) dates.push(dateInChicago(-i));
-    const maxAbs = Math.max(0.01, ...dailyUnits.map(u => Math.abs(u.units)));
-    const cells = dates.map(d => {
-      const u = byDate[d];
-      if (!u) {
-        return `<div class="cal-cell cal-empty" data-cal-date="${escapeHTML(d)}" data-cal-empty="1"></div>`;
-      }
-      const sign = u.units > 0 ? "pos" : u.units < 0 ? "neg" : "flat";
-      const intensity = u.units === 0 ? 0.30 : Math.max(0.30, Math.abs(u.units) / maxAbs);
-      const losses = u.picks - u.hits;
-      return `<div class="cal-cell ${sign}" style="--cell-i: ${intensity.toFixed(2)};"
-        data-cal-date="${escapeHTML(d)}"
-        data-cal-units="${u.units.toFixed(2)}"
-        data-cal-hits="${u.hits}"
-        data-cal-losses="${losses}"
-        data-cal-picks="${u.picks}"></div>`;
-    }).join("");
-    return `<div class="cal-wrap">
-      <div class="sparkline-title">Daily P&L heatmap (last ${dates.length} day${dates.length === 1 ? "" : "s"})</div>
-      <div class="cal-grid">${cells}</div>
-      <div class="cal-legend">
-        <span>Loss</span>
-        <span class="cal-cell neg" style="--cell-i: 1.00;"></span>
-        <span class="cal-cell neg" style="--cell-i: 0.50;"></span>
-        <span class="cal-legend-spacer"></span>
-        <span class="cal-cell cal-empty"></span>
-        <span>no picks</span>
-        <span class="cal-legend-spacer"></span>
-        <span class="cal-cell pos" style="--cell-i: 0.50;"></span>
-        <span class="cal-cell pos" style="--cell-i: 1.00;"></span>
-        <span>Win</span>
-      </div>
-      <div class="cal-tip" style="display:none;"></div>
-    </div>`;
-  }
-
-  // Calendar hover tooltip. Separate from the sparkline handler because
-  // sparkline-hover-target is SVG-styled (fill/stroke); calendar cells
-  // are HTML divs so they need their own positioning logic.
+  // Calendar hover tooltip — used by the Bets tab calendar (.cal-cell-money).
+  // The track-record body heatmap was removed once the header scoreboard
+  // grew its own interactive heatmap with the same per-day detail.
   document.addEventListener("mouseover", (e) => {
     const t = e.target.closest(".cal-cell[data-cal-date]");
     if (!t) return;
@@ -3851,6 +3929,54 @@
     if (!t) return;
     const wrap = t.closest(".cal-wrap");
     const tip = wrap && wrap.querySelector(".cal-tip");
+    if (tip) tip.style.display = "none";
+  });
+
+  // Header scoreboard heatmap tooltip — same data shape as the body cal
+  // cells, but the tip lives inside .scoreboard-heat (positioned over
+  // the strip) so it doesn't escape the header column.
+  document.addEventListener("mouseover", (e) => {
+    const t = e.target.closest(".scoreboard-heat-cell[data-heat-date]");
+    if (!t) return;
+    const wrap = t.closest(".scoreboard-heat");
+    const tip = wrap && wrap.querySelector(".scoreboard-heat-tip");
+    if (!wrap || !tip) return;
+    const date = t.dataset.heatDate;
+    const isMoney = t.dataset.heatMoney === "1";
+    if (t.dataset.heatEmpty) {
+      tip.innerHTML = `<strong>${date}</strong><br><span class="tip-units">no ${isMoney ? "bets" : "picks"}</span>`;
+    } else if (isMoney) {
+      const pnl = parseFloat(t.dataset.heatPnl);
+      const wins = parseInt(t.dataset.heatWins, 10);
+      const losses = parseInt(t.dataset.heatLosses, 10);
+      const count = parseInt(t.dataset.heatCount, 10);
+      const staked = parseFloat(t.dataset.heatStaked || "0");
+      const cls = pnl > 0 ? "pos" : pnl < 0 ? "neg" : "";
+      const str = `${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}`;
+      const stakedStr = staked > 0 ? ` · staked $${staked.toFixed(2)}` : "";
+      tip.innerHTML = `<strong>${date}</strong><br>`
+        + `<span class="tip-units ${cls}">${str}</span> · ${wins}W–${losses}L (${count})${stakedStr}`;
+    } else {
+      const units = parseFloat(t.dataset.heatUnits);
+      const hits = parseInt(t.dataset.heatHits, 10);
+      const losses = parseInt(t.dataset.heatLosses, 10);
+      const picks = parseInt(t.dataset.heatPicks, 10);
+      const cls = units > 0 ? "pos" : units < 0 ? "neg" : "";
+      const str = `${units >= 0 ? "+" : ""}${units.toFixed(2)}u`;
+      tip.innerHTML = `<strong>${date}</strong><br>`
+        + `<span class="tip-units ${cls}">${str}</span> · ${hits}W–${losses}L (${picks})`;
+    }
+    const wrapRect = wrap.getBoundingClientRect();
+    const cellRect = t.getBoundingClientRect();
+    tip.style.left = (cellRect.left - wrapRect.left + cellRect.width / 2) + "px";
+    tip.style.top = (cellRect.top - wrapRect.top) + "px";
+    tip.style.display = "block";
+  });
+  document.addEventListener("mouseout", (e) => {
+    const t = e.target.closest(".scoreboard-heat-cell[data-heat-date]");
+    if (!t) return;
+    const wrap = t.closest(".scoreboard-heat");
+    const tip = wrap && wrap.querySelector(".scoreboard-heat-tip");
     if (tip) tip.style.display = "none";
   });
 
@@ -3976,28 +4102,52 @@
       </tr>`;
     }).join("");
 
-    const calHTML = renderCalendar(dailyUnits, maxDays);
-
     const bucketHTML = renderEdgeBuckets(allPicks);
     const calibrationHTML = renderCalibrationScatter(settledRows);
 
+    // Deep-dive analytics (ROI by edge bucket + calibration scatter)
+    // tucked behind a twisty so the top of the section stays light.
+    // Only render the twisty wrapper if at least one piece is present.
+    const accuracyInner = `${bucketHTML}${calibrationHTML}`;
+    const accuracyHTML = accuracyInner.trim()
+      ? `<details class="twisty-wrap model-accuracy-wrap" id="model-accuracy-twisty">
+          <summary>Model accuracy details</summary>
+          <div class="twisty-body">${accuracyInner}</div>
+        </details>`
+      : "";
+
+    // Cumulative units chart + OVER/UNDER split chart side-by-side as a
+    // single row at the top of the section. If only one is present
+    // (split needs both directions to render), drop the row wrapper so
+    // the lone chart fills the section width as before.
+    let chartsRowHTML = "";
+    if (sparkHTML && splitHTML) {
+      chartsRowHTML = `<div class="track-charts-row">${sparkHTML}${splitHTML}</div>`;
+    } else {
+      chartsRowHTML = `${sparkHTML}${splitHTML}`;
+    }
+
+    const dayTableHTML = `<details class="twisty-wrap track-date-wrap">
+      <summary>Daily breakdown (${sortedDesc.length} day${sortedDesc.length === 1 ? "" : "s"})</summary>
+      <div class="twisty-body">
+        <div class="table-scroll"><table>
+          <thead><tr>
+            <th>Date</th>
+            <th class="num">Picks</th>
+            <th class="num">Hits</th>
+            <th class="num">Units</th>
+          </tr></thead>
+          <tbody>${dayRows}</tbody>
+        </table></div>
+      </div>
+    </details>`;
+
     return `<section class="results-section">
       <h2>Track Record — last ${maxDays} days</h2>
+      ${chartsRowHTML}
+      ${dayTableHTML}
+      ${accuracyHTML}
       ${summaryHTML}
-      ${sparkHTML}
-      ${splitHTML}
-      ${bucketHTML}
-      ${calibrationHTML}
-      <div class="table-scroll" style="margin-top: 12px;"><table>
-        <thead><tr>
-          <th>Date</th>
-          <th class="num">Picks</th>
-          <th class="num">Hits</th>
-          <th class="num">Units</th>
-        </tr></thead>
-        <tbody>${dayRows}</tbody>
-      </table></div>
-      ${calHTML}
     </section>`;
   }
 
@@ -4165,7 +4315,8 @@
     return Object.values(byDate);
   }
 
-  // Bets-tab heatmap. Like renderCalendar() but each tile shows the $
+  // Bets-tab heatmap. Same shape as the header-scoreboard heat strip,
+  // but each tile shows the $
   // P&L as text inside; cells are wider to fit the amount. Window ends
   // on today (last `maxDays` days inclusive); days with no settled
   // paid bets render as muted empty tiles.
@@ -5608,18 +5759,23 @@
         <h2>${settledTitle(settled.date)}</h2>
         ${reportCardHTML}
         <p class="results-aux">${auxLine}</p>
-        <div class="table-scroll"><table>
-          <thead><tr>
-            <th>Pitcher</th><th>Opponent</th>
-            <th class="num" title="Model projection">Proj</th>
-            <th class="num" title="Actual strikeouts">Actual</th>
-            <th class="num" title="Actual minus projected">Off By</th>
-            <th class="num" title="Sportsbook line that day">Line</th>
-            <th title="What our model recommended at slate time">Our Pick</th>
-            <th title="HIT/MISS shown for actionable picks; otherwise just which side won">Result</th>
-          </tr></thead>
-          <tbody>${sortedSettled.map(pitcherResultRow).join("")}</tbody>
-        </table></div>
+        <details class="twisty-wrap results-detail-wrap">
+          <summary>Per-pitcher detail (${sortedSettled.length} start${sortedSettled.length === 1 ? "" : "s"})</summary>
+          <div class="twisty-body">
+            <div class="table-scroll"><table>
+              <thead><tr>
+                <th>Pitcher</th><th>Opponent</th>
+                <th class="num" title="Model projection">Proj</th>
+                <th class="num" title="Actual strikeouts">Actual</th>
+                <th class="num" title="Actual minus projected">Off By</th>
+                <th class="num" title="Sportsbook line that day">Line</th>
+                <th title="What our model recommended at slate time">Our Pick</th>
+                <th title="HIT/MISS shown for actionable picks; otherwise just which side won">Result</th>
+              </tr></thead>
+              <tbody>${sortedSettled.map(pitcherResultRow).join("")}</tbody>
+            </table></div>
+          </div>
+        </details>
       </section>`;
     } else {
       resultsSection = `<section class="results-section"><h2>Recent Results</h2><p class="muted">No settled days yet.</p></section>`;
@@ -5715,7 +5871,7 @@
         <span>book hasn't posted, or game already started</span>
       </div>
     </details>
-    <details class="slate-table-wrap" id="slate-table-twisty">
+    <details class="twisty-wrap slate-table-wrap" id="slate-table-twisty">
       <summary>Browse all pitchers ${slateCountLabel}</summary>
       <div class="slate-table-body">
         ${toolbar}
@@ -5921,9 +6077,57 @@
     const areaD = `${pathD} L${lastX},${zeroY} L${xFor(0).toFixed(1)},${zeroY} Z`;
     return `<svg class="scoreboard-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
       <path class="scoreboard-spark-area ${sign}" d="${areaD}" />
-      <path class="scoreboard-spark-path ${sign}" d="${pathD}" pathLength="1" vector-effect="non-scaling-stroke" />
-      <circle class="scoreboard-spark-tip ${sign}" cx="${lastX}" cy="${lastY}" />
+      <path class="scoreboard-spark-path ${sign}" d="${pathD}" vector-effect="non-scaling-stroke" />
+      <path class="scoreboard-spark-tip ${sign}" d="M${lastX},${lastY} L${lastX},${lastY}" vector-effect="non-scaling-stroke" />
     </svg>`;
+  }
+
+  // Compact day-by-day heatmap that sits under each scoreboard sparkline.
+  // byInfo maps "YYYY-MM-DD" → record:
+  //   model:  { units, picks, hits }
+  //   money:  { pnl, count, wins, staked }
+  // Each cell carries data attrs that the hover handler reads to render
+  // a tooltip identical in spirit to the body P&L heatmap. The bonus
+  // tooltip element is emitted as a sibling so hover positioning stays
+  // local to the heat strip.
+  function renderScoreboardHeat(byInfo, days, kind) {
+    const dates = [];
+    for (let i = days - 1; i >= 0; i--) dates.push(dateInChicago(-i));
+    const isMoney = kind === "money";
+    const valOf = u => isMoney ? u.pnl : u.units;
+    const present = dates.map(d => byInfo[d]).filter(u => u);
+    const maxAbs = present.length
+      ? Math.max(0.01, ...present.map(u => Math.abs(valOf(u))))
+      : 0.01;
+    const cells = dates.map(d => {
+      const u = byInfo[d];
+      const moneyAttr = ` data-heat-money="${isMoney ? 1 : 0}"`;
+      if (!u) {
+        return `<div class="scoreboard-heat-cell flat"
+          data-heat-date="${escapeHTML(d)}" data-heat-empty="1"${moneyAttr}></div>`;
+      }
+      const v = valOf(u);
+      const sign = v > 0 ? "pos" : v < 0 ? "neg" : "flat";
+      const intensity = v === 0 ? 0.30 : Math.max(0.30, Math.abs(v) / maxAbs);
+      if (isMoney) {
+        const losses = u.count - u.wins;
+        return `<div class="scoreboard-heat-cell ${sign}" style="--cell-i: ${intensity.toFixed(2)};"
+          data-heat-date="${escapeHTML(d)}"${moneyAttr}
+          data-heat-pnl="${u.pnl.toFixed(2)}"
+          data-heat-wins="${u.wins}"
+          data-heat-losses="${losses}"
+          data-heat-count="${u.count}"
+          data-heat-staked="${(u.staked || 0).toFixed(2)}"></div>`;
+      }
+      const losses = u.picks - u.hits;
+      return `<div class="scoreboard-heat-cell ${sign}" style="--cell-i: ${intensity.toFixed(2)};"
+        data-heat-date="${escapeHTML(d)}"${moneyAttr}
+        data-heat-units="${u.units.toFixed(2)}"
+        data-heat-hits="${u.hits}"
+        data-heat-losses="${losses}"
+        data-heat-picks="${u.picks}"></div>`;
+    }).join("");
+    return `<div class="scoreboard-heat">${cells}<div class="scoreboard-heat-tip" style="display:none;"></div></div>`;
   }
 
   function renderScoreboardModelCol(track) {
@@ -5957,24 +6161,31 @@
       trendHTML = `<span class="scoreboard-trend ${tCls}" title="Recent half vs prior half">${tArrow} ${tStr}</span>`;
     }
 
-    // Cumulative units, one point per dated day in the picks set.
-    const byDate = {};
+    // Per-day rollup feeds both the sparkline (cumulative units) and
+    // the heatmap below it (daily units + W-L counts for tooltips).
+    const byInfo = {};
     for (const p of picks) {
-      byDate[p.date] = (byDate[p.date] || 0) + p.pnl;
+      const d = p.date;
+      if (!byInfo[d]) byInfo[d] = { units: 0, picks: 0, hits: 0 };
+      byInfo[d].units += p.pnl;
+      byInfo[d].picks += 1;
+      if (p.won) byInfo[d].hits += 1;
     }
-    const sortedDates = Object.keys(byDate).sort();
+    const sortedDates = Object.keys(byInfo).sort();
     const cum = [];
     let running = 0;
     for (const d of sortedDates) {
-      running += byDate[d];
+      running += byInfo[d].units;
       cum.push(running);
     }
     const sparkHTML = renderScoreboardSparkline(cum, sign);
+    const heatHTML = renderScoreboardHeat(byInfo, 14, "model");
 
     return `<div class="scoreboard-col">
       ${labelHTML}
       <div class="scoreboard-hero ${sign}">${heroVal}</div>
       ${sparkHTML}
+      ${heatHTML}
       <div class="scoreboard-supporting">
         <span><strong>${hitPct.toFixed(0)}%</strong> hit</span>
         <span>· <strong>${total}</strong> pick${total === 1 ? "" : "s"}</span>
@@ -6042,23 +6253,28 @@
     }
 
     // Cumulative $ P&L over the last 30 days (one point per day, even
-    // empty days, so the curve reads like an equity curve).
+    // empty days, so the curve reads like an equity curve). Also keep
+    // the full per-day record (pnl, wins, count, staked) keyed by date
+    // so the heatmap tooltip can show the same detail as the body
+    // calendar used to.
     const dailyPnl = computeDailyBetsPnl(recentSettled);
-    const byDate = {};
-    for (const u of dailyPnl) byDate[u.date] = u.pnl;
+    const byInfo = {};
+    for (const u of dailyPnl) byInfo[u.date] = u;
     const cum = [];
     let running = 0;
     for (let i = 29; i >= 0; i--) {
       const d = dateInChicago(-i);
-      running += (byDate[d] || 0);
+      running += (byInfo[d] ? byInfo[d].pnl : 0);
       cum.push(running);
     }
     const sparkHTML = renderScoreboardSparkline(cum, sign);
+    const heatHTML = renderScoreboardHeat(byInfo, 30, "money");
 
     return `<div class="scoreboard-col bets-only">
       ${labelHTML}
       <div class="scoreboard-hero ${sign}">${heroVal}</div>
       ${sparkHTML}
+      ${heatHTML}
       <div class="scoreboard-supporting">
         <span><strong>${hitPct.toFixed(0)}%</strong> hit</span>
         <span>· <strong>${recentSettled.length}</strong> bet${recentSettled.length === 1 ? "" : "s"}</span>
