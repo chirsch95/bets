@@ -286,6 +286,15 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
             dst.write(src.read())
         print(f"Wrote slate snapshot → {slate_path}")
 
+    # Snapshot the parlay-suggester output alongside the slate so we
+    # later have a record of exactly which 2/3-leg cards the dashboard
+    # showed at slate time. Failures don't block the slate snapshot.
+    try:
+        from . import parlay_suggest as _pl
+        _pl.write_suggestions(target_date)
+    except Exception as e:
+        print(f"parlay_suggest snapshot skipped: {e}")
+
     if any(r["line"] is not None for r in rows):
         display_cols = [
             "pitcher",

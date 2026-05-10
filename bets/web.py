@@ -1295,6 +1295,77 @@ CSS = """
   }
   details.slate-table-wrap > .slate-table-body { padding: 0 14px 14px; }
   details.slate-table-wrap > .slate-table-body .slate-toolbar { margin-top: 4px; }
+  /* Parlay Track Record cards. Three cards (2-leg, 3-leg, Combined)
+     show units / hit rate / predicted / ROI with a small calibration
+     delta line at the bottom (actual − predicted hit rate). */
+  .parlay-track-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .parlay-track-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .parlay-track-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+  }
+  .parlay-track-card-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .parlay-track-card-count {
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .parlay-track-card-hero {
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 8px;
+  }
+  .parlay-track-card-hero.pos { color: var(--green); }
+  .parlay-track-card-hero.neg { color: var(--red); }
+  .parlay-track-card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .parlay-track-stat { display: flex; flex-direction: column; gap: 2px; }
+  .parlay-track-stat-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .parlay-track-stat-val {
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .parlay-track-stat-val.pos { color: var(--green); }
+  .parlay-track-stat-val.neg { color: var(--red); }
+  .parlay-track-card-calib {
+    margin-top: 8px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+  .parlay-track-card-calib.pos { color: var(--green); }
+  .parlay-track-card-calib.neg { color: var(--red); }
+  .parlay-track-card-calib.flat { color: var(--muted); }
   /* Track Record: cumulative units + OVER/UNDER split rendered as a
      single side-by-side row instead of two stacked cards. Stacks below
      900px so neither chart gets squeezed below readability. */
@@ -3747,6 +3818,44 @@ def _render_js() -> str:
     return {{ focus, all, settled }};
   }}
 
+  // Pull the snapshotted parlay-suggester output (top 5 two-leg + top 3
+  // three-leg per day) plus the per-day grading. Each card already has
+  // its predicted hit prob, predicted EV, parlay_hit (0/1 or "" for
+  // un-graded scratches), and realized_pnl in 1u-flat units.
+  async function fetchParlayTrackRecord(maxDays = 14) {{
+    const fetches = [];
+    for (let i = 1; i <= maxDays; i++) {{
+      const d = dateInChicago(-i);
+      fetches.push(
+        fetchCSV(baseUrl() + `parlay_suggestions_${{d}}_settled.csv`)
+          .then(text => ({{ d, text }}))
+      );
+    }}
+    const results = await Promise.all(fetches);
+    const all = [];
+    for (const {{ d, text }} of results) {{
+      if (!text) continue;
+      const rows = parseCSV(text);
+      for (const r of rows) {{
+        const hit = f(r.parlay_hit);
+        if (hit === null) continue;  // un-graded (scratched leg)
+        const pnl = f(r.realized_pnl);
+        const predicted = f(r.combined_hit);
+        const ev = f(r.ev);
+        all.push({{
+          date: d,
+          section: r.section || "",
+          legCount: parseInt(r.leg_count, 10) || 0,
+          won: hit >= 1,
+          pnl: pnl === null ? 0 : pnl,
+          predicted: predicted === null ? 0 : predicted,
+          ev: ev === null ? 0 : ev,
+        }});
+      }}
+    }}
+    return {{ all }};
+  }}
+
   // Bucket picks by absolute edge magnitude. Reveals whether the edge
   // calc is actually predictive — high-edge bucket should outperform
   // low. Buckets cover both OVER and UNDER picks; an UNDER with edge
@@ -4236,6 +4345,82 @@ def _render_js() -> str:
       ${{dayTableHTML}}
       ${{accuracyHTML}}
       ${{summaryHTML}}
+    </section>`;
+  }}
+
+  // Parlay track record — measures the suggester end-to-end (the actual
+  // product, not the individual legs). Each day's top 5 two-leg + top 3
+  // three-leg cards are snapshotted at slate time by bets/parlay_suggest.py
+  // and graded once leg outcomes are known. Predicted vs actual hit rate
+  // tells us whether the model's EV calc is calibrated for parlays.
+  function renderParlayTrackRecord(track, maxDays) {{
+    const all = (track && track.all) ? track.all : [];
+    if (!all.length) {{
+      return `<section class="results-section">
+        <h2>Parlay Track Record — last ${{maxDays}} days</h2>
+        <p class="muted">No graded parlay suggestions yet. Each day's top 5 two-leg + top 3 three-leg cards get snapshotted at slate time and graded once all legs settle.</p>
+      </section>`;
+    }}
+
+    const summarize = (rows, label) => {{
+      if (!rows.length) return null;
+      const n = rows.length;
+      const hits = rows.filter(r => r.won).length;
+      const hitRate = hits / n;
+      const predicted = rows.reduce((s, r) => s + r.predicted, 0) / n;
+      const units = rows.reduce((s, r) => s + r.pnl, 0);
+      const roi = units / n;
+      return {{ label, n, hits, hitRate, predicted, units, roi }};
+    }};
+
+    const twoLegRows = all.filter(r => r.section === "two_leg");
+    const threeLegRows = all.filter(r => r.section === "three_leg");
+    const cards = [
+      summarize(twoLegRows, "2-leg"),
+      summarize(threeLegRows, "3-leg"),
+      summarize(all, "Combined"),
+    ].filter(c => c !== null);
+
+    const cardsHTML = cards.map(c => {{
+      const unitsCls = c.units > 0.01 ? "pos" : c.units < -0.01 ? "neg" : "";
+      const roiCls = c.roi > 0.001 ? "pos" : c.roi < -0.001 ? "neg" : "";
+      const calibDelta = c.hitRate - c.predicted;
+      const calibCls = Math.abs(calibDelta) < 0.03 ? "flat"
+        : (calibDelta > 0 ? "pos" : "neg");
+      const calibLabel = Math.abs(calibDelta) < 0.03 ? "calibrated"
+        : (calibDelta > 0 ? "model under-promised" : "model over-promised");
+      return `<div class="parlay-track-card">
+        <div class="parlay-track-card-header">
+          <span class="parlay-track-card-label">${{c.label}}</span>
+          <span class="parlay-track-card-count">${{c.n}} card${{c.n === 1 ? "" : "s"}}</span>
+        </div>
+        <div class="parlay-track-card-hero ${{unitsCls}}">
+          ${{c.units >= 0 ? "+" : ""}}${{c.units.toFixed(2)}}u
+        </div>
+        <div class="parlay-track-card-grid">
+          <div class="parlay-track-stat">
+            <span class="parlay-track-stat-label">Actual hit</span>
+            <span class="parlay-track-stat-val">${{(c.hitRate * 100).toFixed(0)}}%</span>
+          </div>
+          <div class="parlay-track-stat">
+            <span class="parlay-track-stat-label">Model said</span>
+            <span class="parlay-track-stat-val">${{(c.predicted * 100).toFixed(0)}}%</span>
+          </div>
+          <div class="parlay-track-stat">
+            <span class="parlay-track-stat-label">ROI</span>
+            <span class="parlay-track-stat-val ${{roiCls}}">${{c.roi >= 0 ? "+" : ""}}${{(c.roi * 100).toFixed(1)}}%</span>
+          </div>
+        </div>
+        <div class="parlay-track-card-calib ${{calibCls}}" title="Actual minus predicted hit rate">
+          ${{calibDelta >= 0 ? "+" : ""}}${{(calibDelta * 100).toFixed(1)}}pp · ${{calibLabel}}
+        </div>
+      </div>`;
+    }}).join("");
+
+    return `<section class="results-section">
+      <h2>Parlay Track Record — last ${{maxDays}} days</h2>
+      <p class="results-aux">Top 5 two-leg + top 3 three-leg cards each day, snapshotted at slate time, graded against actual K outcomes (1u flat).</p>
+      <div class="parlay-track-grid">${{cardsHTML}}</div>
     </section>`;
   }}
 
@@ -5870,7 +6055,9 @@ def _render_js() -> str:
     }}
 
     const trackSection = renderTrackRecord(trackPicks, trackDays);
-    return {{ html: pitcherTabHTML(heroSection, parlaySection, slateBody, resultsSection + trackSection, cnt), cnt }};
+    const parlayTrack = target.parlayTrack || {{ all: [] }};
+    const parlayTrackSection = renderParlayTrackRecord(parlayTrack, trackDays);
+    return {{ html: pitcherTabHTML(heroSection, parlaySection, slateBody, resultsSection + trackSection + parlayTrackSection, cnt), cnt }};
   }}
 
   function renderHitterTab(target) {{
@@ -6034,6 +6221,9 @@ def _render_js() -> str:
         // fetchBetsForPitcherTab no-ops on the public URL so badges just
         // don't render. Awaited alongside slate so badges land on first paint.
         fetchBetsForPitcherTab(),
+        // Suggested-parlay performance: snapshotted server-side at slate
+        // time and graded once leg outcomes settle.
+        fetchParlayTrackRecord(TRACK_DAYS),
       ];
       if (SHOW_HITTERS) {{
         fetches.push(
@@ -6042,11 +6232,12 @@ def _render_js() -> str:
         );
       }}
       const results = await Promise.all(fetches);
-      const [pSlate, pSettled, pTrack, pBets, hSlate, hSettled] = results;
+      const [pSlate, pSettled, pTrack, pBets, pParlayTrack, hSlate, hSettled] = results;
 
       const pTab = renderPitcherTab({{
         slate: pSlate, settled: pSettled,
         trackPicks: pTrack, trackDays: TRACK_DAYS,
+        parlayTrack: pParlayTrack,
       }});
       const pPanel = document.getElementById("pitcher-panel");
       if (pPanel) pPanel.innerHTML = pTab.html;

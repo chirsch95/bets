@@ -323,6 +323,13 @@ def main() -> None:
         target = date.today() - timedelta(days=1)
     settle_date(target)
     settle_hitters_date(target)
+    # Grade the day's snapshotted parlay suggestions once leg outcomes
+    # are written. Failures don't block leg-level settle.
+    try:
+        from . import parlay_suggest as _pl
+        _pl.settle_suggestions(target)
+    except Exception as e:
+        print(f"parlay_suggest settle skipped: {e}")
 
 
 if __name__ == "__main__":
