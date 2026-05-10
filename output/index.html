@@ -65,6 +65,31 @@
     padding: 20px 32px 0;
     border-bottom: 1px solid var(--border);
   }
+  /* Desktop split: brand+tabs on the left, performance scoreboard on
+     the right. Mobile (<1100px) keeps the existing single-column flow
+     and the scoreboard hides; metrics stay accessible in their native
+     sections below. */
+  @media (min-width: 1101px) {
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: auto auto;
+      grid-template-areas:
+        "brand  scoreboard"
+        "tabs   scoreboard";
+      column-gap: 32px;
+      align-items: stretch;
+    }
+    header > .brand-area      { grid-area: brand; }
+    header > .segmented       { grid-area: tabs; }
+    header > .header-scoreboard {
+      grid-area: scoreboard;
+      align-self: stretch;
+    }
+  }
+  @media (max-width: 1100px) {
+    header > .header-scoreboard { display: none; }
+  }
   header .brand-area {
     position: relative;
     display: flex;
@@ -75,20 +100,20 @@
   header h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
   header h1.brand { margin: 0; padding: 0; line-height: 0; font-size: 0; }
   header .brand-logo {
-    height: 170px;
+    height: 80px;
     width: auto;
     display: block;
-    filter: drop-shadow(0 2px 14px rgba(45, 212, 255, 0.22));
+    filter: drop-shadow(0 2px 10px rgba(45, 212, 255, 0.18));
   }
   header .brand-logo-light { display: none; }
   :root[data-theme="light"] header .brand-logo-dark { display: none; }
   :root[data-theme="light"] header .brand-logo-light { display: block; }
   @media (max-width: 768px) {
     header { padding: 16px 16px 0; }
-    header .brand-logo { height: 110px; }
+    header .brand-logo { height: 60px; }
   }
   @media (max-width: 400px) {
-    header .brand-logo { height: 92px; }
+    header .brand-logo { height: 52px; }
   }
   /* Floating corner icon buttons (theme + refresh) sit in the empty
      corners of the logo area so the centered logo is the visual hero.
@@ -358,6 +383,169 @@
     background: var(--green);
     color: #001a00;
   }
+  /* Header scoreboard — twin "Model" + "Bankroll" panel on the right
+     half of the header. Hidden on mobile (handled by header media
+     rule). Built from existing track-record + /api/bets data, so no
+     extra fetches. */
+  .header-scoreboard {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    padding: 6px 0 12px;
+    background:
+      linear-gradient(135deg, rgba(45, 212, 255, 0.06), rgba(74, 222, 128, 0.06));
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .header-scoreboard::before {
+    /* Soft accent glow at the top edge — pulls the eye to the panel
+       without competing with the data. */
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+    opacity: 0.4;
+  }
+  .scoreboard-col {
+    position: relative;
+    padding: 10px 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .scoreboard-col + .scoreboard-col {
+    border-left: 1px solid var(--border);
+  }
+  .scoreboard-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .scoreboard-label .scoreboard-window {
+    color: var(--text);
+    font-weight: 600;
+    opacity: 0.7;
+  }
+  .scoreboard-live-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--red);
+    animation: scoreboard-live-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes scoreboard-live-pulse {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50%      { opacity: 1;   transform: scale(1.3); }
+  }
+  .scoreboard-hero {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    margin-top: 2px;
+  }
+  .scoreboard-hero.pos {
+    color: var(--green);
+    text-shadow: 0 0 16px rgba(74, 222, 128, 0.35);
+  }
+  .scoreboard-hero.neg {
+    color: var(--red);
+    text-shadow: 0 0 16px rgba(248, 113, 113, 0.35);
+  }
+  .scoreboard-hero.flat { color: var(--muted); }
+  .scoreboard-spark {
+    margin: 2px 0 4px;
+    width: 100%;
+    height: 28px;
+    display: block;
+    overflow: visible;
+  }
+  .scoreboard-spark-area {
+    fill-opacity: 0.18;
+    stroke: none;
+  }
+  .scoreboard-spark-area.pos { fill: var(--green); }
+  .scoreboard-spark-area.neg { fill: var(--red); }
+  .scoreboard-spark-area.flat { fill: var(--muted); }
+  .scoreboard-spark-path {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    /* Animated draw-in: pathLength="1" attribute on the element normalizes
+       the path to 1 unit; dasharray/offset both 1 starts it invisible.
+       The keyframe sweeps offset to 0 over 1.1s. CSS-only — no JS timing. */
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: scoreboard-spark-draw 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .scoreboard-spark-path.pos  { stroke: var(--green); }
+  .scoreboard-spark-path.neg  { stroke: var(--red); }
+  .scoreboard-spark-path.flat { stroke: var(--muted); }
+  @keyframes scoreboard-spark-draw {
+    from { stroke-dashoffset: 1; }
+    to   { stroke-dashoffset: 0; }
+  }
+  .scoreboard-spark-tip {
+    /* Last-point marker — fades in just after the line finishes drawing. */
+    r: 2.5;
+    opacity: 0;
+    animation: scoreboard-spark-tip-fade 0.4s ease 0.95s forwards;
+  }
+  .scoreboard-spark-tip.pos  { fill: var(--green); }
+  .scoreboard-spark-tip.neg  { fill: var(--red); }
+  .scoreboard-spark-tip.flat { fill: var(--muted); }
+  @keyframes scoreboard-spark-tip-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .scoreboard-supporting {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    flex-wrap: wrap;
+  }
+  .scoreboard-supporting strong {
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .scoreboard-trend {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+  }
+  .scoreboard-trend.pos { color: var(--green); border-color: rgba(74, 222, 128, 0.4); }
+  .scoreboard-trend.neg { color: var(--red);   border-color: rgba(248, 113, 113, 0.4); }
+  .scoreboard-trend.flat { color: var(--muted); }
+  .scoreboard-empty {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.4;
+    padding: 4px 0 0;
+  }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   .results-section { margin-top: 32px; }
@@ -500,6 +688,21 @@
   .split-bar-fill.under { background: var(--red); }
   .split-stats { font-size: 12px; color: var(--muted); text-align: right; }
   .split-stats strong { color: var(--text); font-weight: 600; }
+  /* Daily-decision row: single picks (left) + parlay suggestions (right)
+     side-by-side on desktop so both sit above the fold and read as one
+     decision surface. Stacks below 1100px so cards don't get squeezed. */
+  .daily-decision {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 24px;
+    margin-bottom: 24px;
+    align-items: start;
+  }
+  .daily-decision > .picks-hero,
+  .daily-decision > .parlay-suggester { margin: 0; }
+  @media (max-width: 1100px) {
+    .daily-decision { grid-template-columns: 1fr; gap: 16px; }
+  }
   /* "Today's Picks" hero cards — surfaces actionable focus picks above
      the dense All Pitchers table. */
   .picks-hero { margin-bottom: 24px; }
@@ -935,6 +1138,45 @@
     flex-wrap: wrap;
     margin-top: 4px;
   }
+  /* "Browse all pitchers" twisty around the full slate table. Default-
+     collapsed; open state persisted in localStorage by wireSlateTableToggle. */
+  details.slate-table-wrap {
+    margin: 16px 0 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+  }
+  details.slate-table-wrap > summary {
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  details.slate-table-wrap > summary::-webkit-details-marker { display: none; }
+  details.slate-table-wrap > summary::marker { content: ""; }
+  details.slate-table-wrap > summary::after {
+    content: "▸";
+    color: var(--muted);
+    font-size: 11px;
+    transition: transform 0.15s ease;
+  }
+  details.slate-table-wrap[open] > summary::after { transform: rotate(90deg); }
+  details.slate-table-wrap > summary .slate-table-count {
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 12px;
+    margin-left: auto;
+    margin-right: 8px;
+  }
+  details.slate-table-wrap > .slate-table-body { padding: 0 14px 14px; }
+  details.slate-table-wrap > .slate-table-body .slate-toolbar { margin-top: 4px; }
   /* Free-entry checkbox + row badge. */
   .bets-form-actions label {
     display: inline-flex;
@@ -2437,13 +2679,14 @@
   // before first pitcher-tab paint so the initial cards already include
   // badges.
   async function fetchBetsForPitcherTab() {
-    if (!isBets()) return;
+    if (!isBets()) return null;
     try {
       const r = await fetch("/api/bets", { cache: "no-cache" });
-      if (!r.ok) return;
+      if (!r.ok) return null;
       const state = await r.json();
       indexBetsByPitcher(state);
-    } catch (e) { /* ignore */ }
+      return state;
+    } catch (e) { return null; }
   }
 
   // Live state for one bet leg given the pitcher_id whose card we're
@@ -5435,8 +5678,14 @@
           <button type="button" id="noise-toggle">Show ${hiddenCount} noise / no-line</button>
         </div>`
       : "";
-    return `${heroSection}
-    ${parlaySection}
+    const totalPitchers = visibleCount + hiddenCount;
+    const slateCountLabel = totalPitchers
+      ? `<span class="slate-table-count">${totalPitchers} pitcher${totalPitchers === 1 ? "" : "s"}</span>`
+      : "";
+    return `<div class="daily-decision">
+      ${heroSection}
+      ${parlaySection}
+    </div>
     <details class="tag-help">
       <summary>What do the pick tags mean?</summary>
       <div class="legend-row">
@@ -5454,22 +5703,27 @@
         <span>book hasn't posted, or game already started</span>
       </div>
     </details>
-    ${toolbar}
-    <div class="table-scroll"><table>
-      <thead><tr>
-        <th>Pitcher</th><th>Opponent</th>
-        <th title="First pitch in Central time">Time</th>
-        <th class="num" title="Model projection (v2)">Our Proj</th>
-        <th class="num" title="Sportsbook over/under line">Book Line</th>
-        <th class="num" title="Best OVER price across all US books">Over Odds</th>
-        <th class="num" title="Best UNDER price across all US books">Under Odds</th>
-        <th class="num" title="Our Poisson P(over)">Our Over %</th>
-        <th class="num" title="Median no-vig P(over) across books">Book Over %</th>
-        <th class="num" title="Our Over % minus Book Over %">Edge</th>
-        <th title="Pick recommendation">Pick</th>
-      </tr></thead>
-      <tbody>${slateBody}</tbody>
-    </table></div>
+    <details class="slate-table-wrap" id="slate-table-twisty">
+      <summary>Browse all pitchers ${slateCountLabel}</summary>
+      <div class="slate-table-body">
+        ${toolbar}
+        <div class="table-scroll"><table>
+          <thead><tr>
+            <th>Pitcher</th><th>Opponent</th>
+            <th title="First pitch in Central time">Time</th>
+            <th class="num" title="Model projection (v2)">Our Proj</th>
+            <th class="num" title="Sportsbook over/under line">Book Line</th>
+            <th class="num" title="Best OVER price across all US books">Over Odds</th>
+            <th class="num" title="Best UNDER price across all US books">Under Odds</th>
+            <th class="num" title="Our Poisson P(over)">Our Over %</th>
+            <th class="num" title="Median no-vig P(over) across books">Book Over %</th>
+            <th class="num" title="Our Over % minus Book Over %">Edge</th>
+            <th title="Pick recommendation">Pick</th>
+          </tr></thead>
+          <tbody>${slateBody}</tbody>
+        </table></div>
+      </div>
+    </details>
     ${resultsSection}`;
   }
 
@@ -5532,7 +5786,7 @@
         );
       }
       const results = await Promise.all(fetches);
-      const [pSlate, pSettled, pTrack, _bets, hSlate, hSettled] = results;
+      const [pSlate, pSettled, pTrack, pBets, hSlate, hSettled] = results;
 
       const pTab = renderPitcherTab({
         slate: pSlate, settled: pSettled,
@@ -5544,9 +5798,15 @@
       // after the toolbar lands in the DOM. Must run before any await
       // so the initial paint already reflects the user's default.
       wireNoiseToggle();
+      wireSlateTableToggle();
       const pCounts = document.getElementById("pitcher-counts");
       if (pCounts) pCounts.textContent =
         `(${pTab.cnt.focus} focus / ${pTab.cnt.investigate} verify)`;
+
+      // Header scoreboard — model + bankroll twin panel. Reuses the
+      // track-record fetch (model side) and the same /api/bets state
+      // that drives parlay badges (bankroll side, Tailscale-only).
+      paintScoreboard(pTrack, pBets);
 
       // Live K + game-status overlay — fires after the table is on
       // screen so the initial paint isn't blocked on the MLB API. Once
@@ -5627,6 +5887,196 @@
     } catch (e) { /* private mode etc. — fall back to default */ }
     document.body.classList.toggle("hide-noise", hide);
   }
+  // ──── Header scoreboard ────────────────────────────────────────────
+  // Twin "Model" + "Bankroll" panel rendered into the right half of
+  // the header. Reuses data already fetched for other sections (track
+  // record + /api/bets), so no extra network calls.
+  function renderScoreboardSparkline(cum, sign) {
+    if (!cum || cum.length < 2) return "";
+    const w = 220, h = 28, padX = 2, padY = 3;
+    const maxV = Math.max(0, ...cum);
+    const minV = Math.min(0, ...cum);
+    const range = (maxV - minV) || 1;
+    const step = (w - padX * 2) / (cum.length - 1);
+    const yFor = v => h - padY - ((v - minV) / range) * (h - padY * 2);
+    const xFor = i => padX + i * step;
+    const pathD = cum.map((v, i) =>
+      `${i === 0 ? "M" : "L"}${xFor(i).toFixed(1)},${yFor(v).toFixed(1)}`
+    ).join(" ");
+    const zeroY = yFor(0).toFixed(1);
+    const lastX = xFor(cum.length - 1).toFixed(1);
+    const lastY = yFor(cum[cum.length - 1]).toFixed(1);
+    const areaD = `${pathD} L${lastX},${zeroY} L${xFor(0).toFixed(1)},${zeroY} Z`;
+    return `<svg class="scoreboard-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <path class="scoreboard-spark-area ${sign}" d="${areaD}" />
+      <path class="scoreboard-spark-path ${sign}" d="${pathD}" pathLength="1" vector-effect="non-scaling-stroke" />
+      <circle class="scoreboard-spark-tip ${sign}" cx="${lastX}" cy="${lastY}" />
+    </svg>`;
+  }
+
+  function renderScoreboardModelCol(track) {
+    const picks = (track && track.focus) ? track.focus : [];
+    const labelHTML = `<div class="scoreboard-label">Model <span class="scoreboard-window">14d</span></div>`;
+    if (picks.length < 3) {
+      const have = picks.length;
+      return `<div class="scoreboard-col">
+        ${labelHTML}
+        <div class="scoreboard-empty">Building track record · ${have} pick${have === 1 ? "" : "s"}. Hero stats activate at 8+.</div>
+      </div>`;
+    }
+    const total = picks.length;
+    const hits = picks.filter(p => p.won).length;
+    const hitPct = (hits / total) * 100;
+    const units = picks.reduce((s, p) => s + p.pnl, 0);
+    const sign = units > 0.05 ? "pos" : units < -0.05 ? "neg" : "flat";
+    const heroVal = `${units >= 0 ? "+" : ""}${units.toFixed(2)}u`;
+
+    // Trend: recent half vs prior half (units delta), only with ≥8 picks.
+    let trendHTML = "";
+    if (picks.length >= 8) {
+      const sorted = picks.slice().sort((a, b) => a.date.localeCompare(b.date));
+      const mid = Math.floor(sorted.length / 2);
+      const priorU = sorted.slice(0, mid).reduce((s, p) => s + p.pnl, 0);
+      const recentU = sorted.slice(mid).reduce((s, p) => s + p.pnl, 0);
+      const delta = recentU - priorU;
+      const tCls = delta > 0.05 ? "pos" : delta < -0.05 ? "neg" : "flat";
+      const tArrow = tCls === "pos" ? "▲" : tCls === "neg" ? "▼" : "·";
+      const tStr = `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}u`;
+      trendHTML = `<span class="scoreboard-trend ${tCls}" title="Recent half vs prior half">${tArrow} ${tStr}</span>`;
+    }
+
+    // Cumulative units, one point per dated day in the picks set.
+    const byDate = {};
+    for (const p of picks) {
+      byDate[p.date] = (byDate[p.date] || 0) + p.pnl;
+    }
+    const sortedDates = Object.keys(byDate).sort();
+    const cum = [];
+    let running = 0;
+    for (const d of sortedDates) {
+      running += byDate[d];
+      cum.push(running);
+    }
+    const sparkHTML = renderScoreboardSparkline(cum, sign);
+
+    return `<div class="scoreboard-col">
+      ${labelHTML}
+      <div class="scoreboard-hero ${sign}">${heroVal}</div>
+      ${sparkHTML}
+      <div class="scoreboard-supporting">
+        <span><strong>${hitPct.toFixed(0)}%</strong> hit</span>
+        <span>· <strong>${total}</strong> pick${total === 1 ? "" : "s"}</span>
+        ${trendHTML}
+      </div>
+    </div>`;
+  }
+
+  function renderScoreboardBankrollCol(betsState) {
+    const labelHTML = `<div class="scoreboard-label">Bankroll <span class="scoreboard-window">30d</span></div>`;
+    // Container is bets-only — hides on the public URL via global CSS.
+    if (!betsState || !Array.isArray(betsState.bets)) {
+      return `<div class="scoreboard-col bets-only">
+        ${labelHTML}
+        <div class="scoreboard-empty">No bets data available on this URL.</div>
+      </div>`;
+    }
+    const cutoff = dateInChicago(-29);
+    const recentSettled = betsState.bets.filter(b =>
+      (b.result === "W" || b.result === "L") && b.date && b.date >= cutoff
+    );
+    if (!recentSettled.length) {
+      return `<div class="scoreboard-col bets-only">
+        ${labelHTML}
+        <div class="scoreboard-empty">Awaiting first settled bet in this 30-day window.</div>
+      </div>`;
+    }
+
+    let net = 0;
+    let wins = 0;
+    for (const b of recentSettled) {
+      const stake = parseFloat(b.stake) || 0;
+      const payout = parseFloat(b.payout) || 0;
+      const isFree = !!b.free_entry;
+      if (b.result === "W") {
+        net += payout - (isFree ? 0 : stake);
+        wins += 1;
+      } else if (!isFree) {
+        net -= stake;
+      }
+    }
+    const hitPct = (wins / recentSettled.length) * 100;
+    const sign = net > 0.5 ? "pos" : net < -0.5 ? "neg" : "flat";
+    const heroVal = `${net >= 0 ? "+" : "−"}$${Math.abs(net).toFixed(0)}`;
+
+    // Trend: recent half vs prior half ($ delta), only with ≥8 bets.
+    let trendHTML = "";
+    if (recentSettled.length >= 8) {
+      const sorted = recentSettled.slice().sort((a, b) => a.date.localeCompare(b.date));
+      const mid = Math.floor(sorted.length / 2);
+      const halfNet = arr => arr.reduce((s, b) => {
+        const stake = parseFloat(b.stake) || 0;
+        const payout = parseFloat(b.payout) || 0;
+        const isFree = !!b.free_entry;
+        if (b.result === "W") return s + (payout - (isFree ? 0 : stake));
+        return s - (isFree ? 0 : stake);
+      }, 0);
+      const priorN = halfNet(sorted.slice(0, mid));
+      const recentN = halfNet(sorted.slice(mid));
+      const delta = recentN - priorN;
+      const tCls = delta > 0.5 ? "pos" : delta < -0.5 ? "neg" : "flat";
+      const tArrow = tCls === "pos" ? "▲" : tCls === "neg" ? "▼" : "·";
+      const tStr = `${delta >= 0 ? "+" : "−"}$${Math.abs(delta).toFixed(0)}`;
+      trendHTML = `<span class="scoreboard-trend ${tCls}" title="Recent half vs prior half">${tArrow} ${tStr}</span>`;
+    }
+
+    // Cumulative $ P&L over the last 30 days (one point per day, even
+    // empty days, so the curve reads like an equity curve).
+    const dailyPnl = computeDailyBetsPnl(recentSettled);
+    const byDate = {};
+    for (const u of dailyPnl) byDate[u.date] = u.pnl;
+    const cum = [];
+    let running = 0;
+    for (let i = 29; i >= 0; i--) {
+      const d = dateInChicago(-i);
+      running += (byDate[d] || 0);
+      cum.push(running);
+    }
+    const sparkHTML = renderScoreboardSparkline(cum, sign);
+
+    return `<div class="scoreboard-col bets-only">
+      ${labelHTML}
+      <div class="scoreboard-hero ${sign}">${heroVal}</div>
+      ${sparkHTML}
+      <div class="scoreboard-supporting">
+        <span><strong>${hitPct.toFixed(0)}%</strong> hit</span>
+        <span>· <strong>${recentSettled.length}</strong> bet${recentSettled.length === 1 ? "" : "s"}</span>
+        ${trendHTML}
+      </div>
+    </div>`;
+  }
+
+  function paintScoreboard(track, betsState) {
+    const root = document.getElementById("header-scoreboard");
+    if (!root) return;
+    root.innerHTML = renderScoreboardModelCol(track) + renderScoreboardBankrollCol(betsState);
+    // No JS timing needed — the .scoreboard-spark-path / -tip elements
+    // carry CSS @keyframes that fire the moment the SVG renders.
+  }
+
+  // Persist the "Browse all pitchers" twisty open/closed across reloads.
+  // Default-collapsed; once a user opens it, it stays open.
+  const _SLATE_TABLE_KEY = "slate-table-open";
+  function wireSlateTableToggle() {
+    const t = document.getElementById("slate-table-twisty");
+    if (!t) return;
+    try {
+      if (localStorage.getItem(_SLATE_TABLE_KEY) === "1") t.setAttribute("open", "");
+    } catch (e) {}
+    t.addEventListener("toggle", () => {
+      try { localStorage.setItem(_SLATE_TABLE_KEY, t.open ? "1" : "0"); } catch (e) {}
+    });
+  }
+
   function wireNoiseToggle() {
     const btn = document.getElementById("noise-toggle");
     if (!btn) return;
@@ -6013,6 +6463,7 @@
     <button data-tab="pitchers" type="button">Pitchers</button>
     <button data-tab="bets" type="button">Bets</button>
   </nav>
+  <aside class="header-scoreboard" id="header-scoreboard" aria-label="Performance scoreboard"></aside>
 </header>
 <main>
   <div class="tab-panel active" data-tab="pitchers" id="pitcher-panel">
