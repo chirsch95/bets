@@ -92,66 +92,79 @@ CSS = """
     line-height: 1.5;
   }
   header {
-    padding: 20px 32px 0;
+    padding: 16px 32px;
     border-bottom: 1px solid var(--border);
   }
-  /* Desktop split: brand+tabs on the left, performance scoreboard on
-     the right. Mobile (<1100px) keeps the existing single-column flow
-     and the scoreboard hides; metrics stay accessible in their native
-     sections below. */
+  /* New header layout: big logo anchored on the far left, everything
+     else stacked in a right column (topbar with tabs + utility cluster,
+     scoreboard panel, status strip). Falls back to the original stacked
+     layout on phones/tablets so nothing breaks below 1100px. */
   @media (min-width: 1101px) {
     header {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      grid-template-rows: auto auto;
-      grid-template-areas:
-        "brand  scoreboard"
-        "tabs   scoreboard";
-      column-gap: 32px;
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas: "logo  right";
+      column-gap: 28px;
       align-items: stretch;
     }
-    header > .brand-area      { grid-area: brand; }
-    header > .segmented       { grid-area: tabs; }
-    header > .header-scoreboard {
-      grid-area: scoreboard;
-      align-self: stretch;
-    }
+    header > .brand-area   { grid-area: logo; }
+    header > .header-right { grid-area: right; }
   }
   @media (max-width: 1100px) {
-    header > .header-scoreboard { display: none; }
+    header > .header-right > .header-scoreboard { display: none; }
   }
   header .brand-area {
     position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding-bottom: 4px;
+    justify-content: center;
+    padding: 0;
   }
-  header h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
   header h1.brand { margin: 0; padding: 0; line-height: 0; font-size: 0; }
   header .brand-logo {
-    height: 80px;
+    height: 120px;
     width: auto;
     display: block;
-    filter: drop-shadow(0 2px 10px rgba(45, 212, 255, 0.18));
+    filter: drop-shadow(0 2px 14px rgba(45, 212, 255, 0.22));
   }
   header .brand-logo-light { display: none; }
   :root[data-theme="light"] header .brand-logo-dark { display: none; }
   :root[data-theme="light"] header .brand-logo-light { display: block; }
   @media (max-width: 768px) {
-    header { padding: 16px 16px 0; }
-    header .brand-logo { height: 60px; }
+    header { padding: 12px 16px; }
+    header .brand-logo { height: 84px; }
   }
   @media (max-width: 400px) {
-    header .brand-logo { height: 52px; }
+    header .brand-logo { height: 68px; }
   }
-  /* Floating corner icon buttons (theme + refresh) sit in the empty
-     corners of the logo area so the centered logo is the visual hero.
-     Anchored to .brand-area, not <header>, so they stay aligned with
-     the logo even as the admin row + tabs push header height down. */
+  /* Right column inside the header: topbar (tabs + utility) at top,
+     scoreboard in the middle, status strip at the bottom. */
+  header .header-right {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  header .header-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header .header-utility {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+  /* Theme + refresh + admin icons. Originally absolute-positioned in
+     the corners of the centered brand block — now they sit inline in
+     the utility cluster, so we reset the positioning rules. */
   header .float-btn {
-    position: absolute;
-    top: 4px;
+    position: static;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -165,13 +178,11 @@ CSS = """
     color: var(--text);
     padding: 0;
     font-family: inherit;
-    z-index: 1;
   }
   header .float-btn:hover { background: var(--hover-overlay); }
   header .float-btn svg { width: 16px; height: 16px; }
-  header .float-btn.theme-btn { left: 0; width: 36px; }
+  header .float-btn.theme-btn { width: 36px; }
   header .float-btn.refresh-btn {
-    right: 0;
     width: 36px;
     background: var(--green);
     border-color: var(--green);
@@ -188,15 +199,15 @@ CSS = """
   :root[data-theme="light"] header .float-btn .theme-sun { display: none; }
   :root[data-theme="light"] header .float-btn .theme-moon { display: block; }
   @media (max-width: 480px) {
-    header .float-btn { height: 32px; min-width: 32px; top: 0; }
+    header .float-btn { height: 32px; min-width: 32px; }
     header .float-btn.theme-btn { width: 32px; }
     header .float-btn.refresh-btn { width: 32px; }
   }
   /* Admin overflow (local-only). Native <details> for zero-JS dropdown. */
   header .admin-menu {
     position: relative;
-    align-self: flex-end;
-    margin-top: 6px;
+    align-self: auto;
+    margin-top: 0;
   }
   header .admin-menu summary {
     list-style: none;
@@ -266,13 +277,13 @@ CSS = """
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 0;
     font-size: 11px;
     color: var(--muted);
     font-variant-numeric: tabular-nums;
     line-height: 1.4;
-    margin-top: 6px;
+    margin-top: 0;
   }
   .status-row > * + *::before {
     content: "·";
@@ -383,10 +394,11 @@ CSS = """
   /* Segmented toggle (Tailscale URL only) — compact pill replacement
      for the old tab strip. Hidden by default; html.is-bets reveals it
      where Bets data is canonical. The active button gets a green fill,
-     inactive sits transparent against the panel-toned pill container. */
+     inactive sits transparent against the panel-toned pill container.
+     Lives in the header topbar now, so margin: 0 (no auto-centering). */
   .segmented {
     display: none;
-    margin: 6px auto 0;
+    margin: 0;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -2242,14 +2254,14 @@ CSS = """
 
 
 def _action_buttons_html() -> str:
-    """Header chrome rendered inside .brand-area (after the <h1> logo):
-      - theme-btn   — floating top-left, sun/moon SVG, CSS toggles via [data-theme]
-      - refresh-btn — floating top-right, circular green
-      - .status-row — last-refresh · quota · health caption under the logo
-      - .admin-menu — local-only `<details>` overflow for pipeline tools
-    Element IDs (#theme-toggle, #refresh-btn) are unchanged so the JS
-    click handlers attach without modification. Native <details> means
-    no dropdown JS is needed — it opens/closes itself."""
+    """Header utility cluster — sits in the top-right of the new header
+    layout (right of the logo block). Returns three icon buttons:
+      - theme-btn   — sun/moon SVG, toggles light/dark via [data-theme]
+      - refresh-btn — circular green refresh action
+      - admin-menu  — local-only `<details>` overflow for pipeline tools
+    Status row (last-refresh · quota · health) is rendered separately
+    so it can occupy a thin bottom strip of the header. Element IDs
+    are preserved so existing JS click handlers attach unchanged."""
     sun_svg = (
         '<svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
         'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
@@ -2269,11 +2281,6 @@ def _action_buttons_html() -> str:
     )
     return f"""<button type="button" id="theme-toggle" class="float-btn theme-btn" aria-label="Toggle light/dark" title="Toggle light/dark">{sun_svg}{moon_svg}</button>
     <button type="button" id="refresh-btn" class="float-btn refresh-btn" aria-label="Refresh data" title="Refresh data">{refresh_svg}</button>
-    <div class="status-row">
-      <span class="last-refresh" id="last-refresh"></span>
-      <span class="quota-pill" id="quota-pill" title=""></span>
-      <span class="health-pill" id="health-pill" title=""><span class="dot"></span><span class="label">Health</span></span>
-    </div>
     <details class="admin-menu local-only">
       <summary aria-label="Local admin tools" title="Local admin tools">⋯</summary>
       <div class="admin-items">
@@ -6588,12 +6595,23 @@ def generate(target_date: date | None = None) -> Path | None:
 <header>
   <div class="brand-area">
     <h1 class="brand"><img src="/k-edge-logo.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo brand-logo-dark"><img src="/k-edge-logo-light.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo brand-logo-light"></h1>
-    {actions_block}
   </div>
-  <nav class="segmented" role="tablist">
+  <div class="header-right">
+    <div class="header-topbar">
+      <nav class="segmented" role="tablist">
 {tabs_nav}
-  </nav>
-  <aside class="header-scoreboard" id="header-scoreboard" aria-label="Performance scoreboard"></aside>
+      </nav>
+      <div class="header-utility">
+        {actions_block}
+      </div>
+    </div>
+    <aside class="header-scoreboard" id="header-scoreboard" aria-label="Performance scoreboard"></aside>
+    <div class="status-row">
+      <span class="last-refresh" id="last-refresh"></span>
+      <span class="quota-pill" id="quota-pill" title=""></span>
+      <span class="health-pill" id="health-pill" title=""><span class="dot"></span><span class="label">Health</span></span>
+    </div>
+  </div>
 </header>
 <main>
 {panels}
