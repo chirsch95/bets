@@ -1599,9 +1599,28 @@ CSS = """
       margin-left: 6px;
     }}
   }}
+  table.bets-ledger td.result { white-space: nowrap; }
   table.bets-ledger td.result.W { color: var(--green); font-weight: 600; }
   table.bets-ledger td.result.L { color: var(--red); font-weight: 600; }
   table.bets-ledger td.result.pending { color: var(--muted); }
+  table.bets-ledger td.result .result-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: baseline;
+    position: relative;
+    top: 1px;
+  }
+  table.bets-ledger td.result.W .result-dot { background: var(--green); }
+  table.bets-ledger td.result.L .result-dot { background: var(--red); }
+  table.bets-ledger td.result.pending .result-dot {
+    background: transparent;
+    border: 1.5px solid var(--muted);
+    width: 7px;
+    height: 7px;
+  }
   table.bets-ledger td.payout.pos { color: var(--green); }
   table.bets-ledger td.payout.zero { color: var(--muted); }
   table.bets-ledger tr.editing td { background: rgba(74, 222, 128, 0.04); }
@@ -4861,10 +4880,10 @@ def _render_js() -> str:
   function renderBetRow(b, extraCls = "") {{
     const result = b.result || "";
     const resultCell = result === "W"
-      ? '<td class="result W">W</td>'
+      ? '<td class="result W"><span class="result-dot"></span>Win</td>'
       : result === "L"
-        ? '<td class="result L">L</td>'
-        : '<td class="result pending">—</td>';
+        ? '<td class="result L"><span class="result-dot"></span>Loss</td>'
+        : '<td class="result pending"><span class="result-dot"></span>Pending</td>';
     let payoutCls = "zero", payoutStr = "—";
     if (b.payout !== null && b.payout !== undefined) {{
       const v = parseFloat(b.payout);
@@ -5252,8 +5271,6 @@ def _render_js() -> str:
 
     return `${{renderQuickStatus(state)}}
       ${{toolbar}}
-      ${{renderBetsTotals(totals)}}
-      ${{heatmapHTML}}
       <div class="bets-table-wrap"><table class="bets-ledger">
         <thead><tr>
           <th>Date</th>
@@ -5267,6 +5284,8 @@ def _render_js() -> str:
         </tr></thead>
         <tbody id="bets-tbody">${{tableBody}}</tbody>
       </table></div>
+      ${{renderBetsTotals(totals)}}
+      ${{heatmapHTML}}
       ${{formHTML}}`;
   }}
 
