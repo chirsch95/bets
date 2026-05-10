@@ -6699,7 +6699,7 @@ def _render_js() -> str:
   }}
 
   function renderScoreboardBankrollCol(betsState) {{
-    const labelHTML = `<div class="scoreboard-label">Bankroll <span class="scoreboard-window">30d</span></div>`;
+    const labelHTML = `<div class="scoreboard-label">Bankroll <span class="scoreboard-window">14d</span></div>`;
     // Container is bets-only — hides on the public URL via global CSS.
     if (!betsState || !Array.isArray(betsState.bets)) {{
       return `<div class="scoreboard-col bets-only">
@@ -6707,14 +6707,14 @@ def _render_js() -> str:
         <div class="scoreboard-empty">No bets data available on this URL.</div>
       </div>`;
     }}
-    const cutoff = dateInChicago(-29);
+    const cutoff = dateInChicago(-13);
     const recentSettled = betsState.bets.filter(b =>
       (b.result === "W" || b.result === "L") && b.date && b.date >= cutoff
     );
     if (!recentSettled.length) {{
       return `<div class="scoreboard-col bets-only">
         ${{labelHTML}}
-        <div class="scoreboard-empty">Awaiting first settled bet in this 30-day window.</div>
+        <div class="scoreboard-empty">Awaiting first settled bet in this 14-day window.</div>
       </div>`;
     }}
 
@@ -6756,7 +6756,7 @@ def _render_js() -> str:
       trendHTML = `<span class="scoreboard-trend ${{tCls}}" title="Recent half vs prior half">${{tArrow}} ${{tStr}}</span>`;
     }}
 
-    // Cumulative $ P&L over the last 30 days (one point per day, even
+    // Cumulative $ P&L over the last 14 days (one point per day, even
     // empty days, so the curve reads like an equity curve). Also keep
     // the full per-day record (pnl, wins, count, staked) keyed by date
     // so the heatmap tooltip can show the same detail as the body
@@ -6766,13 +6766,13 @@ def _render_js() -> str:
     for (const u of dailyPnl) byInfo[u.date] = u;
     const cum = [];
     let running = 0;
-    for (let i = 29; i >= 0; i--) {{
+    for (let i = 13; i >= 0; i--) {{
       const d = dateInChicago(-i);
       running += (byInfo[d] ? byInfo[d].pnl : 0);
       cum.push(running);
     }}
     const sparkHTML = renderScoreboardSparkline(cum, sign);
-    const heatHTML = renderScoreboardHeat(byInfo, 30, "money");
+    const heatHTML = renderScoreboardHeat(byInfo, 14, "money");
 
     return `<div class="scoreboard-col bets-only">
       ${{labelHTML}}
