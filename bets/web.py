@@ -1569,6 +1569,117 @@ CSS = """
     margin-bottom: 16px;
   }
   .bets-totals-card .report-stat { padding: 10px 12px; }
+  /* Ticket cards — one card per bet, replacing the old table view.
+     Card body is always tappable; tapping toggles the action drawer
+     (W / L / Edit / Reopen / Delete) at the bottom. */
+  .bets-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .bet-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px 10px;
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease;
+  }
+  .bet-card:hover { border-color: var(--muted); }
+  .bet-card.expanded-actions { border-color: var(--text); }
+  .bet-card.result-W {
+    background: rgba(74, 222, 128, 0.07);
+    border-color: rgba(74, 222, 128, 0.45);
+  }
+  .bet-card.result-L {
+    background: rgba(248, 113, 113, 0.07);
+    border-color: rgba(248, 113, 113, 0.40);
+  }
+  .bet-card.older-hidden { display: none; }
+  .bet-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .bet-card-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .bet-card-date {
+    color: var(--text);
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .bet-card-legcount { font-size: 11px; }
+  .bet-card-money {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-variant-numeric: tabular-nums;
+    font-size: 14px;
+  }
+  .bet-card-stake { color: var(--text); font-weight: 600; }
+  .bet-card-arrow { color: var(--muted); }
+  .bet-card-payout { font-weight: 700; }
+  .bet-card-payout.pos { color: var(--green); }
+  .bet-card-payout.zero { color: var(--muted); }
+  .bet-card-odds {
+    color: var(--muted);
+    font-size: 12px;
+    margin-left: 2px;
+  }
+  .bet-card-boost {
+    font-size: 11px;
+    color: var(--yellow);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    border-radius: 3px;
+    padding: 1px 5px;
+  }
+  /* Empty rollup placeholder (before live data arrives) — hide so the
+     card doesn't show an empty box. */
+  .bet-card .parlay-rollup:empty { display: none; }
+  /* The old leg list was indented for a ▶ caret in the row view; in
+     cards, no caret, so reset the padding. */
+  .bet-card .parlay-leg-list { padding-left: 0; }
+  .bet-card-actions {
+    display: none;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .bet-card.expanded-actions .bet-card-actions { display: flex; }
+  .bet-card-actions button.act {
+    flex: 1;
+    min-width: 80px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+  }
+  .bet-card-actions button.act:hover { color: var(--text); border-color: var(--text); }
+  .bet-card-actions button.act.win:hover { color: var(--green); border-color: var(--green); }
+  .bet-card-actions button.act.lose:hover { color: var(--red); border-color: var(--red); }
+  .bet-card-actions button.act.del:hover { color: var(--red); border-color: var(--red); }
+  /* Show-older toggle button used to live in a table row; now standalone. */
+  .bets-older-divider {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0;
+  }
   .bets-table-wrap { overflow-x: auto; }
   table.bets-ledger { min-width: 900px; }
   table.bets-ledger td.actions { white-space: nowrap; text-align: right; }
@@ -1599,28 +1710,6 @@ CSS = """
       margin-left: 6px;
     }}
   }}
-  table.bets-ledger td.result { white-space: nowrap; }
-  table.bets-ledger td.result.W { color: var(--green); font-weight: 600; }
-  table.bets-ledger td.result.L { color: var(--red); font-weight: 600; }
-  table.bets-ledger td.result.pending { color: var(--muted); }
-  table.bets-ledger td.result .result-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 6px;
-    vertical-align: baseline;
-    position: relative;
-    top: 1px;
-  }
-  table.bets-ledger td.result.W .result-dot { background: var(--green); }
-  table.bets-ledger td.result.L .result-dot { background: var(--red); }
-  table.bets-ledger td.result.pending .result-dot {
-    background: transparent;
-    border: 1.5px solid var(--muted);
-    width: 7px;
-    height: 7px;
-  }
   table.bets-ledger td.payout.pos { color: var(--green); }
   table.bets-ledger td.payout.zero { color: var(--muted); }
   table.bets-ledger tr.editing td { background: rgba(74, 222, 128, 0.04); }
@@ -2478,7 +2567,7 @@ CSS = """
     #bets-panel > .bets-quickstatus     { order: 0; display: block; margin-bottom: 10px; }
     #bets-panel > .bets-quickstatus:empty { display: none; }
     #bets-panel > .bets-toolbar         { order: 1; }
-    #bets-panel > .bets-table-wrap      { order: 2; }
+    #bets-panel > .bets-cards           { order: 2; }
     #bets-panel > .bets-totals-card     { order: 3; margin-top: 14px; }
     #bets-panel > .totals-card-secondary { order: 4; }
     #bets-panel > .cal-wrap             { order: 5; }
@@ -4877,13 +4966,7 @@ def _render_js() -> str:
     return labels + extra;
   }}
 
-  function renderBetRow(b, extraCls = "") {{
-    const result = b.result || "";
-    const resultCell = result === "W"
-      ? '<td class="result W"><span class="result-dot"></span>Win</td>'
-      : result === "L"
-        ? '<td class="result L"><span class="result-dot"></span>Loss</td>'
-        : '<td class="result pending"><span class="result-dot"></span>Pending</td>';
+  function renderBetCard(b, extraCls = "") {{
     let payoutCls = "zero", payoutStr = "—";
     if (b.payout !== null && b.payout !== undefined) {{
       const v = parseFloat(b.payout);
@@ -4894,62 +4977,57 @@ def _render_js() -> str:
     }}
     let actions = "";
     if (b.result === null) {{
-      actions = `<button class="act win" data-action="win">W</button>
-                 <button class="act lose" data-action="lose">L</button>
+      actions = `<button class="act win" data-action="win">Mark Win</button>
+                 <button class="act lose" data-action="lose">Mark Loss</button>
                  <button class="act" data-action="edit">Edit</button>
-                 <button class="act del" data-action="delete">×</button>`;
+                 <button class="act del" data-action="delete">Delete</button>`;
     }} else {{
       actions = `<button class="act" data-action="edit">Edit</button>
                  <button class="act" data-action="reopen">Reopen</button>
-                 <button class="act del" data-action="delete">×</button>`;
+                 <button class="act del" data-action="delete">Delete</button>`;
     }}
     const legCount = (b.legs || []).length;
-    const legsLabel = `${{legCount}}-leg`;
+    const legsLabel = `${{legCount}}-leg parlay`;
     const freeBadge = b.free_entry ? '<span class="free-badge" title="Free entry — not counted toward staked; winnings still flow into Net / ROI">FREE</span>' : "";
     const siteBadge = b.site ? `<span class="site-badge" title="Placed on ${{escapeHTML(b.site)}}">${{escapeHTML(b.site)}}</span>` : "";
     const stakeDisplay = b.free_entry
       ? `<span class="muted" title="Free entry — not counted toward staked">${{fmtMoney(b.stake)}}</span>`
       : fmtMoney(b.stake);
-    const resultRowCls = b.result === "W" ? " result-W" : b.result === "L" ? " result-L" : "";
-    const rowCls = "parlay-row" + (extraCls ? " " + extraCls : "") + resultRowCls;
-    const detailCls = "parlay-detail hidden" + (extraCls ? " " + extraCls : "") + resultRowCls;
-    return `<tr data-id="${{escapeHTML(b.id)}}" class="${{rowCls}}">
-      <td>${{escapeHTML(fmtDate(b.date))}}</td>
-      <td>
-        <div class="parlay-summary" data-action="toggle-legs">
-          <span class="parlay-toggle">▶</span>
-          <span class="muted" style="font-size: 11px;">${{legsLabel}}</span>
-          <span>${{legsSummary(b.legs)}}</span>
-          <span class="parlay-inline-status" data-inline-status></span>
+    const oddsStr = b.odds ? parseFloat(b.odds).toFixed(2) : "—";
+    const boostBadge = b.boost ? `<span class="bet-card-boost">${{escapeHTML(b.boost)}}</span>` : "";
+    const resultCls = b.result === "W" ? " result-W" : b.result === "L" ? " result-L" : "";
+    const cardCls = "bet-card" + (extraCls ? " " + extraCls : "") + resultCls;
+    const legItems = (b.legs || []).map((l, i) => {{
+      const ouCls = l.ou === "O" ? "over" : "under";
+      const lineStr = l.line !== null && l.line !== undefined && l.line !== ""
+        ? parseFloat(l.line).toFixed(1) : "—";
+      return `<li data-pitcher-id="${{l.pitcher_id || ""}}" data-ou="${{l.ou}}" data-line="${{l.line === null || l.line === undefined ? "" : l.line}}">
+        <span class="muted">Leg ${{i + 1}}</span>
+        <span class="parlay-leg-name">${{escapeHTML(l.pitcher || "?")}}</span>
+        <span class="parlay-leg-ou ${{ouCls}}">${{l.ou}} ${{lineStr}}</span>
+        <span class="live-cell">${{l.pitcher_id ? "—" : '<span class="muted" style="font-size:11px;">(no live data)</span>'}}</span>
+      </li>`;
+    }}).join("");
+    return `<div class="${{cardCls}}" data-id="${{escapeHTML(b.id)}}" data-date="${{escapeHTML(b.date || "")}}">
+      <div class="bet-card-header">
+        <div class="bet-card-meta">
+          <span class="bet-card-date">${{escapeHTML(fmtDate(b.date))}}</span>
+          <span class="bet-card-legcount">${{legsLabel}}</span>
           ${{siteBadge}}
           ${{freeBadge}}
+          ${{boostBadge}}
         </div>
-      </td>
-      <td class="num">${{stakeDisplay}}</td>
-      <td class="num">${{b.odds ? parseFloat(b.odds).toFixed(2) : "—"}}</td>
-      <td>${{escapeHTML(b.boost || "")}}</td>
-      ${{resultCell}}
-      <td class="num payout ${{payoutCls}}">${{payoutStr}}</td>
-      <td class="actions">${{actions}}</td>
-    </tr>
-    <tr class="${{detailCls}}" data-detail-for="${{escapeHTML(b.id)}}" data-date="${{escapeHTML(b.date || "")}}">
-      <td colspan="8">
-        <div class="parlay-rollup" id="parlay-rollup-${{escapeHTML(b.id)}}"></div>
-        <ol class="parlay-leg-list">
-          ${{(b.legs || []).map((l, i) => {{
-            const ouCls = l.ou === "O" ? "over" : "under";
-            const lineStr = l.line !== null && l.line !== undefined && l.line !== ""
-              ? parseFloat(l.line).toFixed(1) : "—";
-            return `<li data-pitcher-id="${{l.pitcher_id || ""}}" data-ou="${{l.ou}}" data-line="${{l.line === null || l.line === undefined ? "" : l.line}}">
-              <span class="muted">Leg ${{i + 1}}</span>
-              <span class="parlay-leg-name">${{escapeHTML(l.pitcher || "?")}}</span>
-              <span class="parlay-leg-ou ${{ouCls}}">${{l.ou}} ${{lineStr}}</span>
-              <span class="live-cell">${{l.pitcher_id ? "—" : '<span class="muted" style="font-size:11px;">(no live data)</span>'}}</span>
-            </li>`;
-          }}).join("")}}
-        </ol>
-      </td>
-    </tr>`;
+        <div class="bet-card-money">
+          <span class="bet-card-stake">${{stakeDisplay}}</span>
+          <span class="bet-card-arrow">→</span>
+          <span class="bet-card-payout ${{payoutCls}}">${{payoutStr}}</span>
+          <span class="bet-card-odds">@${{oddsStr}}</span>
+        </div>
+      </div>
+      <div class="parlay-rollup" id="parlay-rollup-${{escapeHTML(b.id)}}"></div>
+      <ol class="parlay-leg-list">${{legItems}}</ol>
+      <div class="bet-card-actions">${{actions}}</div>
+    </div>`;
   }}
 
   // Build one slate-pitcher option. Stores pitcher_id, line, and
@@ -5235,27 +5313,26 @@ def _render_js() -> str:
       </div>
     </div>`;
 
-    // Default view: today + last 2 days + any still-pending bet (so a
-    // forgotten unsettled wager never falls off the page). Older settled
-    // rows are appended hidden, behind a "Show older" toggle.
-    const recentDates = new Set([0, -1, -2].map(o => dateInChicago(o)));
-    const isRecent = (b) =>
-      b.result === null || b.result === undefined || b.result === "" ||
-      recentDates.has(b.date);
-    const recent = sorted.filter(isRecent);
-    const older = sorted.filter(b => !isRecent(b));
+    // Show today's bets in detail; anything else (older settled or
+    // forgotten older-pending) is hidden behind the "Show older" toggle.
+    const todayChi = dateInChicago(0);
+    const isToday = (b) => b.date === todayChi;
+    const recent = sorted.filter(isToday);
+    const older = sorted.filter(b => !isToday(b));
 
-    let tableBody;
+    let cardsBody;
     if (!sorted.length) {{
-      tableBody = `<tr><td colspan="8" class="empty-msg">No bets recorded yet. Add your first one above.</td></tr>`;
+      cardsBody = `<p class="empty-msg">No bets recorded yet. Add your first one below.</p>`;
     }} else {{
-      const recentHTML = recent.map(b => renderBetRow(b)).join("");
-      const olderHTML = older.map(b => renderBetRow(b, "bets-older-row older-hidden")).join("");
+      const recentHTML = recent.length
+        ? recent.map(b => renderBetCard(b)).join("")
+        : `<p class="empty-msg">No bets for today yet.</p>`;
+      const olderHTML = older.map(b => renderBetCard(b, "bets-older-row older-hidden")).join("");
       const olderLabel = `Show ${{older.length}} older bet${{older.length === 1 ? "" : "s"}}`;
       const toggleRow = older.length
-        ? `<tr class="bets-older-toggle"><td colspan="8"><button type="button" id="bets-older-btn" class="bets-older-btn" data-state="hidden">${{olderLabel}}</button></td></tr>`
+        ? `<div class="bets-older-divider"><button type="button" id="bets-older-btn" class="bets-older-btn" data-state="hidden">${{olderLabel}}</button></div>`
         : "";
-      tableBody = recentHTML + toggleRow + olderHTML;
+      cardsBody = recentHTML + toggleRow + olderHTML;
     }}
 
     const toolbar = `<div class="bets-toolbar">
@@ -5271,19 +5348,7 @@ def _render_js() -> str:
 
     return `${{renderQuickStatus(state)}}
       ${{toolbar}}
-      <div class="bets-table-wrap"><table class="bets-ledger">
-        <thead><tr>
-          <th>Date</th>
-          <th>Parlay</th>
-          <th class="num">Stake</th>
-          <th class="num">Odds</th>
-          <th>Boost</th>
-          <th>W/L</th>
-          <th class="num">Payout</th>
-          <th></th>
-        </tr></thead>
-        <tbody id="bets-tbody">${{tableBody}}</tbody>
-      </table></div>
+      <div class="bets-cards" id="bets-cards">${{cardsBody}}</div>
       ${{renderBetsTotals(totals)}}
       ${{heatmapHTML}}
       ${{formHTML}}`;
@@ -5492,10 +5557,10 @@ def _render_js() -> str:
 
   function paintLiveKs() {{
     const autoSettleQueue = [];
-    document.querySelectorAll("tr.parlay-detail").forEach(tr => {{
+    document.querySelectorAll(".bet-card").forEach(card => {{
       // Per-leg cells
       const legStates = [];
-      tr.querySelectorAll("li[data-pitcher-id]").forEach(li => {{
+      card.querySelectorAll("li[data-pitcher-id]").forEach(li => {{
         const pid = parseInt(li.dataset.pitcherId, 10);
         const ou = li.dataset.ou;
         const line = li.dataset.line ? parseFloat(li.dataset.line) : null;
@@ -5511,27 +5576,25 @@ def _render_js() -> str:
         }}
       }});
       // Parlay-level rollup
-      const betId = tr.dataset.detailFor;
+      const betId = card.dataset.id;
       const rollup = document.getElementById(`parlay-rollup-${{betId}}`);
       if (rollup) {{
-        rollup.innerHTML = parlayRollupHTML(legStates, betId);
-        rollup.className = "parlay-rollup " + parlayRollupClass(legStates);
-      }}
-      // Inline per-row status badge (shows without expanding the parlay)
-      const row = document.querySelector(`tr.parlay-row[data-id="${{betId}}"]`);
-      if (row) {{
-        const inline = row.querySelector("[data-inline-status]");
-        if (inline) inline.innerHTML = inlineStatusHTML(legStates);
+        // Empty the rollup when there's no live data yet, so the
+        // :empty CSS rule hides the placeholder box.
+        if (legStates.every(s => s === null)) {{
+          rollup.innerHTML = "";
+          rollup.className = "parlay-rollup";
+        }} else {{
+          rollup.innerHTML = parlayRollupHTML(legStates, betId);
+          rollup.className = "parlay-rollup " + parlayRollupClass(legStates);
+        }}
       }}
       // Queue auto-settle ONLY if verdict is definitive AND the bet's
       // date matches the date the live-ks data is for. Without this date
       // gate, an old bet whose pitcher happens to be pitching again
-      // today can be re-graded against today's K count (which uses the
-      // same pitcher_id). The live-cell display still reflects today's
-      // data — that's harmless since the row's stored W/L coloring wins
-      // visually — but never auto-flip the result.
+      // today can be re-graded against today's K count.
       const verdictCls = parlayRollupClass(legStates);
-      const betDate = tr.dataset.date || "";
+      const betDate = card.dataset.date || "";
       const dateMatches = liveKsDate && betDate === liveKsDate;
       if (dateMatches && (verdictCls === "win" || verdictCls === "loss")) {{
         autoSettleQueue.push({{ betId, verdict: verdictCls }});
@@ -5638,9 +5701,11 @@ def _render_js() -> str:
     // If the user has manually marked a result that disagrees with the
     // computed verdict, surface the mismatch.
     let mismatch = "";
-    const row = document.querySelector(`tr.parlay-row[data-id="${{betId}}"]`);
-    const resultCell = row ? row.querySelector("td.result") : null;
-    const userResult = resultCell ? resultCell.textContent.trim() : "";
+    const card = document.querySelector(`.bet-card[data-id="${{betId}}"]`);
+    const userResult = card
+      ? (card.classList.contains("result-W") ? "W"
+         : card.classList.contains("result-L") ? "L" : "")
+      : "";
     if (verdict === "✗ Loss confirmed" && userResult === "W") {{
       mismatch = `<span class="parlay-rollup-mismatch">⚠ Marked W but legs say loss — click Reopen to revisit</span>`;
     }} else if (verdict === "✓ Win confirmed" && userResult === "L") {{
@@ -5876,16 +5941,17 @@ def _render_js() -> str:
     const legCountSel = document.getElementById("bf-legcount");
     const legsContainer = document.getElementById("bf-legs");
 
-    // "Show older" toggle: reveal/hide settled rows older than 3 days.
+    // "Show older" toggle: reveal/hide bet cards from non-today dates.
     const olderBtn = document.getElementById("bets-older-btn");
     if (olderBtn) {{
-      olderBtn.addEventListener("click", () => {{
+      olderBtn.addEventListener("click", (e) => {{
+        e.stopPropagation();
         const hide = olderBtn.dataset.state !== "hidden";
-        panel.querySelectorAll("tr.bets-older-row").forEach(tr => {{
-          tr.classList.toggle("older-hidden", hide);
+        panel.querySelectorAll(".bet-card.bets-older-row").forEach(card => {{
+          card.classList.toggle("older-hidden", hide);
         }});
         olderBtn.dataset.state = hide ? "hidden" : "shown";
-        const olderCount = panel.querySelectorAll("tr.bets-older-row.parlay-row").length;
+        const olderCount = panel.querySelectorAll(".bet-card.bets-older-row").length;
         olderBtn.textContent = hide
           ? `Show ${{olderCount}} older bet${{olderCount === 1 ? "" : "s"}}`
           : `Hide older bet${{olderCount === 1 ? "" : "s"}}`;
@@ -6062,41 +6128,29 @@ def _render_js() -> str:
     panel.dataset.clickAttached = "true";
 
     panel.addEventListener("click", async (e) => {{
-      // Tap on the mobile quick-status strip: expand the matching
-      // ledger row (if collapsed) and scroll it into view so the user
-      // can drill in without thumb-scrolling through the full list.
+      // Tap on the mobile quick-status strip: reveal actions on the
+      // matching card and scroll it into view so the user can drill in
+      // without thumb-scrolling through the full list.
       const qsRow = e.target.closest(".bets-quickstatus-row");
       if (qsRow) {{
         const id = qsRow.dataset.qsBetId;
-        const row = panel.querySelector(`tr.parlay-row[data-id="${{id}}"]`);
-        const detail = panel.querySelector(`tr.parlay-detail[data-detail-for="${{id}}"]`);
-        if (detail && detail.classList.contains("hidden")) {{
-          if (row) row.classList.add("expanded");
-          detail.classList.remove("hidden");
-          paintLiveKs();
+        const card = panel.querySelector(`.bet-card[data-id="${{id}}"]`);
+        if (card) {{
+          card.classList.add("expanded-actions");
+          card.scrollIntoView({{ behavior: "smooth", block: "start" }});
         }}
-        if (row) row.scrollIntoView({{ behavior: "smooth", block: "start" }});
         return;
       }}
       // Action buttons take priority — don't toggle expand on button clicks.
       const btn = e.target.closest("button.act");
       if (!btn) {{
-        // Click anywhere on a parlay-row toggles its detail. (Action
-        // buttons short-circuit above so they still work.)
-        const row = e.target.closest("tr.parlay-row");
-        if (row) {{
-          const id = row.dataset.id;
-          const detail = panel.querySelector(`tr.parlay-detail[data-detail-for="${{id}}"]`);
-          if (detail) {{
-            row.classList.toggle("expanded");
-            detail.classList.toggle("hidden");
-            if (!detail.classList.contains("hidden")) paintLiveKs();
-          }}
-        }}
+        // Click anywhere on a bet card toggles its action drawer.
+        const card = e.target.closest(".bet-card");
+        if (card) card.classList.toggle("expanded-actions");
         return;
       }}
-      const tr = btn.closest("tr");
-      const id = tr.dataset.id;
+      const card = btn.closest(".bet-card");
+      const id = card.dataset.id;
       const action = btn.dataset.action;
 
       if (action === "delete") {{
