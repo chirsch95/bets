@@ -1336,6 +1336,45 @@
   .parlay-track-card-calib.pos { color: var(--green); }
   .parlay-track-card-calib.neg { color: var(--red); }
   .parlay-track-card-calib.flat { color: var(--muted); }
+  .parlay-track-card-sb {
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .parlay-track-card-sb strong { font-weight: 600; }
+  .parlay-track-card-sb strong.pos { color: var(--green); }
+  .parlay-track-card-sb strong.neg { color: var(--red); }
+  /* Header row holding the section h2 + payout-profile dropdown. */
+  .parlay-track-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .parlay-track-header h2 { margin: 0; }
+  .parlay-track-profile {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .parlay-track-profile select {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+  }
   /* Track Record: cumulative units + OVER/UNDER split rendered as a
      single side-by-side row instead of two stacked cards. Stacks below
      900px so neither chart gets squeezed below readability. */
@@ -4266,31 +4305,43 @@
     </section>`;
   }
 
-  // Parlay track record — measures the suggester end-to-end (the actual
-  // product, not the individual legs). Each day's top 5 two-leg + top 3
-  // three-leg cards are snapshotted at slate time by bets/parlay_suggest.py
-  // and graded once leg outcomes are known. Predicted vs actual hit rate
-  // tells us whether the model's EV calc is calibrated for parlays.
-  function renderParlayTrackRecord(track, maxDays) {
-    const all = (track && track.all) ? track.all : [];
-    if (!all.length) {
-      return `<section class="results-section">
-        <h2>Parlay Track Record — last ${maxDays} days</h2>
-        <p class="muted">No graded parlay suggestions yet. Each day's top 5 two-leg + top 3 three-leg cards get snapshotted at slate time and graded once all legs settle.</p>
-      </section>`;
-    }
+  // DFS payout profiles. The primary "Units" / "ROI" numbers in the
+  // Parlay Track Record cards use these fixed multipliers (since DFS
+  // sites pay 3× on 2-leg / 5–6× on 3-leg regardless of leg odds), not
+  // the sportsbook combined odds. Sportsbook ROI is shown alongside as
+  // the "what the model implied was a fair price" baseline.
+  const DFS_PROFILES = {
+    prizepicks: { label: "PrizePicks (3×/5×)", payouts: { 2: 3, 3: 5 } },
+    underdog:   { label: "Underdog (3×/6×)",  payouts: { 2: 3, 3: 6 } },
+  };
+  let _activeDFSProfile = "prizepicks";
+  try {
+    const saved = localStorage.getItem("parlay-dfs-profile");
+    if (saved && DFS_PROFILES[saved]) _activeDFSProfile = saved;
+  } catch (e) { /* private mode etc. */ }
+  let _parlayTrackData = null;
+  let _parlayTrackDays = 14;
 
+  function _dfsPnl(won, legCount, profile) {
+    const mult = profile.payouts[legCount];
+    if (!mult) return 0;
+    return won ? mult - 1 : -1;
+  }
+
+  function renderParlayTrackCards(all, profileKey) {
+    const profile = DFS_PROFILES[profileKey] || DFS_PROFILES.prizepicks;
     const summarize = (rows, label) => {
       if (!rows.length) return null;
       const n = rows.length;
       const hits = rows.filter(r => r.won).length;
       const hitRate = hits / n;
       const predicted = rows.reduce((s, r) => s + r.predicted, 0) / n;
-      const units = rows.reduce((s, r) => s + r.pnl, 0);
-      const roi = units / n;
-      return { label, n, hits, hitRate, predicted, units, roi };
+      const dfsUnits = rows.reduce((s, r) => s + _dfsPnl(r.won, r.legCount, profile), 0);
+      const dfsRoi = dfsUnits / n;
+      const sbUnits = rows.reduce((s, r) => s + r.pnl, 0);
+      const sbRoi = sbUnits / n;
+      return { label, n, hits, hitRate, predicted, dfsUnits, dfsRoi, sbUnits, sbRoi };
     };
-
     const twoLegRows = all.filter(r => r.section === "two_leg");
     const threeLegRows = all.filter(r => r.section === "three_leg");
     const cards = [
@@ -4299,9 +4350,10 @@
       summarize(all, "Combined"),
     ].filter(c => c !== null);
 
-    const cardsHTML = cards.map(c => {
-      const unitsCls = c.units > 0.01 ? "pos" : c.units < -0.01 ? "neg" : "";
-      const roiCls = c.roi > 0.001 ? "pos" : c.roi < -0.001 ? "neg" : "";
+    return cards.map(c => {
+      const unitsCls = c.dfsUnits > 0.01 ? "pos" : c.dfsUnits < -0.01 ? "neg" : "";
+      const roiCls = c.dfsRoi > 0.001 ? "pos" : c.dfsRoi < -0.001 ? "neg" : "";
+      const sbRoiCls = c.sbRoi > 0.001 ? "pos" : c.sbRoi < -0.001 ? "neg" : "";
       const calibDelta = c.hitRate - c.predicted;
       const calibCls = Math.abs(calibDelta) < 0.03 ? "flat"
         : (calibDelta > 0 ? "pos" : "neg");
@@ -4313,7 +4365,7 @@
           <span class="parlay-track-card-count">${c.n} card${c.n === 1 ? "" : "s"}</span>
         </div>
         <div class="parlay-track-card-hero ${unitsCls}">
-          ${c.units >= 0 ? "+" : ""}${c.units.toFixed(2)}u
+          ${c.dfsUnits >= 0 ? "+" : ""}${c.dfsUnits.toFixed(2)}u
         </div>
         <div class="parlay-track-card-grid">
           <div class="parlay-track-stat">
@@ -4326,21 +4378,66 @@
           </div>
           <div class="parlay-track-stat">
             <span class="parlay-track-stat-label">ROI</span>
-            <span class="parlay-track-stat-val ${roiCls}">${c.roi >= 0 ? "+" : ""}${(c.roi * 100).toFixed(1)}%</span>
+            <span class="parlay-track-stat-val ${roiCls}">${c.dfsRoi >= 0 ? "+" : ""}${(c.dfsRoi * 100).toFixed(1)}%</span>
           </div>
         </div>
         <div class="parlay-track-card-calib ${calibCls}" title="Actual minus predicted hit rate">
           ${calibDelta >= 0 ? "+" : ""}${(calibDelta * 100).toFixed(1)}pp · ${calibLabel}
         </div>
+        <div class="parlay-track-card-sb" title="If you could bet at fair sportsbook combined odds — academic, since DFS doesn't pay this much">
+          At fair sportsbook odds: <strong class="${sbRoiCls}">${c.sbRoi >= 0 ? "+" : ""}${(c.sbRoi * 100).toFixed(1)}% ROI</strong>
+        </div>
       </div>`;
     }).join("");
+  }
 
+  // Parlay track record — measures the suggester end-to-end (the actual
+  // product, not the individual legs). Each day's top 5 two-leg + top 3
+  // three-leg cards are snapshotted at slate time by bets/parlay_suggest.py
+  // and graded once leg outcomes are known. Predicted vs actual hit rate
+  // tells us whether the model's EV calc is calibrated for parlays.
+  function renderParlayTrackRecord(track, maxDays) {
+    const all = (track && track.all) ? track.all : [];
+    _parlayTrackData = all;
+    _parlayTrackDays = maxDays;
+    if (!all.length) {
+      return `<section class="results-section">
+        <h2>Parlay Track Record — last ${maxDays} days</h2>
+        <p class="muted">No graded parlay suggestions yet. Each day's top 5 two-leg + top 3 three-leg cards get snapshotted at slate time and graded once all legs settle.</p>
+      </section>`;
+    }
+    const profileSelect = `<label class="parlay-track-profile">
+      <span>Payouts</span>
+      <select id="parlay-dfs-profile">
+        ${Object.entries(DFS_PROFILES).map(([k, p]) =>
+          `<option value="${k}" ${k === _activeDFSProfile ? "selected" : ""}>${p.label}</option>`
+        ).join("")}
+      </select>
+    </label>`;
     return `<section class="results-section">
-      <h2>Parlay Track Record — last ${maxDays} days</h2>
-      <p class="results-aux">Top 5 two-leg + top 3 three-leg cards each day, snapshotted at slate time, graded against actual K outcomes (1u flat).</p>
-      <div class="parlay-track-grid">${cardsHTML}</div>
+      <div class="parlay-track-header">
+        <h2>Parlay Track Record — last ${maxDays} days</h2>
+        ${profileSelect}
+      </div>
+      <p class="results-aux">Top 5 two-leg + top 3 three-leg cards each day, snapshotted at slate time, graded against actual K outcomes (1u flat). Units and ROI use the selected DFS payout schedule.</p>
+      <div class="parlay-track-grid" id="parlay-track-grid">${renderParlayTrackCards(all, _activeDFSProfile)}</div>
     </section>`;
   }
+
+  // Switch DFS payout profile and repaint just the parlay cards. The
+  // underlying outcomes (won/legCount) are already in memory, so this
+  // is a re-summarize, not a re-fetch.
+  document.addEventListener("change", (e) => {
+    if (!e.target || e.target.id !== "parlay-dfs-profile") return;
+    const next = e.target.value;
+    if (!DFS_PROFILES[next]) return;
+    _activeDFSProfile = next;
+    try { localStorage.setItem("parlay-dfs-profile", next); } catch (err) {}
+    const grid = document.getElementById("parlay-track-grid");
+    if (grid && _parlayTrackData) {
+      grid.innerHTML = renderParlayTrackCards(_parlayTrackData, next);
+    }
+  });
 
   // ---------- Personal bet ledger (local-only tab) ----------
 
