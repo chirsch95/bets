@@ -1594,6 +1594,21 @@ CSS = """
   }
   .bet-card:hover { border-color: var(--muted); }
   .bet-card.expanded-actions { border-color: var(--text); }
+  /* Live tint: applied from paintLiveKs based on aggregated leg states.
+     Listed before the manual result-W/L rules so the user's explicit
+     mark wins (same specificity, later source = winner). */
+  .bet-card.live-win {
+    background: rgba(74, 222, 128, 0.07);
+    border-color: rgba(74, 222, 128, 0.45);
+  }
+  .bet-card.live-loss {
+    background: rgba(248, 113, 113, 0.07);
+    border-color: rgba(248, 113, 113, 0.40);
+  }
+  .bet-card.live-pending {
+    background: rgba(251, 191, 36, 0.05);
+    border-color: rgba(251, 191, 36, 0.40);
+  }
   .bet-card.result-W {
     background: rgba(74, 222, 128, 0.07);
     border-color: rgba(74, 222, 128, 0.45);
@@ -1649,9 +1664,6 @@ CSS = """
     border-radius: 3px;
     padding: 1px 5px;
   }
-  /* Empty rollup placeholder (before live data arrives) — hide so the
-     card doesn't show an empty box. */
-  .bet-card .parlay-rollup:empty { display: none; }
   /* The old leg list was indented for a ▶ caret in the row view; in
      cards, no caret, so reset the padding. */
   .bet-card .parlay-leg-list { padding-left: 0; }
@@ -1943,36 +1955,6 @@ CSS = """
   /* Live K display in expanded parlay detail. */
   .parlay-leg-list li {
     grid-template-columns: 24px 1fr 80px 1fr;
-  }
-  .parlay-rollup {
-    margin: 6px 0 10px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    font-size: 12px;
-    color: var(--muted);
-    display: flex;
-    gap: 14px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .parlay-rollup.win { background: rgba(74, 222, 128, 0.10); border-color: var(--green); }
-  .parlay-rollup.loss { background: rgba(248, 113, 113, 0.10); border-color: var(--red); }
-  .parlay-rollup.pending { background: rgba(251, 191, 36, 0.06); border-color: var(--yellow); }
-  .parlay-rollup-verdict {
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .parlay-rollup.win .parlay-rollup-verdict { color: var(--green); }
-  .parlay-rollup.loss .parlay-rollup-verdict { color: var(--red); }
-  .parlay-rollup.pending .parlay-rollup-verdict { color: var(--yellow); }
-  .parlay-rollup-counts { color: var(--text); }
-  .parlay-rollup-mismatch {
-    margin-left: auto;
-    color: var(--red);
-    font-weight: 600;
-    font-size: 11px;
   }
   .live-status {
     font-size: 12px;
@@ -5030,7 +5012,6 @@ def _render_js() -> str:
           <span class="bet-card-odds">@${{oddsStr}}</span>
         </div>
       </div>
-      <div class="parlay-rollup" id="parlay-rollup-${{escapeHTML(b.id)}}"></div>
       <ol class="parlay-leg-list">${{legItems}}</ol>
       <div class="bet-card-actions">${{actions}}</div>
     </div>`;
@@ -5508,9 +5489,10 @@ def _render_js() -> str:
     const hitState = legHitState(ks, line, leg.ou, status, live.done);
     if (hitState) {{
       const cls = `live-status ${{hitState}}`;
-      const verdict = hitState === "hit" ? "✓ HIT" : "✗ MISS";
+      const verdict = hitState === "hit" ? "✓" : "✗";
       // Tag the badge with where in the game it locked in (helpful
-      // context — "MISS in 5th" is more informative than just "MISS").
+      // context — "in 5th" tells you whether the pitcher was pulled
+      // early or stayed in).
       let inningTag = "";
       if (live.done && live.current_inning) {{
         inningTag = ` <span class="muted" style="font-size:10px;">(pulled in ${{escapeHTML(live.current_inning)}})</span>`;
@@ -5581,25 +5563,20 @@ def _render_js() -> str:
           legStates.push(null);
         }}
       }});
-      // Parlay-level rollup
       const betId = card.dataset.id;
-      const rollup = document.getElementById(`parlay-rollup-${{betId}}`);
-      if (rollup) {{
-        // Empty the rollup when there's no live data yet, so the
-        // :empty CSS rule hides the placeholder box.
-        if (legStates.every(s => s === null)) {{
-          rollup.innerHTML = "";
-          rollup.className = "parlay-rollup";
-        }} else {{
-          rollup.innerHTML = parlayRollupHTML(legStates, betId);
-          rollup.className = "parlay-rollup " + parlayRollupClass(legStates);
-        }}
+      // Apply a live-* tint class to the card based on the current
+      // rollup verdict. Manual W/L marks override these in CSS so a
+      // user-marked bet keeps its result tint. No live data → no tint.
+      card.classList.remove("live-win", "live-loss", "live-pending");
+      const hasLiveData = legStates.some(s => s !== null);
+      const verdictCls = parlayRollupClass(legStates);
+      if (hasLiveData) {{
+        card.classList.add(`live-${{verdictCls}}`);
       }}
       // Queue auto-settle ONLY if verdict is definitive AND the bet's
       // date matches the date the live-ks data is for. Without this date
       // gate, an old bet whose pitcher happens to be pitching again
       // today can be re-graded against today's K count.
-      const verdictCls = parlayRollupClass(legStates);
       const betDate = card.dataset.date || "";
       const dateMatches = liveKsDate && betDate === liveKsDate;
       if (dateMatches && (verdictCls === "win" || verdictCls === "loss")) {{
@@ -5611,23 +5588,6 @@ def _render_js() -> str:
     paintQuickStatus();
     // Fire auto-settles asynchronously after painting completes.
     if (autoSettleQueue.length) maybeAutoSettle(autoSettleQueue);
-  }}
-
-  function inlineStatusHTML(legStates) {{
-    if (!legStates.length) return "";
-    const hits = legStates.filter(s => s === "hit").length;
-    const misses = legStates.filter(s => s === "miss").length;
-    const pending = legStates.filter(s => s === null).length;
-    // Only show if there's actual live data resolving things —
-    // all-pending with no live data isn't useful.
-    if (hits === 0 && misses === 0) return "";
-    const parts = [];
-    if (hits) parts.push(`<span class="pi-h">✓${{hits}}</span>`);
-    if (misses) parts.push(`<span class="pi-m">✗${{misses}}</span>`);
-    if (pending) parts.push(`<span class="pi-p">${{pending}}P</span>`);
-    // The wrapper already exists in the row markup; we just inject the
-    // inner badge content here.
-    return parts.join(" · ");
   }}
 
   // Auto-settle: when a parlay's verdict is mathematically definitive
@@ -5693,31 +5653,6 @@ def _render_js() -> str:
     if (legStates.some(s => s === "miss")) return "loss";
     if (legStates.length && legStates.every(s => s === "hit")) return "win";
     return "pending";
-  }}
-
-  function parlayRollupHTML(legStates, betId) {{
-    const hits = legStates.filter(s => s === "hit").length;
-    const misses = legStates.filter(s => s === "miss").length;
-    const pending = legStates.filter(s => s === null).length;
-    let verdict;
-    if (misses > 0) verdict = "✗ Loss confirmed";
-    else if (pending === 0 && hits > 0) verdict = "✓ Win confirmed";
-    else verdict = "In progress";
-    const counts = `${{hits}} hit · ${{misses}} miss · ${{pending}} pending`;
-    // If the user has manually marked a result that disagrees with the
-    // computed verdict, surface the mismatch.
-    let mismatch = "";
-    const card = document.querySelector(`.bet-card[data-id="${{betId}}"]`);
-    const userResult = card
-      ? (card.classList.contains("result-W") ? "W"
-         : card.classList.contains("result-L") ? "L" : "")
-      : "";
-    if (verdict === "✗ Loss confirmed" && userResult === "W") {{
-      mismatch = `<span class="parlay-rollup-mismatch">⚠ Marked W but legs say loss — click Reopen to revisit</span>`;
-    }} else if (verdict === "✓ Win confirmed" && userResult === "L") {{
-      mismatch = `<span class="parlay-rollup-mismatch">⚠ Marked L but all legs hit — click Reopen to revisit</span>`;
-    }}
-    return `<span class="parlay-rollup-verdict">${{verdict}}</span><span class="parlay-rollup-counts">${{counts}}</span>${{mismatch}}`;
   }}
 
   // The form has two modes: "add" (default — POST on save) and "edit"
