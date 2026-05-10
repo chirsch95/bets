@@ -1405,6 +1405,21 @@ CSS = """
     text-transform: none;
     letter-spacing: 0;
   }
+  /* Real-bets sub-block: same card chrome but a separator + sub-heading
+     so the user can scan "theory above, reality below" at a glance. */
+  .parlay-actual-wrap {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+  }
+  .parlay-actual-title {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
   /* Track Record: cumulative units + OVER/UNDER split rendered as a
      single side-by-side row instead of two stacked cards. Stacks below
      900px so neither chart gets squeezed below readability. */
@@ -4478,14 +4493,16 @@ def _render_js() -> str:
   // three-leg cards are snapshotted at slate time by bets/parlay_suggest.py
   // and graded once leg outcomes are known. Predicted vs actual hit rate
   // tells us whether the model's EV calc is calibrated for parlays.
-  function renderParlayTrackRecord(track, maxDays) {{
+  function renderParlayTrackRecord(track, maxDays, betsState) {{
     const all = (track && track.all) ? track.all : [];
     _parlayTrackData = all;
     _parlayTrackDays = maxDays;
+    const actualBlock = renderActualParlayBets(betsState, maxDays);
     if (!all.length) {{
       return `<section class="results-section">
         <h2>Parlay Track Record — last ${{maxDays}} days</h2>
         <p class="muted">No graded parlay suggestions yet. Each day's top 5 two-leg + top 3 three-leg cards get snapshotted at slate time and graded once all legs settle.</p>
+        ${{actualBlock}}
       </section>`;
     }}
     const profileSelect = `<label class="parlay-track-profile">
@@ -4503,7 +4520,90 @@ def _render_js() -> str:
       </div>
       <p class="results-aux">Top 5 two-leg + top 3 three-leg cards each day, snapshotted at slate time, graded against actual K outcomes (1u flat). Units and ROI use the selected DFS payout schedule.</p>
       <div class="parlay-track-grid" id="parlay-track-grid">${{renderParlayTrackCards(all, _activeDFSProfile)}}</div>
+      ${{actualBlock}}
     </section>`;
+  }}
+
+  // Real-bets parlay summary: reads the bets ledger directly (no payout
+  // assumptions) and shows actual $ P&L grouped by leg count for the
+  // last N days. Tailscale-only (the public URL has no /api/bets data).
+  function renderActualParlayBets(betsState, maxDays) {{
+    if (!betsState || !Array.isArray(betsState.bets)) return "";
+    const cutoff = dateInChicago(-(maxDays - 1));
+    const recent = betsState.bets.filter(b =>
+      b.date && b.date >= cutoff
+      && Array.isArray(b.legs) && b.legs.length >= 2
+      && (b.result === "W" || b.result === "L")
+    );
+    if (!recent.length) {{
+      return `<div class="parlay-actual-wrap bets-only">
+        <h3 class="parlay-actual-title">Your actual parlay bets — last ${{maxDays}} days</h3>
+        <p class="muted">No settled parlay bets in this window. Use "Add to bets" on a parlay card to start tracking real results.</p>
+      </div>`;
+    }}
+
+    const summarize = (rows, label) => {{
+      if (!rows.length) return null;
+      const n = rows.length;
+      const wins = rows.filter(b => b.result === "W").length;
+      const hitRate = wins / n;
+      let net = 0;
+      let staked = 0;
+      for (const b of rows) {{
+        const stake = parseFloat(b.stake) || 0;
+        const payout = parseFloat(b.payout) || 0;
+        const isFree = !!b.free_entry;
+        if (b.result === "W") {{
+          net += payout - (isFree ? 0 : stake);
+        }} else if (!isFree) {{
+          net -= stake;
+        }}
+        if (!isFree) staked += stake;
+      }}
+      const roi = staked > 0 ? net / staked : 0;
+      return {{ label, n, wins, hitRate, net, staked, roi }};
+    }};
+
+    const twoLeg = recent.filter(b => b.legs.length === 2);
+    const threeLeg = recent.filter(b => b.legs.length === 3);
+    const cards = [
+      summarize(twoLeg, "2-leg"),
+      summarize(threeLeg, "3-leg"),
+      summarize(recent, "Combined"),
+    ].filter(c => c !== null);
+
+    const cardsHTML = cards.map(c => {{
+      const netCls = c.net > 0.5 ? "pos" : c.net < -0.5 ? "neg" : "";
+      const roiCls = c.roi > 0.005 ? "pos" : c.roi < -0.005 ? "neg" : "";
+      const netStr = `${{c.net >= 0 ? "+" : "−"}}$${{Math.abs(c.net).toFixed(2)}}`;
+      return `<div class="parlay-track-card">
+        <div class="parlay-track-card-header">
+          <span class="parlay-track-card-label">${{c.label}}</span>
+          <span class="parlay-track-card-count">${{c.n}} bet${{c.n === 1 ? "" : "s"}}</span>
+        </div>
+        <div class="parlay-track-card-hero ${{netCls}}">${{netStr}}</div>
+        <div class="parlay-track-card-grid">
+          <div class="parlay-track-stat">
+            <span class="parlay-track-stat-label">Hit rate</span>
+            <span class="parlay-track-stat-val">${{(c.hitRate * 100).toFixed(0)}}%</span>
+          </div>
+          <div class="parlay-track-stat">
+            <span class="parlay-track-stat-label">Staked</span>
+            <span class="parlay-track-stat-val">$${{c.staked.toFixed(0)}}</span>
+          </div>
+          <div class="parlay-track-stat">
+            <span class="parlay-track-stat-label">ROI</span>
+            <span class="parlay-track-stat-val ${{roiCls}}">${{c.roi >= 0 ? "+" : ""}}${{(c.roi * 100).toFixed(1)}}%</span>
+          </div>
+        </div>
+      </div>`;
+    }}).join("");
+
+    return `<div class="parlay-actual-wrap bets-only">
+      <h3 class="parlay-actual-title">Your actual parlay bets — last ${{maxDays}} days</h3>
+      <p class="results-aux">From your bets ledger — real $ P&L using the stake and payout you entered. No payout assumptions.</p>
+      <div class="parlay-track-grid">${{cardsHTML}}</div>
+    </div>`;
   }}
 
   // Switch DFS payout profile and repaint just the parlay cards. The
@@ -6153,7 +6253,7 @@ def _render_js() -> str:
 
     const trackSection = renderTrackRecord(trackPicks, trackDays);
     const parlayTrack = target.parlayTrack || {{ all: [] }};
-    const parlayTrackSection = renderParlayTrackRecord(parlayTrack, trackDays);
+    const parlayTrackSection = renderParlayTrackRecord(parlayTrack, trackDays, target.bets);
     return {{ html: pitcherTabHTML(heroSection, parlaySection, slateBody, resultsSection + trackSection + parlayTrackSection, cnt), cnt }};
   }}
 
@@ -6335,6 +6435,7 @@ def _render_js() -> str:
         slate: pSlate, settled: pSettled,
         trackPicks: pTrack, trackDays: TRACK_DAYS,
         parlayTrack: pParlayTrack,
+        bets: pBets,
       }});
       const pPanel = document.getElementById("pitcher-panel");
       if (pPanel) pPanel.innerHTML = pTab.html;
