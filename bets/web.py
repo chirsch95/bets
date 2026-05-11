@@ -151,20 +151,14 @@ CSS = """
     header .brand-logo { height: 76px; }
     header .brand-area { gap: 8px; }
   }
-  /* Right column inside the header: topbar (tabs + utility) at top,
-     scoreboard in the middle, status strip at the bottom. */
+  /* Right column inside the header: scoreboard up top, status strip
+     at the bottom. (Tabs used to live here in a topbar wrapper; they
+     now sit under the logo inside .brand-area.) */
   header .header-right {
     display: flex;
     flex-direction: column;
     gap: 8px;
     min-width: 0;
-  }
-  header .header-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 16px;
-    flex-wrap: wrap;
   }
   /* Theme + refresh + admin icons. Originally absolute-positioned in
      the corners of the centered brand block — now they sit inline in
@@ -401,7 +395,8 @@ CSS = """
      for the old tab strip. Hidden by default; html.is-bets reveals it
      where Bets data is canonical. The active button gets a green fill,
      inactive sits transparent against the panel-toned pill container.
-     Lives in the header topbar now, so margin: 0 (no auto-centering). */
+     Sits inside .brand-area under the logo; the parent column already
+     centers it. */
   .segmented {
     display: none;
     margin: 0;
@@ -7235,16 +7230,14 @@ def generate(target_date: date | None = None) -> Path | None:
 <header>
   <div class="brand-area">
     <h1 class="brand"><img src="/k-edge-logo.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo brand-logo-dark"><img src="/k-edge-logo-light.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo brand-logo-light"></h1>
+    <nav class="segmented" role="tablist">
+{tabs_nav}
+    </nav>
     <div class="brand-actions">
       {actions_block}
     </div>
   </div>
   <div class="header-right">
-    <div class="header-topbar">
-      <nav class="segmented" role="tablist">
-{tabs_nav}
-      </nav>
-    </div>
     <aside class="header-scoreboard" id="header-scoreboard" aria-label="Performance scoreboard"></aside>
     <div class="status-row">
       <span class="last-refresh" id="last-refresh"></span>
