@@ -6641,7 +6641,7 @@ def _render_js() -> str:
       const have = picks.length;
       return `<div class="scoreboard-col">
         ${{labelHTML}}
-        <div class="scoreboard-empty">Building track record · ${{have}} pick${{have === 1 ? "" : "s"}}. Hero stats activate at 8+.</div>
+        <div class="scoreboard-empty">Building track record · ${{have}} pick${{have === 1 ? "" : "s"}}. Hero stats activate at 3+.</div>
       </div>`;
     }}
     const total = picks.length;
@@ -6667,6 +6667,8 @@ def _render_js() -> str:
 
     // Per-day rollup feeds both the sparkline (cumulative units) and
     // the heatmap below it (daily units + W-L counts for tooltips).
+    // Sparkline walks all 14 calendar days so its x-axis lines up with
+    // the heatmap cells directly below — empty days contribute 0.
     const byInfo = {{}};
     for (const p of picks) {{
       const d = p.date;
@@ -6675,11 +6677,11 @@ def _render_js() -> str:
       byInfo[d].picks += 1;
       if (p.won) byInfo[d].hits += 1;
     }}
-    const sortedDates = Object.keys(byInfo).sort();
     const cum = [];
     let running = 0;
-    for (const d of sortedDates) {{
-      running += byInfo[d].units;
+    for (let i = 13; i >= 0; i--) {{
+      const d = dateInChicago(-i);
+      running += (byInfo[d] ? byInfo[d].units : 0);
       cum.push(running);
     }}
     const sparkHTML = renderScoreboardSparkline(cum, sign);
