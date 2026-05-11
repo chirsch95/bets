@@ -1197,21 +1197,20 @@ CSS = """
   .parlay-stat-val { font-weight: 600; font-variant-numeric: tabular-nums; }
   .parlay-stat-val.pos { color: var(--green); }
   .parlay-stat-val.neg { color: var(--red); }
-  .parlay-card-actions { display: flex; justify-content: flex-end; }
-  .parlay-add-btn {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    padding: 4px 10px;
-    font: inherit;
-    font-size: 11px;
+  /* On the Bets URL the whole card is the "add to bets" affordance.
+     The data attr is always present; gating on html.is-bets keeps the
+     cursor/hover off the public URL where the bets form doesn't exist. */
+  html.is-bets .parlay-card[data-legs] {
     cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
   }
-  .parlay-add-btn:hover { color: var(--green); border-color: var(--green); }
+  html.is-bets .parlay-card[data-legs]:hover {
+    background: var(--hover-overlay);
+    border-color: var(--muted);
+  }
   /* Live "Combined" panel inside the Bets-tab parlay editor — recomputes
      on every leg change. Mirrors the suggester card stats so the math
-     shows up identically when you arrive via "+ Add to bets". */
+     shows up identically when you tap a suggested parlay. */
   .bets-combined-panel {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -3709,8 +3708,12 @@ def _render_js() -> str:
       line: l.line,
       ou: l.dir === "over" ? "O" : "U",
     }}));
-    const addBtn = `<button type="button" class="parlay-add-btn bets-only" data-legs='${{escapeHTML(JSON.stringify(formLegs))}}' title="Pre-populate the Bets-tab form with these legs">+ Add to bets</button>`;
-    return `<div class="parlay-card ${{evCls}}">
+    // The whole card is the click target on the Bets URL — tapping it
+    // pre-populates the Bets-tab form with these legs. On the public URL
+    // the data attr is harmless and the cursor/hover affordance stays
+    // off (gated in CSS by html.is-bets).
+    const legsAttr = escapeHTML(JSON.stringify(formLegs));
+    return `<div class="parlay-card ${{evCls}}" data-legs='${{legsAttr}}' title="Add this parlay to your bets">
       <div class="parlay-legs">${{legsHTML}}</div>
       <div class="parlay-stats">
         <div class="parlay-stat"><span class="parlay-stat-label">Payout</span><span class="parlay-stat-val">${{amerStr}}</span></div>
@@ -3718,7 +3721,6 @@ def _render_js() -> str:
         <div class="parlay-stat"><span class="parlay-stat-label">Edge</span><span class="parlay-stat-val ${{edgeCls}}">${{edgePct}}</span></div>
         <div class="parlay-stat"><span class="parlay-stat-label">EV / $1</span><span class="parlay-stat-val ${{evCls}}">${{evStr}}</span></div>
       </div>
-      <div class="parlay-card-actions">${{addBtn}}</div>
     </div>`;
   }}
 
@@ -4757,7 +4759,7 @@ def _render_js() -> str:
     if (!recent.length) {{
       return `<div class="parlay-actual-wrap bets-only">
         <h3 class="parlay-actual-title">Your actual parlay bets — last ${{maxDays}} days</h3>
-        <p class="muted">No settled parlay bets in this window. Use "Add to bets" on a parlay card to start tracking real results.</p>
+        <p class="muted">No settled parlay bets in this window. Tap a suggested parlay on the Pitchers tab to start tracking real results.</p>
       </div>`;
     }}
 
@@ -6141,7 +6143,8 @@ def _render_js() -> str:
     }}
 
     // Initial paint after first render — handles the case where the
-    // user arrived via "+ Add to bets" with pre-populated legs.
+    // user arrived by tapping a suggested parlay card with pre-populated
+    // legs.
     recomputeCombined();
 
     if (saveBtn) {{
@@ -7241,14 +7244,14 @@ def _render_js() -> str:
     updateHeaderDate();
     applyNoisePreference();
 
-    // Single delegated handler for "+ Add to bets" buttons rendered on
-    // parlay-suggester cards (those cards live in the pitcher tab and
-    // get re-rendered on each refresh — document-level delegation
-    // survives those replacements).
+    // Single delegated handler for tapping a parlay-suggester card.
+    // The whole card is the click target — gated to the Bets URL so
+    // the form handoff doesn't run on public, where there's nowhere to
+    // hand off to. Document-level delegation survives every re-render.
     document.addEventListener("click", (e) => {{
-      const btn = e.target.closest(".parlay-add-btn");
-      if (!btn) return;
-      handleAddParlayToBets(btn.dataset.legs || "[]");
+      const card = e.target.closest(".parlay-card[data-legs]");
+      if (!card || !isBets()) return;
+      handleAddParlayToBets(card.dataset.legs || "[]");
     }});
 
     document.querySelectorAll(".segmented button").forEach(b => {{
