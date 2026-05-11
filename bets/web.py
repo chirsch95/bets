@@ -133,14 +133,16 @@ CSS = """
   header .brand-logo-light { display: none; }
   :root[data-theme="light"] header .brand-logo-dark { display: none; }
   :root[data-theme="light"] header .brand-logo-light { display: block; }
-  /* Theme / refresh / admin cluster sits directly under the logo on
+  /* Tabs + theme/refresh/admin cluster sits directly under the logo on
      the far left. Centered horizontally against the logo so the brand
-     block reads as one composed unit. */
+     block reads as one composed unit. Wraps to a second row on very
+     narrow phones rather than overflowing. */
   header .brand-actions {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
   }
   @media (max-width: 768px) {
     header { padding: 12px 16px; }
@@ -395,8 +397,8 @@ CSS = """
      for the old tab strip. Hidden by default; html.is-bets reveals it
      where Bets data is canonical. The active button gets a green fill,
      inactive sits transparent against the panel-toned pill container.
-     Sits inside .brand-area under the logo; the parent column already
-     centers it. */
+     Sits inline with the theme/refresh/admin buttons in .brand-actions
+     under the logo. */
   .segmented {
     display: none;
     margin: 0;
@@ -7230,10 +7232,10 @@ def generate(target_date: date | None = None) -> Path | None:
 <header>
   <div class="brand-area">
     <h1 class="brand"><img src="/k-edge-logo.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo brand-logo-dark"><img src="/k-edge-logo-light.png" alt="K-Edge — MLB Strikeout Intelligence" class="brand-logo brand-logo-light"></h1>
-    <nav class="segmented" role="tablist">
-{tabs_nav}
-    </nav>
     <div class="brand-actions">
+      <nav class="segmented" role="tablist">
+{tabs_nav}
+      </nav>
       {actions_block}
     </div>
   </div>
