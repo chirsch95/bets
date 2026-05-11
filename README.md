@@ -59,7 +59,6 @@ Get a free Odds API key at https://the-odds-api.com (500 requests / month). With
 bets/
 ├── README.md                       this file
 ├── requirements.txt
-├── netlify.toml                    legacy — Netlify deploys locked 2026-05-06; file slated for removal once self-hosted is proven
 ├── .github/
 │   └── workflows/
 │       └── refresh.yml             manual-only (workflow_dispatch); cron removed 2026-05-01 to conserve Odds API quota
@@ -313,10 +312,6 @@ gh secret set ODDS_API_KEY     # paste your key when prompted
 ```
 
 If you later want a scheduled pull (e.g. weekly to keep settled CSVs current), add a `schedule:` block back to `.github/workflows/refresh.yml` — the existing `workflow_dispatch` trigger is preserved.
-
-### Legacy: Netlify
-
-The dashboard previously ran on Netlify (`https://winningbets.netlify.app/`). As of **2026-05-06** Netlify auto-publishing is locked — the URL still works as a frozen safety-net snapshot of the HTML shell, and CSVs continue to load fresh from `raw.githubusercontent.com`, but no new builds are triggered. After a stable week on the M1 Air, the Netlify site will be deleted and `netlify.toml` removed from the repo.
 
 ## Status
 

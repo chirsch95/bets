@@ -326,9 +326,9 @@ CSS = """
     cursor: help;
   }
   /* Health pill: same shape as quota-pill, fed by GET /api/health.
-     Hidden until loadHealth() succeeds — on Netlify the API doesn't
-     exist so the pill never reveals (consistent with .local-only /
-     .bets-only being scope-aware UI). */
+     Hidden until loadHealth() succeeds — on the public (Caddy-static)
+     deploy the API doesn't exist so the pill never reveals
+     (consistent with .local-only / .bets-only being scope-aware UI). */
   .health-pill {
     display: none;
     align-items: center;
@@ -7072,9 +7072,10 @@ def _render_js() -> str:
   }}
 
   // Reads /api/health (Flask) and renders a green/yellow/red pill in
-  // the actions row. Same-origin fetch, so on Netlify (static, no API)
-  // it 404s and the pill stays hidden — matching how Bets tab + the
-  // local-only buttons scope themselves to laptop/Tailscale contexts.
+  // the actions row. Same-origin fetch, so on the public (Caddy-static)
+  // deploy it 404s and the pill stays hidden — matching how Bets tab +
+  // the local-only buttons scope themselves to laptop/Tailscale
+  // contexts.
   // Also hidden on localhost: the watcher only runs on the Air, so the
   // laptop's /api/health always reports "Watcher hasn't run today" and
   // would just be misleading noise.
@@ -7130,7 +7131,7 @@ def _render_js() -> str:
       pill.title = [checkedLine, winLine, "", ...lines].join("\\n");
       pill.classList.add("visible");
     }} catch (e) {{
-      // Silent — endpoint not reachable (e.g. Netlify static deploy).
+      // Silent — endpoint not reachable (public static deploy has no Flask).
     }}
   }}
 
