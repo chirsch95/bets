@@ -526,6 +526,51 @@
     from { opacity: 0; }
     to   { opacity: 1; }
   }
+  /* Interactive overlay: invisible <rect> catches the cursor across the
+     full SVG (not just where the curve sits); the vertical line and
+     snap-dot get positioned by JS on mousemove. Readout sits above. */
+  .scoreboard-spark-wrap {
+    position: relative;
+  }
+  .scoreboard-spark-hit {
+    cursor: crosshair;
+  }
+  .scoreboard-spark-cursor {
+    stroke: var(--muted);
+    stroke-width: 1;
+    stroke-dasharray: 2 2;
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .scoreboard-spark-hover-dot {
+    fill: none;
+    stroke-width: 6;
+    stroke-linecap: round;
+    pointer-events: none;
+  }
+  .scoreboard-spark-hover-dot.pos  { stroke: var(--green); }
+  .scoreboard-spark-hover-dot.neg  { stroke: var(--red); }
+  .scoreboard-spark-hover-dot.flat { stroke: var(--muted); }
+  .scoreboard-spark-readout {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    transform: translateX(-50%);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 10px;
+    line-height: 1.35;
+    color: var(--muted);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 6;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  }
+  .scoreboard-spark-readout strong { color: var(--text); }
+  .scoreboard-spark-readout .cum.pos  { color: var(--green); }
+  .scoreboard-spark-readout .cum.neg  { color: var(--red); }
+  .scoreboard-spark-readout .cum.flat { color: var(--muted); }
   /* Tiny per-day heatmap directly under each sparkline. Cells flex to
      fill the column width, so the strip reads as a continuous timeline
      regardless of how many days the column covers. Hovering a cell
@@ -4248,6 +4293,81 @@
     if (tip) tip.style.display = "none";
   });
 
+  // Sparkline hover: vertical guide line + snap-to-data dot + readout
+  // popover above the curve. Delegated mousemove/mouseleave so it
+  // survives every paintScoreboard re-render. The wrap div carries the
+  // cum/dates/daily arrays + viewBox geometry as a JSON data attribute.
+  function hideSparkHover(wrap) {
+    const svg = wrap.querySelector(".scoreboard-spark");
+    if (!svg) return;
+    const cursor = svg.querySelector(".scoreboard-spark-cursor");
+    const dot = svg.querySelector(".scoreboard-spark-hover-dot");
+    const readout = wrap.querySelector(".scoreboard-spark-readout");
+    if (cursor) cursor.style.display = "none";
+    if (dot) dot.style.display = "none";
+    if (readout) readout.style.display = "none";
+  }
+  function fmtSparkVal(v, isMoney) {
+    if (isMoney) {
+      return `${v >= 0 ? "+" : "−"}$${Math.abs(v).toFixed(2)}`;
+    }
+    return `${v >= 0 ? "+" : ""}${v.toFixed(2)}u`;
+  }
+  document.addEventListener("mousemove", (e) => {
+    const wrap = e.target.closest(".scoreboard-spark-wrap");
+    if (!wrap) return;
+    let cfg;
+    try { cfg = JSON.parse(wrap.dataset.spark); } catch (_) { return; }
+    if (!cfg || !cfg.cum || cfg.cum.length < 2) return;
+    const svg = wrap.querySelector(".scoreboard-spark");
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    const rel = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const idx = Math.round(rel * (cfg.cum.length - 1));
+    const cumV = cfg.cum[idx];
+    const dailyV = (cfg.daily && cfg.daily[idx] !== undefined) ? cfg.daily[idx] : 0;
+    const date = (cfg.dates && cfg.dates[idx]) || "";
+    const isMoney = cfg.kind === "money";
+    // viewBox coords for SVG elements
+    const xVB = cfg.padX + idx * cfg.step;
+    const yVB = cfg.h - cfg.padY - ((cumV - cfg.minV) / (cfg.range || 1)) * (cfg.h - cfg.padY * 2);
+    const cursor = svg.querySelector(".scoreboard-spark-cursor");
+    const dot = svg.querySelector(".scoreboard-spark-hover-dot");
+    if (cursor) {
+      cursor.setAttribute("x1", xVB.toFixed(2));
+      cursor.setAttribute("x2", xVB.toFixed(2));
+      cursor.style.display = "";
+    }
+    if (dot) {
+      dot.setAttribute("d", `M${xVB.toFixed(2)},${yVB.toFixed(2)} L${xVB.toFixed(2)},${yVB.toFixed(2)}`);
+      dot.style.display = "";
+    }
+    const readout = wrap.querySelector(".scoreboard-spark-readout");
+    if (readout) {
+      const cumCls = cumV > 0 ? "pos" : cumV < 0 ? "neg" : "flat";
+      const dailyStr = dailyV === 0
+        ? `no ${isMoney ? "bets" : "picks"}`
+        : `daily ${fmtSparkVal(dailyV, isMoney)}`;
+      readout.innerHTML = `<strong>${escapeHTML(date)}</strong> · `
+        + `<span class="cum ${cumCls}">${fmtSparkVal(cumV, isMoney)}</span>`
+        + ` · ${dailyStr}`;
+      // Position in CSS px relative to the wrap. The SVG fills the wrap
+      // (width 100%), so px-x scales linearly with viewBox-x.
+      const pxX = (xVB / cfg.w) * rect.width;
+      readout.style.left = pxX + "px";
+      readout.style.display = "";
+    }
+  });
+  document.addEventListener("mouseout", (e) => {
+    const wrap = e.target.closest(".scoreboard-spark-wrap");
+    if (!wrap) return;
+    // Only hide when actually leaving the wrap (relatedTarget outside it).
+    const to = e.relatedTarget;
+    if (to && wrap.contains(to)) return;
+    hideSparkHover(wrap);
+  });
+
   // Trend arrow comparing the most-recent half of the window to the
   // older half. Only meaningful with ~7+ picks; below that we just show
   // a flat dash to avoid noise.
@@ -6478,7 +6598,7 @@
   // Twin "Model" + "Bankroll" panel rendered into the right half of
   // the header. Reuses data already fetched for other sections (track
   // record + /api/bets), so no extra network calls.
-  function renderScoreboardSparkline(cum, sign) {
+  function renderScoreboardSparkline(cum, sign, dates, dailies, kind) {
     if (!cum || cum.length < 2) return "";
     const w = 220, h = 28, padX = 2, padY = 3;
     const maxV = Math.max(0, ...cum);
@@ -6494,11 +6614,27 @@
     const lastX = xFor(cum.length - 1).toFixed(1);
     const lastY = yFor(cum[cum.length - 1]).toFixed(1);
     const areaD = `${pathD} L${lastX},${zeroY} L${xFor(0).toFixed(1)},${zeroY} Z`;
-    return `<svg class="scoreboard-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-      <path class="scoreboard-spark-area ${sign}" d="${areaD}" />
-      <path class="scoreboard-spark-path ${sign}" d="${pathD}" vector-effect="non-scaling-stroke" />
-      <path class="scoreboard-spark-tip ${sign}" d="M${lastX},${lastY} L${lastX},${lastY}" vector-effect="non-scaling-stroke" />
-    </svg>`;
+    // Hover state: cursor line + snap-to-data dot embedded in the SVG;
+    // tooltip div is a sibling. The delegated mousemove handler reads
+    // geometry off the data attrs and toggles visibility.
+    const sparkData = JSON.stringify({
+      cum: cum.map(v => +v.toFixed(4)),
+      daily: (dailies || []).map(v => +v.toFixed(4)),
+      dates: dates || [],
+      kind: kind || "model",
+      w, h, padX, padY, minV, range, step,
+    });
+    return `<div class="scoreboard-spark-wrap" data-spark='${escapeHTML(sparkData)}'>
+      <svg class="scoreboard-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <rect class="scoreboard-spark-hit" x="0" y="0" width="${w}" height="${h}" fill="transparent" />
+        <path class="scoreboard-spark-area ${sign}" d="${areaD}" />
+        <path class="scoreboard-spark-path ${sign}" d="${pathD}" vector-effect="non-scaling-stroke" />
+        <path class="scoreboard-spark-tip ${sign}" d="M${lastX},${lastY} L${lastX},${lastY}" vector-effect="non-scaling-stroke" />
+        <line class="scoreboard-spark-cursor" x1="0" x2="0" y1="0" y2="${h}" style="display:none;" />
+        <path class="scoreboard-spark-hover-dot ${sign}" d="M0,0 L0,0" vector-effect="non-scaling-stroke" style="display:none;" />
+      </svg>
+      <div class="scoreboard-spark-readout" style="display:none;"></div>
+    </div>`;
   }
 
   // Compact day-by-day heatmap that sits under each scoreboard sparkline.
@@ -6593,13 +6729,18 @@
       if (p.won) byInfo[d].hits += 1;
     }
     const cum = [];
+    const sparkDates = [];
+    const sparkDailies = [];
     let running = 0;
     for (let i = 13; i >= 0; i--) {
       const d = dateInChicago(-i);
-      running += (byInfo[d] ? byInfo[d].units : 0);
+      const v = byInfo[d] ? byInfo[d].units : 0;
+      running += v;
       cum.push(running);
+      sparkDates.push(d);
+      sparkDailies.push(v);
     }
-    const sparkHTML = renderScoreboardSparkline(cum, sign);
+    const sparkHTML = renderScoreboardSparkline(cum, sign, sparkDates, sparkDailies, "model");
     const heatHTML = renderScoreboardHeat(byInfo, 14, "model");
 
     return `<div class="scoreboard-col">
@@ -6682,13 +6823,18 @@
     const byInfo = {};
     for (const u of dailyPnl) byInfo[u.date] = u;
     const cum = [];
+    const sparkDates = [];
+    const sparkDailies = [];
     let running = 0;
     for (let i = 13; i >= 0; i--) {
       const d = dateInChicago(-i);
-      running += (byInfo[d] ? byInfo[d].pnl : 0);
+      const v = byInfo[d] ? byInfo[d].pnl : 0;
+      running += v;
       cum.push(running);
+      sparkDates.push(d);
+      sparkDailies.push(v);
     }
-    const sparkHTML = renderScoreboardSparkline(cum, sign);
+    const sparkHTML = renderScoreboardSparkline(cum, sign, sparkDates, sparkDailies, "money");
     const heatHTML = renderScoreboardHeat(byInfo, 14, "money");
 
     return `<div class="scoreboard-col bets-only">
