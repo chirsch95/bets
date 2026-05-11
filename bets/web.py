@@ -2011,6 +2011,7 @@ CSS = """
   .live-status .live-ks { font-weight: 700; color: var(--text); margin-right: 6px; }
   .live-status.hit .live-ks { color: var(--green); }
   .live-status.miss .live-ks { color: var(--red); }
+  .live-status .live-pitches { color: var(--muted); font-weight: 500; margin-right: 6px; }
   .live-status .live-badge {
     font-size: 10px;
     padding: 1px 6px;
@@ -5603,6 +5604,9 @@ def _render_js() -> str:
     }}
     const status = live.status;
     const ks = live.ks;
+    const pitches = live.pitches;
+    const pitchTag = (pitches !== null && pitches !== undefined)
+      ? ` <span class="live-pitches">${{pitches}} P</span>` : "";
     // Prefer the bet's recorded line — that's what the user wagered
     // against on the DFS site, which can differ from the sportsbook
     // line cached in the slate.
@@ -5627,7 +5631,7 @@ def _render_js() -> str:
       }} else if (status === "Live" && compact) {{
         inningTag = ` <span class="muted" style="font-size:10px;">(${{escapeHTML(compact)}})</span>`;
       }}
-      return `<span class="${{cls}}"><span class="live-ks">${{ks}} K</span><span class="live-badge">${{verdict}}</span>${{inningTag}}</span>`;
+      return `<span class="${{cls}}"><span class="live-ks">${{ks}} K</span>${{pitchTag}}<span class="live-badge">${{verdict}}</span>${{inningTag}}</span>`;
     }}
 
     let cls = "live-status";
@@ -5647,7 +5651,7 @@ def _render_js() -> str:
         ? ` ${{escapeHTML(compactInning(live.inning_state, live.current_inning))}}` : "";
       cls += " preview";
       badge = `<span class="live-badge">Pulled${{inning}}</span>`;
-      body = ks !== null ? `<span class="live-ks">${{ks}} K</span>` : "";
+      body = ks !== null ? `<span class="live-ks">${{ks}} K</span>${{pitchTag}}` : "";
     }} else if (status === "Live") {{
       // Game in progress, math not yet settled (ks ≤ line, OVER could
       // still hit / UNDER could still hold). Compact "B5" form keeps
@@ -5657,13 +5661,13 @@ def _render_js() -> str:
         : "Live";
       cls += " live";
       badge = `<span class="live-badge">${{escapeHTML(inning)}}</span>`;
-      body = ks !== null ? `<span class="live-ks">${{ks}} K</span>` : "";
+      body = ks !== null ? `<span class="live-ks">${{ks}} K</span>${{pitchTag}}` : "";
     }} else if (status === "Final") {{
       // status=Final but no ks recorded — pitcher didn't pitch, scratch,
       // or stat lookup failed.
       cls += " preview";
       badge = `<span class="live-badge">Final</span>`;
-      body = ks !== null ? `<span class="live-ks">${{ks}} K</span>` : "no K data";
+      body = ks !== null ? `<span class="live-ks">${{ks}} K</span>${{pitchTag}}` : "no K data";
     }} else {{
       // NotFound, Error, Unknown — pitcher not in today's slate or
       // some lookup failure.
