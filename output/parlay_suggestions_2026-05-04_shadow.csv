@@ -1,0 +1,7 @@
+date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev
+2026-05-04,two_leg,1,2,Michael Wacha,608379,over,4.5,120.0,0.592,0.441,Cam Schlittler,693645,over,6.5,115.0,0.672,0.528,,,,,,,,373,4.73,0.397824,0.232848,0.164976,0.881708
+2026-05-04,two_leg,2,2,Nick Martinez,607259,under,3.5,115.0,0.601,0.449,Davis Martin,663436,over,5.5,116.0,0.574,0.446,,,,,,,,364,4.644,0.344974,0.200254,0.14472,0.602059
+2026-05-04,two_leg,3,2,JR Ritchie,702275,over,4.5,-126.0,0.645,0.533,Tanner Bibee,676440,over,4.5,116.0,0.535,0.457,,,,,,,,287,3.874286,0.345075,0.243581,0.101494,0.336919
+2026-05-04,two_leg,4,2,Tarik Skubal,669373,under,7.5,-146.0,0.641,0.563,Tomoyuki Sugano,608372,under,3.5,-129.0,0.611,0.536,,,,,,,,199,2.99108,0.391651,0.301768,0.089883,0.171459
+2026-05-04,three_leg,1,3,Nick Martinez,607259,under,3.5,115.0,0.601,0.449,Michael Wacha,608379,over,4.5,120.0,0.592,0.441,Cam Schlittler,693645,over,6.5,115.0,0.672,0.528,917,10.1695,0.239092,0.104549,0.134543,1.431448
+2026-05-04,three_leg,2,3,Davis Martin,663436,over,5.5,116.0,0.574,0.446,JR Ritchie,702275,over,4.5,-126.0,0.645,0.533,Tanner Bibee,676440,over,4.5,116.0,0.535,0.457,737,8.368457,0.198073,0.108637,0.089436,0.657566

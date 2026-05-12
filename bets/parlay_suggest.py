@@ -20,7 +20,7 @@ from itertools import combinations
 from pathlib import Path
 
 from .config import OUTPUT_DIR
-from .live import FOCUS_EDGE_MAX, FOCUS_EDGE_MIN
+from .live import FOCUS_EDGE_MAX, FOCUS_EDGE_MIN, INVESTIGATE_EDGE
 
 # Suggester knobs. Mirror the JS constants in web.py's
 # renderParlaySuggestions — update both sides if you tune one.
@@ -54,6 +54,17 @@ def _is_focus(edge: float | None) -> bool:
         return False
     a = abs(edge)
     return FOCUS_EDGE_MIN <= a <= FOCUS_EDGE_MAX
+
+
+def _is_focus_or_gap(edge: float | None) -> bool:
+    # Shadow band: focus PLUS the 0.15-0.20 "noise gap" the production
+    # suggester currently filters out. The 2026-05-11 dead-band audit found
+    # the gap had +45% single-leg ROI (n=32) over 11 settled days — strong
+    # enough to track but not yet promoted to production selection.
+    if edge is None:
+        return False
+    a = abs(edge)
+    return FOCUS_EDGE_MIN <= a < INVESTIGATE_EDGE
 
 
 def _american_to_decimal(odds: float | None) -> float | None:
@@ -177,13 +188,20 @@ def _build_section(legs: list[dict], k: int, top: int) -> list[dict]:
     return _select_diverse(parlays, top, MAX_APPEARANCES)
 
 
-def suggest_parlays(slate_rows: list[dict]) -> dict[str, list[dict]]:
+def suggest_parlays(
+    slate_rows: list[dict],
+    is_eligible=_is_focus,
+) -> dict[str, list[dict]]:
     """Generate the same top-N two-leg + three-leg cards the dashboard
-    suggester would render from this slate, in EV-ranked order."""
-    focus_rows = [r for r in slate_rows if _is_focus(_safe_float(r.get("edge")))]
-    if len(focus_rows) < 2:
+    suggester would render from this slate, in EV-ranked order.
+
+    `is_eligible(edge)` controls the band: defaults to the production focus
+    band; pass `_is_focus_or_gap` for the shadow expanded band.
+    """
+    eligible_rows = [r for r in slate_rows if is_eligible(_safe_float(r.get("edge")))]
+    if len(eligible_rows) < 2:
         return {"two_leg": [], "three_leg": []}
-    legs = [_pick_leg_from_row(r) for r in focus_rows]
+    legs = [_pick_leg_from_row(r) for r in eligible_rows]
     legs = [l for l in legs if l is not None]
     legs.sort(key=lambda l: abs(l["edge"]), reverse=True)
     legs = legs[:PARLAY_INPUT_CAP]
@@ -249,12 +267,20 @@ def _suggestions_path(target_date: date) -> Path:
     return OUTPUT_DIR / f"parlay_suggestions_{target_date.isoformat()}.csv"
 
 
+def _shadow_suggestions_path(target_date: date) -> Path:
+    return OUTPUT_DIR / f"parlay_suggestions_{target_date.isoformat()}_shadow.csv"
+
+
 def _settled_pitcher_path(target_date: date) -> Path:
     return OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}_settled.csv"
 
 
 def _settled_suggestions_path(target_date: date) -> Path:
     return OUTPUT_DIR / f"parlay_suggestions_{target_date.isoformat()}_settled.csv"
+
+
+def _settled_shadow_suggestions_path(target_date: date) -> Path:
+    return OUTPUT_DIR / f"parlay_suggestions_{target_date.isoformat()}_shadow_settled.csv"
 
 
 def _read_slate(target_date: date) -> list[dict] | None:
@@ -265,18 +291,18 @@ def _read_slate(target_date: date) -> list[dict] | None:
         return list(csv.DictReader(f))
 
 
-def write_suggestions(target_date: date, force: bool = False) -> Path | None:
-    """Snapshot today's parlay-suggester output to
-    parlay_suggestions_<date>.csv. Skips silently if the file already
-    exists (slate is frozen → re-runs would produce the same output)
-    unless force=True."""
-    out_path = _suggestions_path(target_date)
+def _write_suggestions_impl(
+    target_date: date,
+    out_path: Path,
+    is_eligible,
+    force: bool,
+) -> Path | None:
     if out_path.exists() and not force:
         return out_path
     slate_rows = _read_slate(target_date)
     if slate_rows is None:
         return None
-    sug = suggest_parlays(slate_rows)
+    sug = suggest_parlays(slate_rows, is_eligible=is_eligible)
     rows = []
     for rank, p in enumerate(sug["two_leg"], start=1):
         rows.append(_suggestion_to_row(target_date.isoformat(), "two_leg", rank, p))
@@ -292,23 +318,34 @@ def write_suggestions(target_date: date, force: bool = False) -> Path | None:
     return out_path
 
 
-def settle_suggestions(target_date: date, force: bool = False) -> Path | None:
-    """Grade each suggested parlay against the day's actual K outcomes.
+def write_suggestions(target_date: date, force: bool = False) -> Path | None:
+    """Snapshot today's parlay-suggester output to
+    parlay_suggestions_<date>.csv. Skips silently if the file already
+    exists (slate is frozen → re-runs would produce the same output)
+    unless force=True."""
+    return _write_suggestions_impl(
+        target_date, _suggestions_path(target_date), _is_focus, force
+    )
 
-    Reads parlay_suggestions_<date>.csv + pitcher_ks_<date>_settled.csv,
-    writes parlay_suggestions_<date>_settled.csv. Each leg is graded
-    against the slate-time line stored in the suggestion row (matches
-    the slate_over_hit convention used elsewhere). A leg whose pitcher
-    was scratched (no actual_ks) leaves the parlay un-graded.
 
-    Skips silently if no suggestions snapshot exists. Re-runs if
-    force=True or if either upstream file is newer than the settled file.
-    """
-    sug_path = _suggestions_path(target_date)
-    settled_pitcher_path = _settled_pitcher_path(target_date)
+def write_shadow_suggestions(target_date: date, force: bool = False) -> Path | None:
+    """Shadow snapshot using the expanded focus+gap band (0.05 <= |edge| <
+    0.20). Mirrors write_suggestions but writes to
+    parlay_suggestions_<date>_shadow.csv so the production file is
+    untouched."""
+    return _write_suggestions_impl(
+        target_date, _shadow_suggestions_path(target_date), _is_focus_or_gap, force
+    )
+
+
+def _settle_suggestions_impl(
+    sug_path: Path,
+    out_path: Path,
+    settled_pitcher_path: Path,
+    force: bool,
+) -> Path | None:
     if not sug_path.exists() or not settled_pitcher_path.exists():
         return None
-    out_path = _settled_suggestions_path(target_date)
     if out_path.exists() and not force:
         out_mtime = out_path.stat().st_mtime
         if (sug_path.stat().st_mtime <= out_mtime
@@ -391,12 +428,44 @@ def settle_suggestions(target_date: date, force: bool = False) -> Path | None:
     return out_path
 
 
+def settle_suggestions(target_date: date, force: bool = False) -> Path | None:
+    """Grade each suggested parlay against the day's actual K outcomes.
+
+    Reads parlay_suggestions_<date>.csv + pitcher_ks_<date>_settled.csv,
+    writes parlay_suggestions_<date>_settled.csv. Each leg is graded
+    against the slate-time line stored in the suggestion row (matches
+    the slate_over_hit convention used elsewhere). A leg whose pitcher
+    was scratched (no actual_ks) leaves the parlay un-graded.
+
+    Skips silently if no suggestions snapshot exists. Re-runs if
+    force=True or if either upstream file is newer than the settled file.
+    """
+    return _settle_suggestions_impl(
+        _suggestions_path(target_date),
+        _settled_suggestions_path(target_date),
+        _settled_pitcher_path(target_date),
+        force,
+    )
+
+
+def settle_shadow_suggestions(target_date: date, force: bool = False) -> Path | None:
+    """Settle the shadow snapshot (focus+gap band). Mirrors
+    settle_suggestions but reads/writes the *_shadow*.csv pair."""
+    return _settle_suggestions_impl(
+        _shadow_suggestions_path(target_date),
+        _settled_shadow_suggestions_path(target_date),
+        _settled_pitcher_path(target_date),
+        force,
+    )
+
+
 # ---------- CLI ----------
 
 
 def _backfill() -> None:
     """Replay against every slate snapshot in OUTPUT_DIR. Settles whatever
-    has a matching pitcher_ks_*_settled.csv."""
+    has a matching pitcher_ks_*_settled.csv. Runs both production and
+    shadow tracks."""
     slate_files = sorted(OUTPUT_DIR.glob("pitcher_ks_*_slate.csv"))
     today = date.today()
     for path in slate_files:
@@ -409,7 +478,9 @@ def _backfill() -> None:
         if target > today:
             continue
         write_suggestions(target)
+        write_shadow_suggestions(target)
         settle_suggestions(target)
+        settle_shadow_suggestions(target)
 
 
 def main() -> None:
@@ -422,7 +493,9 @@ def main() -> None:
     else:
         target = date.today()
     write_suggestions(target)
+    write_shadow_suggestions(target)
     settle_suggestions(target)
+    settle_shadow_suggestions(target)
 
 
 if __name__ == "__main__":

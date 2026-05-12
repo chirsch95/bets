@@ -349,6 +349,7 @@ def main() -> None:
     try:
         from . import parlay_suggest as _pl
         _pl.settle_suggestions(target)
+        _pl.settle_shadow_suggestions(target)
     except Exception as e:
         print(f"parlay_suggest settle skipped: {e}")
 

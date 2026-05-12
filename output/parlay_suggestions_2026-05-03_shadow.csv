@@ -1,0 +1,7 @@
+date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev
+2026-05-03,two_leg,1,2,Joe Ryan,657746,under,5.5,145.0,0.72,0.548,Chris Paddack,663978,over,3.5,295.0,0.723,0.569,,,,,,,,868,9.6775,0.52056,0.311812,0.208748,4.037719
+2026-05-03,two_leg,2,2,Trey Gibson,694346,over,4.5,123.0,0.632,0.433,Ranger Suarez,624133,under,4.5,110.0,0.664,0.481,,,,,,,,368,4.683,0.419648,0.208273,0.211375,0.965212
+2026-05-03,two_leg,3,2,Kris Bubic,663460,over,5.5,101.0,0.657,0.479,Zack Littell,641793,under,3.5,-110.0,0.678,0.522,,,,,,,,284,3.837273,0.445446,0.250038,0.195408,0.709298
+2026-05-03,two_leg,4,2,Justin Wrobleski,680736,under,3.5,125.0,0.555,0.431,Anthony Kay,641743,over,3.5,120.0,0.56,0.445,,,,,,,,395,4.95,0.3108,0.191795,0.119005,0.53846
+2026-05-03,three_leg,1,3,Trey Gibson,694346,over,4.5,123.0,0.632,0.433,Joe Ryan,657746,under,5.5,145.0,0.72,0.548,Chris Paddack,663978,over,3.5,295.0,0.723,0.569,2058,21.580825,0.328994,0.135015,0.193979,6.09996
+2026-05-03,three_leg,2,3,Ranger Suarez,624133,under,4.5,110.0,0.664,0.481,Kris Bubic,663460,over,5.5,101.0,0.657,0.479,Zack Littell,641793,under,3.5,-110.0,0.678,0.522,706,8.058273,0.295776,0.120268,0.175508,1.383445

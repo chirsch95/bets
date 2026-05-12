@@ -361,6 +361,7 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
     try:
         from . import parlay_suggest as _pl
         _pl.write_suggestions(target_date, force=True)
+        _pl.write_shadow_suggestions(target_date, force=True)
     except Exception as e:
         print(f"parlay_suggest snapshot skipped: {e}")
 

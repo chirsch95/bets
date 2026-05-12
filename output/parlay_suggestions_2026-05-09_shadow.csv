@@ -1,0 +1,7 @@
+date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev
+2026-05-09,two_leg,1,2,Randy Vásquez,681190,over,3.5,115.0,0.759,0.572,Joe Ryan,657746,under,5.5,120.0,0.734,0.584,,,,,,,,373,4.73,0.557106,0.334048,0.223058,1.635111
+2026-05-09,two_leg,2,2,Spencer Arrighetti,681293,over,5.5,110.0,0.671,0.475,Dustin May,669160,under,4.5,115.0,0.738,0.58,,,,,,,,351,4.515,0.495198,0.2755,0.219698,1.235819
+2026-05-09,two_leg,3,2,Michael Wacha,608379,over,4.5,111.0,0.596,0.472,Chase Burns,695505,under,6.5,120.0,0.581,0.457,,,,,,,,364,4.642,0.346276,0.215704,0.130572,0.607413
+2026-05-09,two_leg,4,2,Merrill Kelly,518876,under,4.5,-105.0,0.6,0.492,Cam Schlittler,693645,over,5.5,100.0,0.583,0.486,,,,,,,,290,3.904762,0.3498,0.239112,0.110688,0.365886
+2026-05-09,three_leg,1,3,Spencer Arrighetti,681293,over,5.5,110.0,0.671,0.475,Randy Vásquez,681190,over,3.5,115.0,0.759,0.572,Joe Ryan,657746,under,5.5,120.0,0.734,0.584,893,9.933,0.373818,0.158673,0.215145,2.713135
+2026-05-09,three_leg,2,3,Dustin May,669160,under,4.5,115.0,0.738,0.58,Michael Wacha,608379,over,4.5,111.0,0.596,0.472,Chase Burns,695505,under,6.5,120.0,0.581,0.457,898,9.9803,0.255552,0.125108,0.130443,1.550483
