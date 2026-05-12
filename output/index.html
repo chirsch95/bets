@@ -4378,14 +4378,34 @@
       const dailyStr = dailyV === 0
         ? `no ${isMoney ? "bets" : "picks"}`
         : `daily ${fmtSparkVal(dailyV, isMoney)}`;
-      readout.innerHTML = `<strong>${escapeHTML(date)}</strong> · `
+      // Two-line layout so the popover stays narrow enough not to overflow
+      // when hovering the rightmost data point — the bankroll spark sits
+      // flush with the viewport's right edge, so a wide tooltip used to
+      // run off-screen.
+      readout.innerHTML = `<strong>${escapeHTML(date)}</strong><br>`
         + `<span class="cum ${cumCls}">${fmtSparkVal(cumV, isMoney)}</span>`
         + ` · ${dailyStr}`;
-      // Position in CSS px relative to the wrap. The SVG fills the wrap
-      // (width 100%), so px-x scales linearly with viewBox-x.
-      const pxX = (xVB / cfg.w) * rect.width;
-      readout.style.left = pxX + "px";
+      // Position in CSS px relative to the wrap, then clamp so it never
+      // pokes past the wrap's left/right edge. offsetWidth is the
+      // rendered tooltip width — read AFTER the innerHTML and display
+      // are set so the layout is committed.
       readout.style.display = "";
+      const pxX = (xVB / cfg.w) * rect.width;
+      const halfW = readout.offsetWidth / 2;
+      const wrapW = rect.width;
+      const pad = 4;
+      if (pxX + halfW > wrapW - pad) {
+        // Near right edge — pin to wrap's right.
+        readout.style.left = (wrapW - pad) + "px";
+        readout.style.transform = "translateX(-100%)";
+      } else if (pxX - halfW < pad) {
+        // Near left edge — pin to wrap's left.
+        readout.style.left = pad + "px";
+        readout.style.transform = "translateX(0)";
+      } else {
+        readout.style.left = pxX + "px";
+        readout.style.transform = "translateX(-50%)";
+      }
     }
   });
   document.addEventListener("mouseout", (e) => {
