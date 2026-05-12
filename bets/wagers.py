@@ -78,6 +78,21 @@ def _coerce_float(value, default=None):
         return default
 
 
+_SLATE_CAPTURE_FIELDS = (
+    "slate_proj_ks_v2",
+    "slate_edge",
+    "slate_p_over",
+    "slate_novig_over",
+    "slate_line",
+    "slate_odds",
+    "slate_book",
+    "slate_ev_per_dollar",
+    "slate_pick_class",
+    "slate_pinned",
+    "slate_captured_at",
+)
+
+
 def _normalize_leg(leg: dict) -> dict:
     """Coerce one leg dict into the canonical shape."""
     if not isinstance(leg, dict):
@@ -90,12 +105,19 @@ def _normalize_leg(leg: dict) -> dict:
     ou = (leg.get("ou") or "").strip().upper()
     if ou not in ("O", "U"):
         ou = "O"
-    return {
+    out = {
         "pitcher_id": pid,
         "pitcher": (leg.get("pitcher") or "").strip(),
         "ou": ou,
         "line": _coerce_float(leg.get("line"), None),
     }
+    # Preserve bet-time slate capture if already stamped — these record
+    # what the user saw when placing the bet and must never be re-derived
+    # on subsequent updates.
+    for k in _SLATE_CAPTURE_FIELDS:
+        if k in leg and leg[k] not in ("", None):
+            out[k] = leg[k]
+    return out
 
 
 def _migrate_legacy(bet: dict) -> dict:
@@ -172,9 +194,54 @@ def _normalize(bet: dict) -> dict:
     }
 
 
+def _capture_leg_slate(leg: dict, slate_by_pid: dict) -> None:
+    """Stamp the leg with the current slate row for its pitcher.
+    Idempotent: a leg already stamped (e.g. on an update round-trip)
+    is left alone, so the original placement state is preserved.
+    Records the bet-side odds (over vs under) per the leg direction."""
+    if leg.get("slate_captured_at"):
+        return
+    pid = leg.get("pitcher_id")
+    if pid is None:
+        return
+    s = slate_by_pid.get(pid)
+    if not s:
+        return
+    ou = leg.get("ou") or "O"
+    odds = s.get("over_odds") if ou == "O" else s.get("under_odds")
+    book = s.get("over_book") if ou == "O" else s.get("under_book")
+    ev = s.get("ev_over") if ou == "O" else s.get("ev_under")
+    leg["slate_proj_ks_v2"] = s.get("proj_ks_v2")
+    leg["slate_edge"] = s.get("edge")
+    leg["slate_p_over"] = s.get("p_over")
+    leg["slate_novig_over"] = s.get("novig_over")
+    leg["slate_line"] = s.get("line")
+    leg["slate_odds"] = odds
+    leg["slate_book"] = book
+    leg["slate_ev_per_dollar"] = ev
+    leg["slate_pick_class"] = s.get("our_pick_class")
+    leg["slate_pinned"] = bool(s.get("pinned"))
+    from datetime import datetime, timezone
+    leg["slate_captured_at"] = datetime.now(timezone.utc).isoformat()
+
+
 def add_bet(bet: dict) -> dict:
     state = load_bets()
     normalized = _normalize(bet)
+    # Stamp each leg with the current slate row so the bet object records
+    # what the user saw at placement (proj, edge, p_over, line, odds,
+    # book, EV). Failures here are non-fatal — the bet still saves.
+    try:
+        from datetime import date as _date
+        from . import live as _live
+        target_iso = normalized.get("date") or _date.today().isoformat()
+        target = _date.fromisoformat(target_iso)
+        slate = _live.slate_pitchers(target)
+        by_pid = {p["pitcher_id"]: p for p in slate if p.get("pitcher_id")}
+        for leg in normalized["legs"]:
+            _capture_leg_slate(leg, by_pid)
+    except Exception as e:  # noqa: BLE001
+        print(f"bet-time slate capture failed: {e}")
     state["bets"].append(normalized)
     save_bets(state)
     return normalized

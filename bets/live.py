@@ -197,6 +197,12 @@ def slate_pitchers(target_date: date | None = None) -> list[dict]:
                 "under_book": (src.get("under_book") or "").strip(),
                 "p_over": _safe_float(src.get("p_over")),
                 "novig_over": _safe_float(src.get("novig_over")),
+                # Projection + EV included for bet-time slate capture.
+                # Read from pinned source so a bet stamped mid-game records
+                # the pre-game proj/EV, not the in-progress drift.
+                "proj_ks_v2": _safe_float(src.get("proj_ks_v2")),
+                "ev_over": _safe_float(src.get("ev_over")),
+                "ev_under": _safe_float(src.get("ev_under")),
                 "our_pick_class": cls,
                 "our_pick_dir": direction,
                 "our_pick_label": _our_pick_label(cls, direction),
