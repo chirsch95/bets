@@ -2456,6 +2456,18 @@ CSS = """
   .tag-investigate { background: var(--yellow); color: #2a1f00; }
   .tag-noise { background: transparent; color: var(--muted); }
   .tag-noline { background: transparent; color: var(--muted); }
+  .lineup-pending {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--yellow);
+    opacity: 0.85;
+    white-space: nowrap;
+  }
+  .pitcher-meta .lineup-pending { font-size: 10px; }
   .muted { color: var(--muted); }
   .empty-msg { color: var(--muted); padding: 24px; text-align: center; }
   footer {
@@ -3473,6 +3485,16 @@ def _render_js() -> str:
     return lines.length ? lines.join("\\n") : "";
   }}
 
+  // Lineup status: opp_lineup_json is "[]" until lineups post (~3-4 hrs
+  // pre-first-pitch). Pre-lineup projections fall back to season-avg opp K%,
+  // so edge can shift meaningfully once the card lands — see Blind Spot #4
+  // analysis: mean |edge drift| 0.085 in empty→filled vs 0.027 baseline.
+  function lineupPendingChip(r) {{
+    const lj = r.opp_lineup_json;
+    if (lj && lj !== "[]" && lj !== "") return "";
+    return `<span class="lineup-pending">Lineup TBD</span>`;
+  }}
+
   function pitcherRow(r) {{
     const edge = f(r.edge);
     const cls = classify(edge);
@@ -3498,7 +3520,7 @@ def _render_js() -> str:
     const pidAttr = !isNaN(pidNum) ? ` data-pitcher-id="${{pidNum}}"` : "";
 
     return `<tr class="${{rowCls}}">
-      <td class="player">${{escapeHTML(r.pitcher || "")}}</td>
+      <td class="player">${{escapeHTML(r.pitcher || "")}}${{lineupPendingChip(r)}}</td>
       <td>${{oppPrefix(r)}}${{escapeHTML(r.opp || "")}}</td>
       <td class="gametime"${{isoAttr}}${{pidAttr}}>${{cell.html}}</td>
       <td class="num proj-cell"${{projAttr}}>${{dash(proj)}}</td>
@@ -3704,7 +3726,7 @@ def _render_js() -> str:
       </div>
       <div class="pick-card-pitcher">
         <span class="pitcher-name">${{escapeHTML(r.pitcher || "")}}</span>
-        <span class="pitcher-meta">${{oppPrefix(r)}}${{escapeHTML(teamAbbr(r.opp))}} · ${{formatGameTimeShort(r.game_datetime_utc)}}</span>
+        <span class="pitcher-meta">${{oppPrefix(r)}}${{escapeHTML(teamAbbr(r.opp))}} · ${{formatGameTimeShort(r.game_datetime_utc)}}${{lineupPendingChip(r)}}</span>
       </div>
       ${{renderBetBadgesRow(pidNum)}}
       <div class="pick-card-stats">
