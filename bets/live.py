@@ -311,12 +311,22 @@ def _game_status_map(target_date_iso: str) -> dict[int, dict]:
                 continue
             status = game.get("status", {})
             ls = game.get("linescore", {})
+            ls_teams = ls.get("teams", {}) or {}
+            game_teams = game.get("teams", {}) or {}
+            home_team = (((game_teams.get("home") or {}).get("team")) or {}).get("name")
+            away_team = (((game_teams.get("away") or {}).get("team")) or {}).get("name")
+            home_runs = (ls_teams.get("home") or {}).get("runs")
+            away_runs = (ls_teams.get("away") or {}).get("runs")
             out[int(gpk)] = {
                 "abstract": status.get("abstractGameState", "Unknown"),
                 "detailed": status.get("detailedState", ""),
                 "first_pitch": game.get("gameDate"),
                 "current_inning": ls.get("currentInningOrdinal"),
                 "inning_state": ls.get("inningState"),
+                "home_team": home_team,
+                "away_team": away_team,
+                "home_score": home_runs,
+                "away_score": away_runs,
             }
     return out
 
@@ -379,6 +389,10 @@ def live_ks(pitcher_ids: list[int], target_date: date | None = None) -> dict:
           "done":        bool,                 # True once pitcher is pulled — Ks locked
           "pitches":     int | None,           # boxscore pitch count
           "ip":          str | None,           # innings pitched, e.g. "5.2"
+          "home_team":   str | None,           # full home team name (for tooltip)
+          "away_team":   str | None,
+          "home_score":  int | None,           # live game score (None pre-game)
+          "away_score":  int | None,
           "error":       str | None,
         }
     """
@@ -406,6 +420,10 @@ def live_ks(pitcher_ids: list[int], target_date: date | None = None) -> dict:
             "done": False,
             "pitches": None,
             "ip": None,
+            "home_team": None,
+            "away_team": None,
+            "home_score": None,
+            "away_score": None,
             "error": None,
         }
         if info is None:
@@ -427,6 +445,10 @@ def live_ks(pitcher_ids: list[int], target_date: date | None = None) -> dict:
         result["current_inning"] = gs.get("current_inning")
         result["inning_state"] = gs.get("inning_state")
         result["first_pitch"] = gs.get("first_pitch")
+        result["home_team"] = gs.get("home_team")
+        result["away_team"] = gs.get("away_team")
+        result["home_score"] = gs.get("home_score")
+        result["away_score"] = gs.get("away_score")
 
         # Skip the boxscore call for games that haven't started — Ks
         # would just be None anyway and we save a round-trip.

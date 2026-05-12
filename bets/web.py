@@ -2021,6 +2021,9 @@ CSS = """
     letter-spacing: 0.04em;
     font-weight: 700;
   }
+  /* Hover affordance: badges with a score title get a help cursor. */
+  .live-status .live-badge[title],
+  .live-status .muted[title] { cursor: help; }
   .live-status.hit .live-badge { background: var(--green); color: #001a00; }
   .live-status.miss .live-badge { background: var(--red); color: #2a0000; }
   .live-status.live .live-badge { background: var(--yellow); color: #2a1f00; }
@@ -5596,6 +5599,18 @@ def _render_js() -> str:
     return null;  // pending
   }}
 
+  // Build "AWAY 4 @ HOME 2" tooltip from live payload — used on the
+  // inning badge so hover reveals the game score. Returns "" when we
+  // don't have both scores yet (pre-game, or boxscore lag).
+  function scoreTooltip(live) {{
+    if (!live) return "";
+    const hs = live.home_score, as = live.away_score;
+    if (hs === null || hs === undefined || as === null || as === undefined) return "";
+    const home = teamAbbr(live.home_team) || "HOME";
+    const away = teamAbbr(live.away_team) || "AWAY";
+    return `${{away}} ${{as}} @ ${{home}} ${{hs}}`;
+  }}
+
   // Render the live status string + class for one leg given the
   // {{ks, line, status, ...}} payload from /api/live-ks.
   function liveStatusHTML(leg, live) {{
@@ -5612,6 +5627,8 @@ def _render_js() -> str:
     // line cached in the slate.
     const line = (leg.line !== null && leg.line !== undefined)
       ? leg.line : live.line;
+    const scoreTip = scoreTooltip(live);
+    const scoreAttr = scoreTip ? ` title="${{escapeHTML(scoreTip)}}"` : "";
 
     // Mid-game lock-in: if the math is already settled, show the
     // verdict immediately without waiting for Final.
@@ -5627,11 +5644,11 @@ def _render_js() -> str:
         ? compactInning(live.inning_state, live.current_inning)
         : "";
       if (live.done && compact) {{
-        inningTag = ` <span class="muted" style="font-size:10px;">(pulled ${{escapeHTML(compact)}})</span>`;
+        inningTag = ` <span class="muted" style="font-size:10px;"${{scoreAttr}}>(pulled ${{escapeHTML(compact)}})</span>`;
       }} else if (status === "Live" && compact) {{
-        inningTag = ` <span class="muted" style="font-size:10px;">(${{escapeHTML(compact)}})</span>`;
+        inningTag = ` <span class="muted" style="font-size:10px;"${{scoreAttr}}>(${{escapeHTML(compact)}})</span>`;
       }}
-      return `<span class="${{cls}}"><span class="live-ks">${{ks}} K</span>${{pitchTag}}<span class="live-badge">${{verdict}}</span>${{inningTag}}</span>`;
+      return `<span class="${{cls}}"><span class="live-ks">${{ks}} K</span>${{pitchTag}}<span class="live-badge"${{scoreAttr}}>${{verdict}}</span>${{inningTag}}</span>`;
     }}
 
     let cls = "live-status";
@@ -5650,7 +5667,7 @@ def _render_js() -> str:
       const inning = live.current_inning
         ? ` ${{escapeHTML(compactInning(live.inning_state, live.current_inning))}}` : "";
       cls += " preview";
-      badge = `<span class="live-badge">Pulled${{inning}}</span>`;
+      badge = `<span class="live-badge"${{scoreAttr}}>Pulled${{inning}}</span>`;
       body = ks !== null ? `<span class="live-ks">${{ks}} K</span>${{pitchTag}}` : "";
     }} else if (status === "Live") {{
       // Game in progress, math not yet settled (ks ≤ line, OVER could
@@ -5660,13 +5677,13 @@ def _render_js() -> str:
         ? compactInning(live.inning_state, live.current_inning)
         : "Live";
       cls += " live";
-      badge = `<span class="live-badge">${{escapeHTML(inning)}}</span>`;
+      badge = `<span class="live-badge"${{scoreAttr}}>${{escapeHTML(inning)}}</span>`;
       body = ks !== null ? `<span class="live-ks">${{ks}} K</span>${{pitchTag}}` : "";
     }} else if (status === "Final") {{
       // status=Final but no ks recorded — pitcher didn't pitch, scratch,
       // or stat lookup failed.
       cls += " preview";
-      badge = `<span class="live-badge">Final</span>`;
+      badge = `<span class="live-badge"${{scoreAttr}}>Final</span>`;
       body = ks !== null ? `<span class="live-ks">${{ks}} K</span>${{pitchTag}}` : "no K data";
     }} else {{
       // NotFound, Error, Unknown — pitcher not in today's slate or
