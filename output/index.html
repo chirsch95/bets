@@ -1678,6 +1678,29 @@
   /* The old leg list was indented for a ▶ caret in the row view; in
      cards, no caret, so reset the padding. */
   .bet-card .parlay-leg-list { padding-left: 0; }
+  /* Bet-time vs current — "placed at +9.4% ↘" — small chip showing the
+     EV/$1 we saw when the bet was submitted, plus a drift arrow against
+     current slate state. Lets you see whether a win/loss was a sharp
+     bet or a lucky/unlucky one without flipping back and forth. */
+  .leg-placed-at {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    cursor: help;
+    white-space: nowrap;
+  }
+  .leg-placed-at.pos { color: var(--green); border-color: rgba(74, 222, 128, 0.4); }
+  .leg-placed-at.neg { color: var(--red); border-color: rgba(248, 113, 113, 0.4); }
+  .leg-placed-at.flat { color: var(--muted); }
+  .leg-delta.pos  { color: var(--green); }
+  .leg-delta.neg  { color: var(--red); }
+  .leg-delta.flat { color: var(--muted); opacity: 0.7; }
   .bet-card-actions {
     display: none;
     gap: 6px;
@@ -5001,6 +5024,67 @@
     return labels + extra;
   }
 
+  // "Placed at" chip — surfaces what the model said about this leg the
+  // moment the bet was created (proj/edge/line/odds/EV), plus a delta
+  // arrow vs the current slate. Returns "" for legs without a capture
+  // (pre-capture bets, or legs without a pitcher_id). Comparing the EV at
+  // submission to current EV answers "was this a good bet at the time?"
+  // independent of the eventual win/loss.
+  function legPlacedAtHTML(leg) {
+    if (!leg || !leg.slate_captured_at) return "";
+    const evRaw = leg.slate_ev_per_dollar;
+    const ev = (evRaw === null || evRaw === undefined || evRaw === "") ? null : parseFloat(evRaw);
+    if (ev === null || isNaN(ev)) return "";
+    const evCls = ev > 0.02 ? "pos" : ev < -0.02 ? "neg" : "flat";
+    const evStr = (ev >= 0 ? "+" : "") + (ev * 100).toFixed(1) + "%";
+
+    // Drift vs current. 0.02 EV/$1 = 2 percentage points; below that the
+    // line basically hasn't moved, so render a flat → instead of an arrow.
+    let deltaHTML = "";
+    let driftTip = "";
+    const cur = (leg.pitcher_id && slateById) ? slateById.get(leg.pitcher_id) : null;
+    if (cur) {
+      const curEvRaw = leg.ou === "O" ? cur.ev_over : cur.ev_under;
+      const curEv = (curEvRaw === null || curEvRaw === undefined) ? null : parseFloat(curEvRaw);
+      if (curEv !== null && !isNaN(curEv)) {
+        const delta = curEv - ev;
+        const absD = Math.abs(delta);
+        let arrow = "→", cls = "flat";
+        if (absD >= 0.02) {
+          arrow = delta > 0 ? "↗" : "↘";
+          cls = delta > 0 ? "pos" : "neg";
+        }
+        deltaHTML = ` <span class="leg-delta ${cls}">${arrow}</span>`;
+        const curStr = (curEv >= 0 ? "+" : "") + (curEv * 100).toFixed(1) + "%";
+        driftTip = ` → now ${curStr}`;
+      }
+    }
+
+    // Tooltip carries the full bet-time snapshot — proj, edge, line@odds,
+    // book — so hovering a card reconstructs the dashboard state at
+    // submission without needing a separate detail view.
+    const tipBits = [];
+    const edgeNum = parseFloat(leg.slate_edge);
+    if (!isNaN(edgeNum)) {
+      const edgeStr = (edgeNum >= 0 ? "+" : "") + (edgeNum * 100).toFixed(1) + "%";
+      tipBits.push(`Placed at: EV ${evStr}, edge ${edgeStr}${driftTip}`);
+    } else {
+      tipBits.push(`Placed at: EV ${evStr}${driftTip}`);
+    }
+    const projNum = parseFloat(leg.slate_proj_ks_v2);
+    if (!isNaN(projNum)) tipBits.push(`Model proj ${projNum.toFixed(2)} K`);
+    if (leg.slate_line !== null && leg.slate_line !== undefined && leg.slate_line !== "") {
+      const lineStr = parseFloat(leg.slate_line).toFixed(1);
+      const odds = leg.slate_odds;
+      const oddsStr = (odds === null || odds === undefined || odds === "") ? "" : ` @ ${odds > 0 ? "+" + odds : odds}`;
+      const book = leg.slate_book ? ` (${leg.slate_book})` : "";
+      tipBits.push(`Line ${lineStr}${oddsStr}${book}`);
+    }
+    if (leg.slate_pinned) tipBits.push("Pinned to pre-game slate");
+    const tip = escapeHTML(tipBits.join(" · "));
+    return `<span class="leg-placed-at ${evCls}" title="${tip}">${evStr}${deltaHTML}</span>`;
+  }
+
   function renderBetCard(b, extraCls = "") {
     let payoutCls = "zero", payoutStr = "—";
     if (b.payout !== null && b.payout !== undefined) {
@@ -5040,6 +5124,7 @@
         <span class="muted">Leg ${i + 1}</span>
         <span class="parlay-leg-name">${escapeHTML(l.pitcher || "?")}</span>
         <span class="parlay-leg-ou ${ouCls}">${l.ou} ${lineStr}</span>
+        ${legPlacedAtHTML(l)}
         <span class="live-cell">${l.pitcher_id ? "—" : '<span class="muted" style="font-size:11px;">(no live data)</span>'}</span>
       </li>`;
     }).join("");
