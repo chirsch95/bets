@@ -20,6 +20,8 @@ Schema for one bet (one row in the spreadsheet ≈ one parlay ticket):
       "result":     "W" | "L" | null,      # null = pending
       "payout":     14.6 | 0 | null,       # null = pending; winnings count
                                             # toward returned even if free
+      "stake_reason":      "default"|"focus"|"boost"|"free_entry"|"other",
+      "bankroll_at_time":  300.0 | null,   # bankroll when bet was placed
     }
 
 Legacy schema (pre-Phase-1 of structured parlays) had freeform `players`
@@ -180,6 +182,13 @@ def _normalize(bet: dict) -> dict:
     site = (bet.get("site") or "").strip().upper()
     if site not in ("PP", "UD", "DK"):
         site = ""
+    reason = (bet.get("stake_reason") or "").strip().lower()
+    if reason not in ("default", "focus", "boost", "free_entry", "other"):
+        reason = "free_entry" if free_entry else "default"
+    elif free_entry and reason != "free_entry":
+        # A free entry should always tag as such; otherwise the analysis
+        # buckets get muddled. Trust the free_entry flag over a stale reason.
+        reason = "free_entry"
     return {
         "id": bet.get("id") or _new_id(),
         "date": (bet.get("date") or "").strip(),
@@ -191,6 +200,8 @@ def _normalize(bet: dict) -> dict:
         "free_entry": free_entry,
         "result": bet.get("result") if bet.get("result") in ("W", "L") else None,
         "payout": _coerce_float(bet.get("payout"), None),
+        "stake_reason": reason,
+        "bankroll_at_time": _coerce_float(bet.get("bankroll_at_time"), None),
     }
 
 
@@ -228,6 +239,15 @@ def _capture_leg_slate(leg: dict, slate_by_pid: dict) -> None:
 def add_bet(bet: dict) -> dict:
     state = load_bets()
     normalized = _normalize(bet)
+    # Stamp the bankroll number at placement time if the caller didn't
+    # provide one. Records "what was my free cash when I sized this bet"
+    # so future analysis can ask "did I size proportionally to bankroll".
+    if normalized.get("bankroll_at_time") is None:
+        try:
+            from . import bankroll as _bk
+            normalized["bankroll_at_time"] = round(_bk.current_balance(), 2)
+        except Exception as e:  # noqa: BLE001
+            print(f"bankroll stamp failed: {e}")
     # Stamp each leg with the current slate row so the bet object records
     # what the user saw at placement (proj, edge, p_over, line, odds,
     # book, EV). Failures here are non-fatal — the bet still saves.

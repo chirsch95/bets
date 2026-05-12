@@ -1580,6 +1580,55 @@
     margin-bottom: 16px;
   }
   .bets-totals-card .report-stat { padding: 10px 12px; }
+  /* Bankroll card — one-line summary of the experiment's running
+     bankroll. Sits above the totals strip. Color edges (left border)
+     reflect status: green when ahead, neutral while active, amber on
+     pause-review, red on ended. */
+  .bankroll-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-top: 14px;
+    margin-bottom: 8px;
+  }
+  .bankroll-card.pause { border-left-color: var(--amber, #d4a017); }
+  .bankroll-card.ended { border-left-color: var(--red); }
+  .bankroll-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .bankroll-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+  .bankroll-val {
+    font-size: 22px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .bankroll-pct { color: var(--muted); font-size: 13px; }
+  .bankroll-net { font-size: 13px; font-variant-numeric: tabular-nums; }
+  .bankroll-net.pos { color: var(--green); }
+  .bankroll-net.neg { color: var(--red); }
+  .bankroll-sub { color: var(--muted); font-size: 11px; margin-top: 4px; }
+  .bankroll-pending { color: var(--text); }
+  .bankroll-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 3px 7px;
+    border-radius: 4px;
+    margin-left: auto;
+  }
+  .bankroll-badge.pause { background: var(--amber, #d4a017); color: #000; }
+  .bankroll-badge.ended { background: var(--red); color: #fff; }
   /* Ticket cards — one card per bet, replacing the old table view.
      Card body is always tappable; tapping toggles the action drawer
      (W / L / Edit / Reopen / Delete) at the bottom. */
@@ -2600,10 +2649,11 @@
     #bets-panel > .bets-quickstatus:empty { display: none; }
     #bets-panel > .bets-toolbar         { order: 1; }
     #bets-panel > .bets-cards           { order: 2; }
-    #bets-panel > .bets-totals-card     { order: 3; margin-top: 14px; }
-    #bets-panel > .totals-card-secondary { order: 4; }
-    #bets-panel > .cal-wrap             { order: 5; }
-    #bets-panel > .bets-form-card       { order: 6; }
+    #bets-panel > .bankroll-card        { order: 3; margin-top: 14px; }
+    #bets-panel > .bets-totals-card     { order: 4; margin-top: 8px; }
+    #bets-panel > .totals-card-secondary { order: 5; }
+    #bets-panel > .cal-wrap             { order: 6; }
+    #bets-panel > .bets-form-card       { order: 7; }
   }
 </style>
 <script>
@@ -4845,6 +4895,16 @@
     }
   }
 
+  async function apiBankroll() {
+    try {
+      const r = await fetch("/api/bankroll", { cache: "no-cache" });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function apiLiveKs(pitcherIds) {
     if (!pitcherIds.length) return { date: null, results: {} };
     const url = `/api/live-ks?ids=${pitcherIds.join(",")}`;
@@ -4884,6 +4944,41 @@
   // Today's date in CT — used to default the form's date field.
   function todayCT() {
     return dateInChicago(0);
+  }
+
+  function renderBankrollCard(bk) {
+    if (!bk) return "";
+    const startingStr = `$${bk.starting.toFixed(0)}`;
+    const currentStr = `$${bk.current.toFixed(2)}`;
+    const pct = bk.pct_of_starting;
+    const pctStr = pct === null || pct === undefined ? "—" : `${pct.toFixed(1)}%`;
+    const status = bk.status || "active";
+    let cls = "ok";
+    let badge = "";
+    if (status === "ended") {
+      cls = "ended";
+      badge = `<span class="bankroll-badge ended" title="Bankroll bust — experiment over.">ENDED</span>`;
+    } else if (status === "pause_review") {
+      cls = "pause";
+      badge = `<span class="bankroll-badge pause" title="Bankroll &le; 50% drawdown — pause and review.">PAUSE&nbsp;REVIEW</span>`;
+    }
+    const net = bk.current - bk.starting;
+    const netCls = net > 0 ? "pos" : net < 0 ? "neg" : "";
+    const netStr = `${net >= 0 ? "+" : "-"}$${Math.abs(net).toFixed(2)}`;
+    const pendingStr = bk.pending_stake > 0
+      ? ` · <span class="bankroll-pending">$${bk.pending_stake.toFixed(2)} pending</span>`
+      : "";
+    const tooltip = `Started ${bk.started_at} at ${startingStr}. Pause review at $${bk.pause_at.toFixed(0)}, end at $${bk.end_at.toFixed(0)}. Low $${bk.low_water.toFixed(2)} / High $${bk.high_water.toFixed(2)} (${bk.events_count} events).`;
+    return `<div class="bankroll-card ${cls}" title="${escapeHTML(tooltip)}">
+      <div class="bankroll-row">
+        <div class="bankroll-label">Bankroll</div>
+        <div class="bankroll-val">${currentStr}</div>
+        <div class="bankroll-pct">${pctStr} of ${startingStr}</div>
+        <div class="bankroll-net ${netCls}">${netStr}</div>
+        ${badge}
+      </div>
+      <div class="bankroll-sub">started ${escapeHTML(bk.started_at)}${pendingStr}</div>
+    </div>`;
   }
 
   function renderBetsTotals(t) {
@@ -5439,6 +5534,15 @@
         </div>
         <div class="bets-field"><label>Stake</label><input id="bf-stake" type="number" step="0.01" placeholder="10.00"></div>
         <div class="bets-field"><label>Odds</label><input id="bf-odds" type="number" step="0.01" placeholder="2.40"></div>
+        <div class="bets-field">
+          <label title="Why this stake size? Tags the bet for later analysis (does focus actually outperform default?). Free entries auto-tag as 'free'.">Reason</label>
+          <select id="bf-reason" style="background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 7px 9px; font-family: inherit; font-size: 13px;">
+            <option value="default">default (1u)</option>
+            <option value="focus">focus (2u)</option>
+            <option value="boost">boost</option>
+            <option value="other">other</option>
+          </select>
+        </div>
         <div class="bets-field"><label>Boost (free text)</label><input id="bf-boost" placeholder="+30%"></div>
       </div>
       <div class="bets-form-actions">
@@ -5488,6 +5592,7 @@
     return `${renderQuickStatus(state)}
       ${toolbar}
       <div class="bets-cards" id="bets-cards">${cardsBody}</div>
+      ${renderBankrollCard(state.bankroll)}
       ${renderBetsTotals(totals)}
       ${heatmapHTML}
       ${formHTML}`;
@@ -5503,12 +5608,14 @@
     if (!panel) return;
     panel.innerHTML = '<p class="muted">Loading…</p>';
     try {
-      // Fetch bets + slate in parallel so the dropdown is populated
-      // by the time the form renders.
-      const [state, pitchers] = await Promise.all([
+      // Fetch bets + slate + bankroll in parallel so the dropdown is
+      // populated and the bankroll card has data by the time we render.
+      const [state, pitchers, bankroll] = await Promise.all([
         apiBets("GET"),
         apiSlatePitchers(),
+        apiBankroll(),
       ]);
+      state.bankroll = bankroll;
       slatePitchers = pitchers;
       slateById = new Map(pitchers.map(p => [p.pitcher_id, p]));
       // Keep the pitcher-tab badge index aligned with whatever the bets
@@ -5870,6 +5977,7 @@
       boost: get("bf-boost"),
       site: readFormSite(),
       free_entry: document.getElementById("bf-free-entry").checked,
+      stake_reason: get("bf-reason"),
     };
   }
 
@@ -6014,6 +6122,8 @@
     document.getElementById("bf-odds").value = "";
     document.getElementById("bf-boost").value = "";
     document.getElementById("bf-free-entry").checked = false;
+    const reasonEl = document.getElementById("bf-reason");
+    if (reasonEl) reasonEl.value = "default";
     setFormSite("PP");
     document.getElementById("bf-legcount").value = "2";
     document.getElementById("bf-legs").innerHTML = renderLegInputs(2, []);
@@ -6026,6 +6136,15 @@
     document.getElementById("bf-odds").value = bet.odds !== null ? bet.odds : "";
     document.getElementById("bf-boost").value = bet.boost || "";
     document.getElementById("bf-free-entry").checked = !!bet.free_entry;
+    const reasonEl = document.getElementById("bf-reason");
+    if (reasonEl) {
+      // Free entries always tag as 'free_entry' server-side; the picker
+      // shows the user-facing options only — fall back to 'default' for
+      // a free entry's row, since the server handles the override.
+      reasonEl.value = bet.stake_reason && bet.stake_reason !== "free_entry"
+        ? bet.stake_reason
+        : "default";
+    }
     setFormSite(bet.site || "PP");
     const legCount = Math.max(2, Math.min(6, (bet.legs || []).length || 2));
     document.getElementById("bf-legcount").value = String(legCount);

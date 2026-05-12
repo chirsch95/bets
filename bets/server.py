@@ -35,7 +35,7 @@ from flask import (
     send_from_directory,
 )
 
-from . import health, live, notify, wagers
+from . import bankroll, health, live, notify, wagers
 from .config import OUTPUT_DIR, PROJECT_ROOT
 from .settle import settle_date, settle_hitters_date
 
@@ -241,6 +241,14 @@ def _settle_bet_with_notify(bet_id: str, payload: dict) -> dict | None:
     updated = wagers.update_bet(bet_id, payload)
     if updated is None:
         return None
+    # Bankroll ledger: replay the settlement event for this bet (idempotent
+    # on bet_id, so re-settles / W↔L flips / unsettles all stay consistent).
+    # Run on every update — record_settlement removes the prior settle event
+    # if the bet is no longer in W/L state.
+    try:
+        bankroll.record_settlement(updated)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.warning("bankroll settle for %s failed: %s", bet_id, exc)
     if prior_result is None and updated.get("result") in ("W", "L"):
         formatted = notify.format_bet_settle(updated)
         if formatted:
@@ -294,6 +302,19 @@ def api_delete_bet(bet_id: str):
     if not wagers.delete_bet(bet_id):
         return jsonify({"error": "not found"}), 404
     return jsonify({"ok": True, "totals": wagers.totals()})
+
+
+@app.get("/api/bankroll")
+def api_bankroll():
+    """Bankroll snapshot for the dashboard pill. Pending exposure is
+    reported separately so the UI can show free cash vs deployed cash."""
+    bets = wagers.load_bets()["bets"]
+    pending_stake = sum(
+        float(b.get("stake") or 0)
+        for b in bets
+        if not b.get("result") and not b.get("free_entry")
+    )
+    return jsonify(bankroll.snapshot(pending_stake))
 
 
 @app.get("/api/slate-pitchers")
