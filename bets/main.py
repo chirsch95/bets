@@ -270,28 +270,77 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
         writer.writeheader()
         writer.writerows(rows)
 
-    # Freeze the first run of the day as the canonical "slate" — the
-    # state we'd actually have bet on. Later runs overwrite out_path as
-    # lines move, but the slate file stays put so settle.py can grade
-    # picks against the morning state, not whatever survived to gametime.
-    # O_CREAT|O_EXCL races atomically against any concurrent run (CLI
-    # vs server vs GH Actions), so we never overwrite an existing snapshot.
+    # Slate snapshot — the canonical "what we'd have bet at" record. Per
+    # pitcher, this row freezes at first pitch; until then, every refresh
+    # rewrites the row so a lineup post (the biggest single accuracy bump
+    # of the day) lands in the snapshot. settle.py grades against this.
+    # Multi-process safety: we hold _pipeline_lock in the server and CLI
+    # is a single process, so no concurrent writer concern.
     slate_path = OUTPUT_DIR / f"pitcher_ks_{target_date.isoformat()}_slate.csv"
+    from . import live as _live
     try:
-        fd = os.open(slate_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        pass
-    else:
-        with os.fdopen(fd, "wb") as dst, out_path.open("rb") as src:
-            dst.write(src.read())
-        print(f"Wrote slate snapshot → {slate_path}")
+        started_pks = _live._started_game_pks(target_date.isoformat())
+    except Exception as e:  # noqa: BLE001
+        print(f"slate snapshot: couldn't fetch started games ({e}); freezing all rows")
+        started_pks = set()
+    existing: dict[int, dict] = {}
+    if slate_path.exists():
+        with slate_path.open() as f:
+            for r in csv.DictReader(f):
+                pid = r.get("pitcher_id")
+                if pid:
+                    try:
+                        existing[int(pid)] = r
+                    except ValueError:
+                        pass
+    fieldnames = list(rows[0].keys())
+    merged_rows: list[dict] = []
+    pinned_count = 0
+    fresh_pids: set[int] = set()
+    for r in rows:
+        pid_raw = r.get("pitcher_id")
+        gpk_raw = r.get("game_pk")
+        try:
+            pid = int(pid_raw) if pid_raw not in (None, "") else None
+            gpk = int(gpk_raw) if gpk_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            pid, gpk = None, None
+        if pid is not None:
+            fresh_pids.add(pid)
+        if pid is not None and gpk in started_pks and pid in existing:
+            merged_rows.append(existing[pid])
+            pinned_count += 1
+        else:
+            merged_rows.append(r)
+    # A pitcher who was in the morning slate but got scratched and dropped
+    # from the live CSV still needs to settle — keep his snapshot row.
+    for pid, r in existing.items():
+        if pid not in fresh_pids:
+            merged_rows.append(r)
+            pinned_count += 1
+    # Atomic write: build into a temp file, then rename. Snapshot is now
+    # rewritten on every refresh (not write-once like before), so a crash
+    # mid-write must not leave a partial slate that breaks settle/replay.
+    tmp_path = slate_path.with_suffix(slate_path.suffix + ".tmp")
+    with tmp_path.open("w", newline="") as dst:
+        writer = csv.DictWriter(dst, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(merged_rows)
+    os.replace(tmp_path, slate_path)
+    print(
+        f"Wrote slate snapshot → {slate_path} "
+        f"({pinned_count} row(s) pinned to prior snapshot, "
+        f"{len(merged_rows) - pinned_count} refreshed)"
+    )
 
     # Snapshot the parlay-suggester output alongside the slate so we
     # later have a record of exactly which 2/3-leg cards the dashboard
-    # showed at slate time. Failures don't block the slate snapshot.
+    # showed at slate time. force=True so the suggestions track the
+    # slate updates (e.g. when a lineup posts mid-day and shifts edges).
+    # Failures don't block the slate snapshot.
     try:
         from . import parlay_suggest as _pl
-        _pl.write_suggestions(target_date)
+        _pl.write_suggestions(target_date, force=True)
     except Exception as e:
         print(f"parlay_suggest snapshot skipped: {e}")
 
