@@ -105,6 +105,12 @@ SLATE_FIELDS = [
     "slate_p_over",
     "slate_novig_over",
     "slate_edge",
+    # Platt-calibrated shadow probabilities pinned at slate time.
+    # Kept alongside raw so we can grade cal vs raw hit-rate over time.
+    "slate_cal_p_over_v2",
+    "slate_cal_edge_v2",
+    "slate_cal_p_over_ml",
+    "slate_cal_edge_ml",
     "slate_over_hit",
     "slate_over_pnl",
     "slate_under_pnl",
@@ -219,6 +225,10 @@ def settle_date(target_date: date) -> Path | None:
             row["slate_p_over"] = slate.get("p_over", "")
             row["slate_novig_over"] = slate.get("novig_over", "")
             row["slate_edge"] = slate.get("edge", "")
+            row["slate_cal_p_over_v2"] = slate.get("cal_p_over_v2", "")
+            row["slate_cal_edge_v2"] = slate.get("cal_edge_v2", "")
+            row["slate_cal_p_over_ml"] = slate.get("cal_p_over_ml", "")
+            row["slate_cal_edge_ml"] = slate.get("cal_edge_ml", "")
 
             slate_line = _maybe_float(slate.get("line"))
             if slate_line is not None:
@@ -242,6 +252,17 @@ def settle_date(target_date: date) -> Path | None:
         writer.writerows(rows)
 
     print(f"Settled {settled_count}/{len(rows)} pitchers → {out_path}")
+
+    # Refit Platt calibration now that we have another day of settled
+    # outcomes. Non-fatal if it fails — the pipeline can still serve
+    # raw probabilities from the previous fit (or fall back to raw if
+    # no calibration.json exists at all).
+    try:
+        from . import calibration
+        calibration.fit(verbose=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"calibration refit skipped: {exc}")
+
     return out_path
 
 

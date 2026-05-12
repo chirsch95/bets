@@ -241,6 +241,22 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
                 row["ev_under"] = round(ev_per_dollar(under_odds, 1 - p_over), 3)
             else:
                 row["ev_under"] = None
+            # Platt-calibrated shadow columns. Raw v2/ML probabilities are
+            # systematically overconfident — see 2026-05-11 calibration
+            # analysis. These columns let us compare cal vs raw outcomes
+            # over time without changing production routing today.
+            from . import calibration as _cal
+            cal_p_over_v2 = _cal.apply(p_over, "v2")
+            row["cal_p_over_v2"] = round(cal_p_over_v2, 3) if cal_p_over_v2 is not None else None
+            row["cal_edge_v2"] = round(cal_p_over_v2 - novig_over, 3) if cal_p_over_v2 is not None else None
+            if ml_proj is not None:
+                raw_p_over_ml = prob_over_poisson(line, ml_proj)
+                cal_p_over_ml = _cal.apply(raw_p_over_ml, "ml")
+                row["cal_p_over_ml"] = round(cal_p_over_ml, 3) if cal_p_over_ml is not None else None
+                row["cal_edge_ml"] = round(cal_p_over_ml - novig_over, 3) if cal_p_over_ml is not None else None
+            else:
+                row["cal_p_over_ml"] = None
+                row["cal_edge_ml"] = None
         else:
             row["line"] = None
             row["over_odds"] = None
@@ -253,6 +269,10 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
             row["edge"] = None
             row["ev_over"] = None
             row["ev_under"] = None
+            row["cal_p_over_v2"] = None
+            row["cal_edge_v2"] = None
+            row["cal_p_over_ml"] = None
+            row["cal_edge_ml"] = None
 
         rows.append(row)
 
