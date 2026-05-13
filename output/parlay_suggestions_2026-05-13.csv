@@ -1,7 +1,7 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev
 2026-05-13,two_leg,1,2,Kyle Bradish,680694,over,5.5,280.0,0.661,0.551,Parker Messick,800048,over,6.5,105.0,0.587,0.48,,,,,,,,679,7.79,0.388007,0.26448,0.123527,2.022575
-2026-05-13,two_leg,2,2,Matthew Liberatore,669461,under,4.5,150.0,0.667,0.531,Andrew Painter,691725,under,4.5,132.0,0.686,0.563,,,,,,,,480,5.8,0.457562,0.298953,0.158609,1.65386
+2026-05-13,two_leg,2,2,Matthew Liberatore,669461,under,4.5,155.0,0.656,0.528,Andrew Painter,691725,under,4.5,132.0,0.686,0.563,,,,,,,,492,5.916,0.450016,0.297264,0.152752,1.662295
 2026-05-13,two_leg,3,2,Jose Quintana,500779,under,3.5,102.0,0.639,0.498,Christian Scott,681035,under,4.5,124.0,0.566,0.453,,,,,,,,352,4.5248,0.361674,0.225594,0.13608,0.636503
 2026-05-13,two_leg,4,2,Michael King,650633,under,5.5,-130.0,0.669,0.55,Dylan Cease,656302,over,6.5,105.0,0.6,0.493,,,,,,,,263,3.626923,0.4014,0.27115,0.13025,0.455847
-2026-05-13,three_leg,1,3,Jose Quintana,500779,under,3.5,102.0,0.639,0.498,Matthew Liberatore,669461,under,4.5,150.0,0.667,0.531,Andrew Painter,691725,under,4.5,132.0,0.686,0.563,1072,11.716,0.292382,0.148879,0.143504,2.425549
+2026-05-13,three_leg,1,3,Jose Quintana,500779,under,3.5,102.0,0.639,0.498,Matthew Liberatore,669461,under,4.5,155.0,0.656,0.528,Andrew Painter,691725,under,4.5,132.0,0.686,0.563,1095,11.95032,0.28756,0.148037,0.139523,2.436437
 2026-05-13,three_leg,2,3,Michael King,650633,under,5.5,-130.0,0.669,0.55,Christian Scott,681035,under,4.5,124.0,0.566,0.453,Dylan Cease,656302,over,6.5,105.0,0.6,0.493,712,8.124308,0.227192,0.122831,0.104361,0.845781
