@@ -4077,13 +4077,15 @@ def _render_js() -> str:
   }}
 
   // Try fetching today's CSV; fall back up to 3 days if not yet posted.
+  // Returns raw `text` alongside parsed rows so callers (slate repoll)
+  // can do a cheap text-equality check without re-parsing.
   async function fetchTodaysCSV(prefix) {{
     for (let i = 0; i <= 3; i++) {{
       const d = dateInChicago(-i);
       const text = await fetchCSV(baseUrl() + `${{prefix}}_${{d}}.csv`);
-      if (text) return {{ date: d, rows: parseCSV(text) }};
+      if (text) return {{ date: d, rows: parseCSV(text), text }};
     }}
-    return {{ date: null, rows: [] }};
+    return {{ date: null, rows: [], text: "" }};
   }}
 
   // Most recent settled CSV — yesterday or earlier.
@@ -6862,10 +6864,17 @@ def _render_js() -> str:
     ${{resultsSection}}`;
   }}
 
-  async function loadAndRender() {{
+  // Slate repoll tracks the last-seen CSV text so the 60s tick can
+  // skip re-renders when nothing has changed.
+  let _lastSlateText = "";
+
+  async function loadAndRender(opts) {{
+    const silent = opts && opts.silent;
     const btn = document.getElementById("refresh-btn");
-    if (btn) {{ btn.disabled = true; btn.classList.add("loading"); }}
-    document.body.classList.add("loading");
+    if (!silent) {{
+      if (btn) {{ btn.disabled = true; btn.classList.add("loading"); }}
+      document.body.classList.add("loading");
+    }}
 
     const TRACK_DAYS = 14;
     try {{
@@ -6889,6 +6898,7 @@ def _render_js() -> str:
       }}
       const results = await Promise.all(fetches);
       const [pSlate, pSettled, pTrack, pBets, pParlayTrack, hSlate, hSettled] = results;
+      _lastSlateText = pSlate.text || "";
 
       const pTab = renderPitcherTab({{
         slate: pSlate, settled: pSettled,
@@ -6942,9 +6952,27 @@ def _render_js() -> str:
       const lr = document.getElementById("last-refresh");
       if (lr) lr.textContent = "Refresh failed — check your connection.";
     }} finally {{
-      document.body.classList.remove("loading");
-      if (btn) {{ btn.disabled = false; btn.classList.remove("loading"); }}
+      if (!silent) {{
+        document.body.classList.remove("loading");
+        if (btn) {{ btn.disabled = false; btn.classList.remove("loading"); }}
+      }}
     }}
+  }}
+
+  // Slate CSV repoll — re-fetches pitcher_ks_<today>.csv on a 60s tick
+  // and silently triggers loadAndRender() if the text has changed.
+  // Catches the mid-day lineup post (opp_lineup_json [] → populated)
+  // and any in-day line/edge revisions without the user having to pull
+  // to refresh. Skipped while the tab is backgrounded.
+  async function slateRepollTick() {{
+    if (document.hidden) return;
+    if (!_lastSlateText) return;
+    try {{
+      const d = dateInChicago(0);
+      const text = await fetchCSV(baseUrl() + `pitcher_ks_${{d}}.csv`);
+      if (!text || text === _lastSlateText) return;
+      await loadAndRender({{ silent: true }});
+    }} catch (e) {{ /* swallow — next tick retries */ }}
   }}
 
   let betsLoaded = false;
@@ -7613,6 +7641,11 @@ def _render_js() -> str:
     // accurate and a row flips to row-locked the moment first pitch
     // passes — no full re-render or refetch.
     setInterval(repaintGameTimeCells, 60000);
+
+    // Slate CSV repoll — silent re-render when pitcher_ks_<today>.csv
+    // changes. Fires the moment lineups post mid-day so Lineup TBD
+    // chips disappear without a manual refresh.
+    setInterval(slateRepollTick, 60000);
   }});
 }})();
 """
