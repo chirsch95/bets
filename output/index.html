@@ -3773,6 +3773,9 @@
   //   - positive EV only — never suggest a negative-EV combo
   //   - one leg per game — two starters in the same game share K-environment
   //     (umpire, weather, ump zone), so leg-independence breaks down
+  //   - games within a 3-hour window — wider gaps mean the later game's
+  //     lineup won't post until after the first game has started, so you'd
+  //     be committing to a leg without the input that drives its edge
   //   - per-pitcher appearance cap across the section — keeps the top-N
   //     from collapsing onto a single hot pitcher
   function renderParlaySuggestions(rows) {
@@ -3781,6 +3784,11 @@
     const TOP_THREE = 3;
     const MAX_APPEARANCES = 1;        // any one pitcher can appear in at most
                                        // this many cards within a section
+    // Skip combos whose game times span more than this — by the time the
+    // first game starts, the later game's lineup still won't be posted
+    // (lineups land ~3 hrs pre-game), so we'd be locking in a leg without
+    // the input that drives its edge. Keep in sync with parlay_suggest.py.
+    const MAX_GAP_MS = 3 * 3600 * 1000;
     const focus = rows.filter(r => {
       const e = f(r.edge);
       return e !== null && classify(e) === "focus";
@@ -3802,6 +3810,19 @@
         seen.add(l.game_pk);
       }
       return true;
+    };
+
+    const gameTimesWithinWindow = (combo) => {
+      let lo = Infinity, hi = -Infinity;
+      for (const l of combo) {
+        if (!l.gameTimeISO) continue;
+        const t = Date.parse(l.gameTimeISO);
+        if (isNaN(t)) continue;
+        if (t < lo) lo = t;
+        if (t > hi) hi = t;
+      }
+      if (lo === Infinity || hi === -Infinity) return true;
+      return hi - lo <= MAX_GAP_MS;
     };
 
     // Greedy: walk EV-sorted combos, skip any whose pitchers already hit the
@@ -3829,6 +3850,7 @@
       if (legs.length < k) return "";
       const sorted = combos(legs, k)
         .filter(uniqueGames)
+        .filter(gameTimesWithinWindow)
         .map(evaluateParlay)
         .filter(p => p.ev > 0)
         .sort((a, b) => b.ev - a.ev);
@@ -3847,7 +3869,7 @@
     return `<section class="parlay-suggester">
       <div class="parlay-suggester-header">
         <h3>Parlay Suggestions</h3>
-        <span class="parlay-note">Positive-EV combos · one leg per game · capped per pitcher · ranked by EV per $1</span>
+        <span class="parlay-note">Positive-EV combos · one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1</span>
       </div>
       ${twoLeg}
       ${threeLeg}

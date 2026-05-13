@@ -29,6 +29,9 @@ TOP_TWO = 5                # top 2-leg cards per day
 TOP_THREE = 3              # top 3-leg cards per day
 MAX_APPEARANCES = 1        # any one pitcher in at most this many cards
                             # per section
+MAX_GAP_SECONDS = 3 * 3600  # skip combos whose game times span more than this
+                            # — by the time the first game starts, the later
+                            # game's lineup still won't be posted
 
 
 def _safe_float(v) -> float | None:
@@ -83,6 +86,15 @@ def _decimal_to_american(dec: float | None) -> int | None:
     return round(-100 / (dec - 1))
 
 
+def _parse_game_ts(s: str | None) -> float | None:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
 def _pick_leg_from_row(r: dict) -> dict | None:
     """Mirror pickLegFromRow: turn a slate row into a normalized leg, or
     None if it can't be priced (no odds on the picked side, no novig)."""
@@ -107,6 +119,7 @@ def _pick_leg_from_row(r: dict) -> dict | None:
         "pitcher": r.get("pitcher", "") or "",
         "pitcher_id": _safe_int(r.get("pitcher_id")),
         "game_pk": _safe_int(r.get("game_pk")),
+        "game_ts": _parse_game_ts(r.get("game_datetime_utc")),
         "line": r.get("line", ""),
         "dir": direction,
         "odds": odds,
@@ -148,6 +161,13 @@ def _unique_games(combo: list[dict]) -> bool:
     return True
 
 
+def _game_times_within_window(combo: list[dict]) -> bool:
+    times = [l["game_ts"] for l in combo if l.get("game_ts") is not None]
+    if len(times) < 2:
+        return True
+    return max(times) - min(times) <= MAX_GAP_SECONDS
+
+
 def _select_diverse(sorted_evals: list[dict], top: int, max_per: int) -> list[dict]:
     """Greedy: walk EV-sorted parlays, skip any whose pitchers already
     hit the appearance cap. Stops at top selections or when exhausted."""
@@ -179,6 +199,8 @@ def _build_section(legs: list[dict], k: int, top: int) -> list[dict]:
     for combo in combinations(legs, k):
         combo_list = list(combo)
         if not _unique_games(combo_list):
+            continue
+        if not _game_times_within_window(combo_list):
             continue
         ev = _evaluate_parlay(combo_list)
         if ev["ev"] <= 0:

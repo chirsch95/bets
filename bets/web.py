@@ -1164,6 +1164,13 @@ CSS = """
   }
   .parlay-card.pos { border-left-color: var(--green); }
   .parlay-card.neg { border-left-color: var(--red); }
+  /* Lineup-status border overrides EV color: red until every leg's opp
+     lineup is posted, green once they all are. Source order matters —
+     these must come after .pos/.neg to win the cascade. */
+  .parlay-card.lineup-blocked { border-left-color: var(--red); opacity: 0.82; }
+  .parlay-card.lineup-ready { border-left-color: var(--green); }
+  html.is-bets .parlay-card.lineup-blocked { cursor: not-allowed; }
+  html.is-bets .parlay-card.lineup-blocked:hover { background: var(--panel); border-color: var(--border); }
   .parlay-legs { display: flex; flex-direction: column; gap: 4px; }
   .parlay-leg {
     display: grid;
@@ -2894,6 +2901,8 @@ def _render_js() -> str:
     const novigP = dir === "over" ? novigOver : 1 - novigOver;
     const pidNum = parseInt(r.pitcher_id, 10);
     const gpkNum = parseInt(r.game_pk, 10);
+    const lj = r.opp_lineup_json;
+    const lineupPending = !lj || lj === "[]" || lj === "";
     return {{
       pitcher: r.pitcher || "",
       pitcher_id: isNaN(pidNum) ? null : pidNum,
@@ -2906,6 +2915,7 @@ def _render_js() -> str:
       novigP,
       edge,
       gameTimeISO: r.game_datetime_utc || "",
+      lineupPending,
     }};
   }}
   function evaluateParlay(legs) {{
@@ -3784,9 +3794,10 @@ def _render_js() -> str:
       const dirCls = l.dir === "over" ? "over" : "under";
       const lineStr = l.line === undefined || l.line === null || l.line === "" ? "" : ` ${{escapeHTML(String(l.line))}}`;
       const time = l.gameTimeISO ? `<span class="parlay-leg-time">${{formatGameTimeShort(l.gameTimeISO)}}</span>` : "";
+      const tbd = l.lineupPending ? `<span class="lineup-pending">TBD</span>` : "";
       return `<div class="parlay-leg">
         <span class="parlay-leg-dir ${{dirCls}}">${{l.dir.toUpperCase()}}${{lineStr}}</span>
-        <span class="parlay-leg-name">${{escapeHTML(l.pitcher)}}</span>
+        <span class="parlay-leg-name">${{escapeHTML(l.pitcher)}}${{tbd}}</span>
         ${{time}}
       </div>`;
     }}).join("");
@@ -3811,8 +3822,20 @@ def _render_js() -> str:
     // pre-populates the Bets-tab form with these legs. On the public URL
     // the data attr is harmless and the cursor/hover affordance stays
     // off (gated in CSS by html.is-bets).
+    //
+    // Lineup gating: pre-lineup edge can drift meaningfully once cards
+    // post (see Blind Spot #4). When any leg's opp lineup is still TBD,
+    // we paint the border red and omit `data-legs` — the click handler
+    // gates on that attr, so the card becomes un-clickable until every
+    // leg has a confirmed lineup, at which point it goes green.
+    const pendingLegs = p.legs.filter(l => l.lineupPending);
+    const lineupCls = pendingLegs.length ? "lineup-blocked" : "lineup-ready";
     const legsAttr = escapeHTML(JSON.stringify(formLegs));
-    return `<div class="parlay-card ${{evCls}}" data-legs='${{legsAttr}}' title="Add this parlay to your bets">
+    const tip = pendingLegs.length
+      ? `Waiting on lineups: ${{pendingLegs.map(l => l.pitcher).join(", ")}}`
+      : "Add this parlay to your bets";
+    const dataAttr = pendingLegs.length ? "" : ` data-legs='${{legsAttr}}'`;
+    return `<div class="parlay-card ${{evCls}} ${{lineupCls}}"${{dataAttr}} title="${{escapeHTML(tip)}}">
       <div class="parlay-legs">${{legsHTML}}</div>
       <div class="parlay-stats">
         <div class="parlay-stat"><span class="parlay-stat-label">Payout</span><span class="parlay-stat-val">${{amerStr}}</span></div>
@@ -3832,6 +3855,9 @@ def _render_js() -> str:
   //   - positive EV only — never suggest a negative-EV combo
   //   - one leg per game — two starters in the same game share K-environment
   //     (umpire, weather, ump zone), so leg-independence breaks down
+  //   - games within a 3-hour window — wider gaps mean the later game's
+  //     lineup won't post until after the first game has started, so you'd
+  //     be committing to a leg without the input that drives its edge
   //   - per-pitcher appearance cap across the section — keeps the top-N
   //     from collapsing onto a single hot pitcher
   function renderParlaySuggestions(rows) {{
@@ -3840,6 +3866,11 @@ def _render_js() -> str:
     const TOP_THREE = 3;
     const MAX_APPEARANCES = 1;        // any one pitcher can appear in at most
                                        // this many cards within a section
+    // Skip combos whose game times span more than this — by the time the
+    // first game starts, the later game's lineup still won't be posted
+    // (lineups land ~3 hrs pre-game), so we'd be locking in a leg without
+    // the input that drives its edge. Keep in sync with parlay_suggest.py.
+    const MAX_GAP_MS = 3 * 3600 * 1000;
     const focus = rows.filter(r => {{
       const e = f(r.edge);
       return e !== null && classify(e) === "focus";
@@ -3861,6 +3892,19 @@ def _render_js() -> str:
         seen.add(l.game_pk);
       }}
       return true;
+    }};
+
+    const gameTimesWithinWindow = (combo) => {{
+      let lo = Infinity, hi = -Infinity;
+      for (const l of combo) {{
+        if (!l.gameTimeISO) continue;
+        const t = Date.parse(l.gameTimeISO);
+        if (isNaN(t)) continue;
+        if (t < lo) lo = t;
+        if (t > hi) hi = t;
+      }}
+      if (lo === Infinity || hi === -Infinity) return true;
+      return hi - lo <= MAX_GAP_MS;
     }};
 
     // Greedy: walk EV-sorted combos, skip any whose pitchers already hit the
@@ -3888,6 +3932,7 @@ def _render_js() -> str:
       if (legs.length < k) return "";
       const sorted = combos(legs, k)
         .filter(uniqueGames)
+        .filter(gameTimesWithinWindow)
         .map(evaluateParlay)
         .filter(p => p.ev > 0)
         .sort((a, b) => b.ev - a.ev);
@@ -3906,7 +3951,7 @@ def _render_js() -> str:
     return `<section class="parlay-suggester">
       <div class="parlay-suggester-header">
         <h3>Parlay Suggestions</h3>
-        <span class="parlay-note">Positive-EV combos · one leg per game · capped per pitcher · ranked by EV per $1</span>
+        <span class="parlay-note">Positive-EV combos · one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1</span>
       </div>
       ${{twoLeg}}
       ${{threeLeg}}
