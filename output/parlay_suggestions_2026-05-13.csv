@@ -1,7 +1,7 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev
-2026-05-13,two_leg,1,2,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,Reid Detmers,672282,under,5.5,165.0,0.593,0.52,,,,,,,,589,6.89,0.374776,0.2704,0.104376,1.582207
-2026-05-13,two_leg,2,2,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Parker Messick,800048,over,6.5,105.0,0.587,0.48,,,,,,,,314,4.141,0.372158,0.23904,0.133118,0.541106
-2026-05-13,two_leg,3,2,Shota Imanaga,684007,over,5.5,-110.0,0.622,0.5,Christian Scott,681035,under,4.5,124.0,0.522,0.453,,,,,,,,328,4.276364,0.324684,0.2265,0.098184,0.388467
-2026-05-13,two_leg,4,2,Jacob Misiorowski,694819,over,7.5,-128.0,0.632,0.538,Bryce Miller,682243,over,4.5,106.0,0.528,0.467,,,,,,,,267,3.669375,0.333696,0.251246,0.08245,0.224456
-2026-05-13,three_leg,1,3,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,Reid Detmers,672282,under,5.5,165.0,0.593,0.52,1292,13.9178,0.237608,0.134659,0.102949,2.30698
-2026-05-13,three_leg,2,3,Shota Imanaga,684007,over,5.5,-110.0,0.622,0.5,Parker Messick,800048,over,6.5,105.0,0.587,0.48,Christian Scott,681035,under,4.5,124.0,0.522,0.453,777,8.766545,0.19059,0.10872,0.08187,0.670812
+2026-05-13,two_leg,1,2,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,Kyle Bradish,680694,over,5.5,280.0,0.661,0.551,,,,,,,,888,9.88,0.417752,0.28652,0.131232,3.12739
+2026-05-13,two_leg,2,2,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Reid Detmers,672282,under,5.5,165.0,0.593,0.52,,,,,,,,435,5.353,0.375962,0.25896,0.117002,1.012525
+2026-05-13,two_leg,3,2,Shota Imanaga,684007,over,5.5,-110.0,0.622,0.5,Parker Messick,800048,over,6.5,105.0,0.587,0.48,,,,,,,,291,3.913636,0.365114,0.24,0.125114,0.428923
+2026-05-13,two_leg,4,2,Jacob Misiorowski,694819,over,7.5,-128.0,0.632,0.538,Christian Scott,681035,under,4.5,124.0,0.522,0.453,,,,,,,,299,3.99,0.329904,0.243714,0.08619,0.316317
+2026-05-13,three_leg,1,3,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,Kyle Bradish,680694,over,5.5,280.0,0.661,0.551,Reid Detmers,672282,under,5.5,165.0,0.593,0.52,2518,26.182,0.247727,0.14899,0.098737,5.485987
+2026-05-13,three_leg,2,3,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Shota Imanaga,684007,over,5.5,-110.0,0.622,0.5,Parker Messick,800048,over,6.5,105.0,0.587,0.48,691,7.905545,0.231482,0.11952,0.111962,0.829994

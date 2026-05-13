@@ -1,7 +1,7 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev
-2026-05-13,two_leg,1,2,Matthew Liberatore,669461,under,4.5,210.0,0.667,0.5,Framber Valdez,664285,under,5.5,130.0,0.719,0.561,,,,,,,,613,7.13,0.479573,0.2805,0.199073,2.419355
-2026-05-13,two_leg,2,2,Max Meyer,676974,over,4.5,120.0,0.729,0.563,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,,,,,,,,472,5.72,0.460728,0.29276,0.167968,1.635364
-2026-05-13,two_leg,3,2,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Parker Messick,800048,over,6.5,105.0,0.587,0.48,,,,,,,,314,4.141,0.372158,0.23904,0.133118,0.541106
-2026-05-13,two_leg,4,2,Shota Imanaga,684007,over,5.5,-110.0,0.622,0.5,Jacob Misiorowski,694819,over,7.5,-128.0,0.632,0.538,,,,,,,,240,3.400568,0.393104,0.269,0.124104,0.336777
-2026-05-13,three_leg,1,3,Matthew Liberatore,669461,under,4.5,210.0,0.667,0.5,Framber Valdez,664285,under,5.5,130.0,0.719,0.561,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,1754,18.538,0.30309,0.14586,0.15723,4.618685
-2026-05-13,three_leg,2,3,Max Meyer,676974,over,4.5,120.0,0.729,0.563,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Parker Messick,800048,over,6.5,105.0,0.587,0.48,811,9.1102,0.271303,0.13458,0.136724,1.471626
+2026-05-13,two_leg,1,2,Matthew Liberatore,669461,under,4.5,210.0,0.667,0.497,Kyle Bradish,680694,over,5.5,280.0,0.661,0.551,,,,,,,,1078,11.78,0.440887,0.273847,0.16704,4.193649
+2026-05-13,two_leg,2,2,Framber Valdez,664285,under,5.5,130.0,0.719,0.561,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,,,,,,,,498,5.98,0.454408,0.29172,0.162688,1.71736
+2026-05-13,two_leg,3,2,Max Meyer,676974,over,4.5,120.0,0.729,0.563,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,,,,,,,,344,4.444,0.462186,0.280374,0.181812,1.053955
+2026-05-13,two_leg,4,2,Shota Imanaga,684007,over,5.5,-110.0,0.622,0.5,Parker Messick,800048,over,6.5,105.0,0.587,0.48,,,,,,,,291,3.913636,0.365114,0.24,0.125114,0.428923
+2026-05-13,three_leg,1,3,Matthew Liberatore,669461,under,4.5,210.0,0.667,0.497,Framber Valdez,664285,under,5.5,130.0,0.719,0.561,Kyle Bradish,680694,over,5.5,280.0,0.661,0.551,2609,27.094,0.316998,0.153628,0.16337,7.588737
+2026-05-13,three_leg,2,3,Max Meyer,676974,over,4.5,120.0,0.729,0.563,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,1055,11.5544,0.292102,0.145794,0.146307,2.375058
