@@ -32,6 +32,14 @@ FOCUS_EDGE_MIN = 0.05
 FOCUS_EDGE_MAX = 0.15
 INVESTIGATE_EDGE = 0.20
 
+# Fields pinned_csv_text() leaves live (not overwritten by the morning
+# slate snapshot once a game starts). The pin's job is to freeze the
+# betting state — edge/line/odds/p_over — at first pitch so the user's
+# view matches what they'd have bet at. UI-only signals like
+# opp_lineup_json must stay live; otherwise an already-started game
+# renders "Lineup TBD" forever because the morning snapshot was empty.
+_PIN_EXCLUDE = {"opp_lineup_json"}
+
 # In-memory cache for MLB API responses. Keyed by descriptive string.
 # Single-process Flask dev server, so a plain dict is fine.
 _CACHE: dict[str, tuple[float, dict]] = {}
@@ -249,8 +257,10 @@ def pinned_csv_text(target_date: date) -> str | None:
         slate_row = snapshot[pid]
         # Overwrite only fields we have in the slate. Leaves any
         # downstream-added columns (e.g., future settle artifacts) alone.
+        # _PIN_EXCLUDE preserves UI-only fields whose morning value is
+        # actively misleading once the game starts.
         for k in fieldnames:
-            if k in slate_row:
+            if k in slate_row and k not in _PIN_EXCLUDE:
                 row[k] = slate_row[k]
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames)
