@@ -1134,13 +1134,6 @@
   }
   .parlay-card.pos { border-left-color: var(--green); }
   .parlay-card.neg { border-left-color: var(--red); }
-  /* Lineup-status border overrides EV color: red until every leg's opp
-     lineup is posted, green once they all are. Source order matters —
-     these must come after .pos/.neg to win the cascade. */
-  .parlay-card.lineup-blocked { border-left-color: var(--red); opacity: 0.82; }
-  .parlay-card.lineup-ready { border-left-color: var(--green); }
-  html.is-bets .parlay-card.lineup-blocked { cursor: not-allowed; }
-  html.is-bets .parlay-card.lineup-blocked:hover { background: var(--panel); border-color: var(--border); }
   .parlay-legs { display: flex; flex-direction: column; gap: 4px; }
   .parlay-leg {
     display: grid;
@@ -2819,8 +2812,6 @@
     const novigP = dir === "over" ? novigOver : 1 - novigOver;
     const pidNum = parseInt(r.pitcher_id, 10);
     const gpkNum = parseInt(r.game_pk, 10);
-    const lj = r.opp_lineup_json;
-    const lineupPending = !lj || lj === "[]" || lj === "";
     return {
       pitcher: r.pitcher || "",
       pitcher_id: isNaN(pidNum) ? null : pidNum,
@@ -2833,7 +2824,6 @@
       novigP,
       edge,
       gameTimeISO: r.game_datetime_utc || "",
-      lineupPending,
     };
   }
   function evaluateParlay(legs) {
@@ -3712,10 +3702,9 @@
       const dirCls = l.dir === "over" ? "over" : "under";
       const lineStr = l.line === undefined || l.line === null || l.line === "" ? "" : ` ${escapeHTML(String(l.line))}`;
       const time = l.gameTimeISO ? `<span class="parlay-leg-time">${formatGameTimeShort(l.gameTimeISO)}</span>` : "";
-      const tbd = l.lineupPending ? `<span class="lineup-pending">TBD</span>` : "";
       return `<div class="parlay-leg">
         <span class="parlay-leg-dir ${dirCls}">${l.dir.toUpperCase()}${lineStr}</span>
-        <span class="parlay-leg-name">${escapeHTML(l.pitcher)}${tbd}</span>
+        <span class="parlay-leg-name">${escapeHTML(l.pitcher)}</span>
         ${time}
       </div>`;
     }).join("");
@@ -3740,20 +3729,8 @@
     // pre-populates the Bets-tab form with these legs. On the public URL
     // the data attr is harmless and the cursor/hover affordance stays
     // off (gated in CSS by html.is-bets).
-    //
-    // Lineup gating: pre-lineup edge can drift meaningfully once cards
-    // post (see Blind Spot #4). When any leg's opp lineup is still TBD,
-    // we paint the border red and omit `data-legs` — the click handler
-    // gates on that attr, so the card becomes un-clickable until every
-    // leg has a confirmed lineup, at which point it goes green.
-    const pendingLegs = p.legs.filter(l => l.lineupPending);
-    const lineupCls = pendingLegs.length ? "lineup-blocked" : "lineup-ready";
     const legsAttr = escapeHTML(JSON.stringify(formLegs));
-    const tip = pendingLegs.length
-      ? `Waiting on lineups: ${pendingLegs.map(l => l.pitcher).join(", ")}`
-      : "Add this parlay to your bets";
-    const dataAttr = pendingLegs.length ? "" : ` data-legs='${legsAttr}'`;
-    return `<div class="parlay-card ${evCls} ${lineupCls}"${dataAttr} title="${escapeHTML(tip)}">
+    return `<div class="parlay-card ${evCls}" data-legs='${legsAttr}' title="Add this parlay to your bets">
       <div class="parlay-legs">${legsHTML}</div>
       <div class="parlay-stats">
         <div class="parlay-stat"><span class="parlay-stat-label">Payout</span><span class="parlay-stat-val">${amerStr}</span></div>
