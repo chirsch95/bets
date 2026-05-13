@@ -1,5 +1,5 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev
 2026-05-13,two_leg,1,2,Kyle Bradish,680694,over,5.5,280.0,0.661,0.551,Reid Detmers,672282,under,5.5,165.0,0.593,0.52,,,,,,,,907,10.07,0.391973,0.28652,0.105453,2.947168
-2026-05-13,two_leg,2,2,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,,,,,,,,425,5.252,0.400688,0.25896,0.141728,1.104413
-2026-05-13,two_leg,3,2,Shota Imanaga,684007,over,5.5,-110.0,0.622,0.5,Christian Scott,681035,under,4.5,124.0,0.522,0.453,,,,,,,,328,4.276364,0.324684,0.2265,0.098184,0.388467
-2026-05-13,three_leg,1,3,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Shota Imanaga,684007,over,5.5,-110.0,0.622,0.5,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,903,10.026545,0.249228,0.12948,0.119748,1.498895
+2026-05-13,two_leg,2,2,Matthew Liberatore,669461,under,4.5,210.0,0.667,0.518,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,,,,,,,,706,8.06,0.421544,0.26936,0.152184,2.397645
+2026-05-13,two_leg,3,2,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Shota Imanaga,684007,over,5.5,-110.0,0.622,0.5,,,,,,,,286,3.856364,0.394348,0.249,0.145348,0.520749
+2026-05-13,three_leg,1,3,Matthew Liberatore,669461,under,4.5,210.0,0.667,0.518,Jose Quintana,500779,under,3.5,102.0,0.634,0.498,Jake Irvin,663623,over,4.5,160.0,0.632,0.52,1528,16.2812,0.267259,0.134141,0.133118,3.351296
