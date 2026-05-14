@@ -1,12 +1,15 @@
-"""Personal bankroll ledger backed by data/bankroll.json.
+"""Per-user bankroll ledger backed by data/users/<id>/bankroll.json.
 
-Local-only feature, gitignored, single-user. Tracks a notional bankroll
-that backs the bets ledger:
+Each user's ledger lives in their own directory (gitignored). All
+functions take a `user_id`. The starting/pause/end values come from the
+user's first-login wizard; the file is created with `init(user_id, ...)`
+when the wizard finishes — it is NOT auto-created on first read, because
+without wizard input there are no defaults that fit every user.
 
     {
       "starting":   300.0,            # initial bankroll, immutable
       "started_at": "2026-05-13",     # date the experiment began
-      "pause_at":   150.0,            # 50% drawdown — review trigger
+      "pause_at":   150.0,            # drawdown — review trigger
       "end_at":     0.0,              # bust — experiment over
       "events": [
         {
@@ -33,63 +36,69 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timezone
-from pathlib import Path
 
-from .config import PROJECT_ROOT
-
-BANKROLL_PATH = PROJECT_ROOT / "data" / "bankroll.json"
-
-DEFAULTS = {
-    "starting": 300.0,
-    "started_at": "2026-04-30",
-    "pause_at": 150.0,
-    "end_at": 0.0,
-}
+from . import auth
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _empty_state() -> dict:
-    return {
-        **DEFAULTS,
+def init(
+    user_id: str,
+    starting: float,
+    pause_at: float,
+    end_at: float,
+    started_at: str | None = None,
+) -> dict:
+    """Create the bankroll file for a new user. Caller (the wizard)
+    supplies starting/pause/end. Refuses to overwrite an existing file."""
+    path = auth.bankroll_path(user_id)
+    if path.exists():
+        raise FileExistsError(f"bankroll already exists for {user_id!r}")
+    state = {
+        "starting": float(starting),
+        "started_at": started_at or date.today().isoformat(),
+        "pause_at": float(pause_at),
+        "end_at": float(end_at),
         "events": [
             {
                 "ts": _now_iso(),
                 "type": "init",
                 "delta": 0.0,
                 "bet_id": None,
-                "note": f"initial bankroll ${DEFAULTS['starting']:.2f}",
+                "note": f"initial bankroll ${float(starting):.2f}",
             }
         ],
     }
+    save(user_id, state)
+    return state
 
 
-def load() -> dict:
-    if not BANKROLL_PATH.exists():
-        state = _empty_state()
-        save(state)
-        return state
-    raw = json.loads(BANKROLL_PATH.read_text())
-    # Backfill defaults if older file is missing keys.
-    for k, v in DEFAULTS.items():
-        raw.setdefault(k, v)
+def load(user_id: str) -> dict:
+    path = auth.bankroll_path(user_id)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"bankroll not initialized for user {user_id!r} — "
+            f"run setup wizard or call bankroll.init()"
+        )
+    raw = json.loads(path.read_text())
     raw.setdefault("events", [])
     return raw
 
 
-def save(state: dict) -> None:
-    BANKROLL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    BANKROLL_PATH.write_text(json.dumps(state, indent=2) + "\n")
+def save(user_id: str, state: dict) -> None:
+    path = auth.bankroll_path(user_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2) + "\n")
 
 
 def _sum_delta(events: list[dict]) -> float:
     return sum(float(e.get("delta") or 0.0) for e in events)
 
 
-def current_balance(state: dict | None = None) -> float:
-    state = state or load()
+def current_balance(user_id: str, state: dict | None = None) -> float:
+    state = state or load(user_id)
     return float(state["starting"]) + _sum_delta(state["events"])
 
 
@@ -123,10 +132,10 @@ def _settle_delta(bet: dict) -> float | None:
     return 0.0 if free else -stake
 
 
-def record_settlement(bet: dict, *, save_state: bool = True) -> dict:
+def record_settlement(user_id: str, bet: dict, *, save_state: bool = True) -> dict:
     """Idempotent settle event for one bet. Replaces any prior settle
     event with the same bet_id so W↔L flips stay consistent."""
-    state = load()
+    state = load(user_id)
     bet_id = bet.get("id")
     state["events"] = [
         e for e in state["events"]
@@ -145,14 +154,14 @@ def record_settlement(bet: dict, *, save_state: bool = True) -> dict:
             }
         )
     if save_state:
-        save(state)
+        save(user_id, state)
     return state
 
 
 def record_event(
-    type_: str, delta: float, note: str = "", bet_id: str | None = None
+    user_id: str, type_: str, delta: float, note: str = "", bet_id: str | None = None
 ) -> dict:
-    state = load()
+    state = load(user_id)
     state["events"].append(
         {
             "ts": _now_iso(),
@@ -162,14 +171,14 @@ def record_event(
             "note": note,
         }
     )
-    save(state)
+    save(user_id, state)
     return state
 
 
-def snapshot(pending_stake: float = 0.0) -> dict:
+def snapshot(user_id: str, pending_stake: float = 0.0) -> dict:
     """Read-only view used by the dashboard / API."""
-    state = load()
-    current = current_balance(state)
+    state = load(user_id)
+    current = current_balance(user_id, state)
     # Track bankroll-curve extremes by replaying events in order.
     running = float(state["starting"])
     low = high = running
@@ -194,11 +203,11 @@ def snapshot(pending_stake: float = 0.0) -> dict:
     }
 
 
-def backfill_from_bets(bets: list[dict]) -> dict:
+def backfill_from_bets(user_id: str, bets: list[dict]) -> dict:
     """Replay every settled bet in date order, recording a settle event
     for any bet that doesn't already have one. Idempotent — safe to run
     repeatedly. Returns the final state."""
-    state = load()
+    state = load(user_id)
     have = {
         e.get("bet_id")
         for e in state["events"]
@@ -230,38 +239,46 @@ def backfill_from_bets(bets: list[dict]) -> dict:
                 ),
             }
         )
-    save(state)
+    save(user_id, state)
     return state
 
 
 def main() -> None:
-    """CLI: `python -m bets.bankroll [show|backfill|reset]`"""
+    """CLI: `python -m bets.bankroll <user> [show|backfill|reset]`"""
     import sys
 
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "show"
+    if len(sys.argv) < 2:
+        print(
+            "usage: python -m bets.bankroll <user_id> [show|backfill|reset]",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    user_id = sys.argv[1]
+    cmd = sys.argv[2] if len(sys.argv) > 2 else "show"
     if cmd == "show":
         from . import wagers
-        bets = wagers.load_bets()["bets"]
+        bets = wagers.load_bets(user_id)["bets"]
         pending = sum(
             float(b.get("stake") or 0)
             for b in bets
             if not b.get("result") and not b.get("free_entry")
         )
-        snap = snapshot(pending)
+        snap = snapshot(user_id, pending)
         print(json.dumps(snap, indent=2))
     elif cmd == "backfill":
         from . import wagers
-        before = current_balance()
-        state = backfill_from_bets(wagers.load_bets()["bets"])
-        after = current_balance(state)
+        before = current_balance(user_id)
+        state = backfill_from_bets(user_id, wagers.load_bets(user_id)["bets"])
+        after = current_balance(user_id, state)
         print(f"bankroll: ${before:.2f} → ${after:.2f}")
         print(f"events: {len(state['events'])}")
     elif cmd == "reset":
-        if BANKROLL_PATH.exists():
-            BANKROLL_PATH.unlink()
-            print(f"removed {BANKROLL_PATH}")
+        path = auth.bankroll_path(user_id)
+        if path.exists():
+            path.unlink()
+            print(f"removed {path}")
         else:
-            print(f"no file at {BANKROLL_PATH}")
+            print(f"no file at {path}")
     else:
         print(f"unknown command: {cmd}")
         sys.exit(2)

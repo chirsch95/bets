@@ -32,10 +32,30 @@ NOTIFY_STATE_PATH = PROJECT_ROOT / "data" / "notify_state.json"
 logger = logging.getLogger(__name__)
 
 
-def send_pushover(title: str, message: str) -> None:
+def _user_pushover_key(user_id: str | None) -> str | None:
+    """Look up the user's personal Pushover key from prefs. Falls back
+    to the env var (chad's pre-multi-user setup) only when no user is
+    specified — i.e., for system-level alerts like the quota threshold."""
+    if user_id is None:
+        return os.getenv("PUSHOVER_USER")
+    try:
+        from . import auth
+        prefs = auth.load_prefs(user_id)
+    except Exception:  # noqa: BLE001
+        prefs = None
+    if prefs and prefs.get("pushover_user_key"):
+        return prefs["pushover_user_key"]
+    return None
+
+
+def send_pushover(title: str, message: str, user_id: str | None = None) -> None:
+    """Send a Pushover notification. Per-user when user_id is supplied
+    (uses their prefs.pushover_user_key); falls back to PUSHOVER_USER env
+    var for system-level pings when user_id is None. Silent no-op when no
+    key is configured."""
     token = os.getenv("PUSHOVER_TOKEN")
-    user = os.getenv("PUSHOVER_USER")
-    if not token or not user:
+    user_key = _user_pushover_key(user_id)
+    if not token or not user_key:
         return
 
     def _send():
@@ -44,7 +64,7 @@ def send_pushover(title: str, message: str) -> None:
                 PUSHOVER_URL,
                 data={
                     "token": token,
-                    "user": user,
+                    "user": user_key,
                     "title": title,
                     "message": message,
                 },
@@ -145,21 +165,20 @@ def _live_for(live_results: dict, pid: int) -> dict | None:
     return live_results.get(pid) or live_results.get(str(pid))
 
 
-def check_live_alerts(live_results: dict, target_iso: str) -> None:
-    """Scan today's pending bets against a live snapshot and fire
-    Pushover alerts for: (1) any starter who just got pulled, (2)
+def check_live_alerts(user_id: str, live_results: dict, target_iso: str) -> None:
+    """Scan one user's today's pending bets against a live snapshot and
+    fire Pushover alerts for: (1) any starter who just got pulled, (2)
     parlays with all-but-one legs hit, (3) per-leg hit/miss in
-    multi-leg parlays. Deduped via notify_state.json.
+    multi-leg parlays. Deduped via notify_state.json (dedup key includes
+    user_id so two users sharing a pitcher each get their own alert).
 
-    Bet-level filtering: only today's pending bets are considered.
-    Settled bets and bets dated to other days are skipped. Wrapped in
-    broad try/except by the caller so a notification bug never breaks
-    the live-ks request.
+    Wrapped in broad try/except by the caller so a notification bug
+    never breaks the live-ks request.
     """
     # Local import: avoids a circular dep at module-import time.
     from . import wagers
 
-    bets = wagers.load_bets()["bets"]
+    bets = wagers.load_bets(user_id)["bets"]
     todays_pending = [
         b for b in bets
         if b.get("result") not in ("W", "L") and (b.get("date") or "") == target_iso
@@ -179,7 +198,7 @@ def check_live_alerts(live_results: dict, target_iso: str) -> None:
         live = _live_for(live_results, pid)
         if not live or not live.get("done") or live.get("status") == "Final":
             continue
-        if not _claim_key(f"{target_iso}:pulled:{pid}", target_iso):
+        if not _claim_key(f"{user_id}:{target_iso}:pulled:{pid}", target_iso):
             continue
         name = live.get("pitcher") or f"Pitcher {pid}"
         ks = live.get("ks")
@@ -188,7 +207,7 @@ def check_live_alerts(live_results: dict, target_iso: str) -> None:
             msg = f"Locked at {ks}K (line {line:g})"
         else:
             msg = "Pitcher pulled mid-game"
-        send_pushover(f"Pulled: {name}", msg)
+        send_pushover(f"Pulled: {name}", msg, user_id=user_id)
 
     # ----- one-to-go: multi-leg parlay with N-1 hit + 1 pending + 0 miss
     for b in todays_pending:
@@ -217,7 +236,7 @@ def check_live_alerts(live_results: dict, target_iso: str) -> None:
         # at slate-lock when nothing has happened yet.
         if not live or live.get("status") != "Live":
             continue
-        if not _claim_key(f"{target_iso}:onetogo:{b.get('id')}", target_iso):
+        if not _claim_key(f"{user_id}:{target_iso}:onetogo:{b.get('id')}", target_iso):
             continue
 
         name = leg.get("pitcher") or live.get("pitcher") or "?"
@@ -235,7 +254,7 @@ def check_live_alerts(live_results: dict, target_iso: str) -> None:
         else:
             title = f"One leg to go: {name}"
             msg = f"{name} {ou}{line_str} · {ks}K through {inning}"
-        send_pushover(title, msg)
+        send_pushover(title, msg, user_id=user_id)
 
     # ----- per-leg hit/miss: fire as soon as a leg's outcome is decided
     #       (line crossed, or game went final). Skips singletons since
@@ -256,28 +275,33 @@ def check_live_alerts(live_results: dict, target_iso: str) -> None:
             s = _leg_state(live.get("ks"), line, l.get("ou"), live.get("status"), live.get("done"))
             if s not in ("hit", "miss"):
                 continue
-            if not _claim_key(f"{target_iso}:leg:{bet_id}:{pid}:{s}", target_iso):
+            if not _claim_key(
+                f"{user_id}:{target_iso}:leg:{bet_id}:{pid}:{s}", target_iso
+            ):
                 continue
             name = l.get("pitcher") or live.get("pitcher") or f"Pitcher {pid}"
             ou = l.get("ou") or "?"
             ks = live.get("ks") or 0
             line_str = f"{line:g}" if line is not None else "?"
             verb = "hit" if s == "hit" else "miss"
-            send_pushover(f"Leg {verb}: {name}", f"{name} {ou}{line_str} · {ks}K")
+            send_pushover(
+                f"Leg {verb}: {name}",
+                f"{name} {ou}{line_str} · {ks}K",
+                user_id=user_id,
+            )
 
 
 # ---------- pre-game scratch alerts ----------
 
 
-def check_scratch_alerts(target_iso: str) -> None:
-    """Compare today's probable starters against pending bets; fire one
-    Pushover per scratched pitcher. The slate snapshot is used to find
-    the replacement on the same side of the matchup so the message can
-    name who's starting instead.
+def check_scratch_alerts(user_id: str, target_iso: str) -> None:
+    """Compare today's probable starters against one user's pending
+    bets; fire one Pushover per scratched pitcher. The slate snapshot is
+    used to find the replacement on the same side of the matchup so the
+    message can name who's starting instead.
 
-    Bet-level filtering: only today's pending bets count (matches
-    check_live_alerts). Wrapped in broad try/except by the caller so a
-    transient MLB Stats API failure never breaks the alerts loop.
+    Wrapped in broad try/except by the caller so a transient MLB Stats
+    API failure never breaks the alerts loop.
     """
     # Local imports: avoids a circular dep at module-import time and
     # keeps notify.py importable in contexts that don't want the full
@@ -290,7 +314,7 @@ def check_scratch_alerts(target_iso: str) -> None:
     except ValueError:
         return
 
-    bets = wagers.load_bets()["bets"]
+    bets = wagers.load_bets(user_id)["bets"]
     todays_pending = [
         b for b in bets
         if b.get("result") not in ("W", "L") and (b.get("date") or "") == target_iso
@@ -342,7 +366,7 @@ def check_scratch_alerts(target_iso: str) -> None:
                 continue
             if pid in starter_ids:
                 continue  # still on the card
-            if not _claim_key(f"{target_iso}:scratch:{pid}", target_iso):
+            if not _claim_key(f"{user_id}:{target_iso}:scratch:{pid}", target_iso):
                 continue
 
             original_name = leg.get("pitcher") or "?"
@@ -373,7 +397,7 @@ def check_scratch_alerts(target_iso: str) -> None:
                 msg = f"Now starting: {replacement_name}"
             else:
                 msg = "No replacement listed yet"
-            send_pushover(title, msg)
+            send_pushover(title, msg, user_id=user_id)
 
 
 # ---------- Odds API quota threshold alerts ----------

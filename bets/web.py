@@ -1547,7 +1547,126 @@ CSS = """
   .parlay-inline-status .pi-h { color: var(--green); font-weight: 700; }
   .parlay-inline-status .pi-m { color: var(--red); font-weight: 700; }
   .parlay-inline-status .pi-p { color: var(--muted); }
-  /* Bets tab — local-only personal ledger. */
+  /* Bets tab — per-user ledger. */
+  .user-chip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .user-chip-name strong { color: var(--text); }
+  .user-chip-logout {
+    color: var(--muted);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+  }
+  .user-chip-logout:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .auth-card {
+    max-width: 440px;
+    margin: 32px auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 28px;
+  }
+  .auth-wizard { max-width: 560px; }
+  .auth-title {
+    margin: 0 0 6px;
+    font-size: 20px;
+    color: var(--text);
+  }
+  .auth-sub {
+    margin: 0 0 18px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .auth-form { display: flex; flex-direction: column; gap: 14px; }
+  .auth-row { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .auth-row > span {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .auth-row > input {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 11px;
+    font-family: inherit;
+    font-size: 14px;
+  }
+  .auth-row > input:focus {
+    outline: none;
+    border-color: var(--text);
+  }
+  .auth-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .auth-row-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .auth-rules {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .auth-rules h3 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text);
+  }
+  .auth-rules p { margin: 4px 0; }
+  .auth-rules ul { margin: 4px 0 8px 18px; padding: 0; }
+  .auth-rules li { margin: 2px 0; }
+  .auth-rules em { color: var(--text); font-style: normal; font-weight: 600; }
+  .auth-ack {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .auth-ack input { margin-top: 2px; }
+  .auth-error {
+    background: rgba(220, 60, 60, 0.12);
+    border: 1px solid rgba(220, 60, 60, 0.4);
+    color: var(--red, #e88);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .auth-submit {
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .auth-submit:disabled { opacity: 0.6; cursor: default; }
   .bets-form-card {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -5069,6 +5188,52 @@ def _render_js() -> str:
     }}
   }}
 
+  // Returns {{user_id, display_name, has_setup}}. user_id === null means
+  // not signed in. Always 200 — never throws on auth state alone.
+  async function apiWhoami() {{
+    try {{
+      const r = await fetch("/api/whoami", {{ cache: "no-cache" }});
+      if (!r.ok) return {{ user_id: null, display_name: null, has_setup: false }};
+      return await r.json();
+    }} catch (e) {{
+      return {{ user_id: null, display_name: null, has_setup: false }};
+    }}
+  }}
+
+  async function apiLogin(username, password) {{
+    const r = await fetch("/api/login", {{
+      method: "POST",
+      headers: {{ "Content-Type": "application/json" }},
+      body: JSON.stringify({{ username, password }}),
+    }});
+    if (!r.ok) {{
+      let msg = "Sign-in failed";
+      try {{ msg = (await r.json()).error || msg; }} catch (e) {{}}
+      throw new Error(msg);
+    }}
+    return r.json();
+  }}
+
+  async function apiLogout() {{
+    try {{
+      await fetch("/api/logout", {{ method: "POST" }});
+    }} catch (e) {{}}
+  }}
+
+  async function apiSetup(payload) {{
+    const r = await fetch("/api/setup", {{
+      method: "POST",
+      headers: {{ "Content-Type": "application/json" }},
+      body: JSON.stringify(payload),
+    }});
+    if (!r.ok) {{
+      let msg = "Setup failed";
+      try {{ msg = (await r.json()).error || msg; }} catch (e) {{}}
+      throw new Error(msg);
+    }}
+    return r.json();
+  }}
+
   function fmtMoney(n) {{
     if (n === null || n === undefined || n === "") return "—";
     const v = parseFloat(n);
@@ -5740,13 +5905,23 @@ def _render_js() -> str:
     const dailyPnl = computeDailyBetsPnl(sorted);
     const heatmapHTML = renderBetsCalendar(dailyPnl, 14);
 
-    return `${{renderQuickStatus(state)}}
+    return `${{renderUserChip(state.me)}}
+      ${{renderQuickStatus(state)}}
       ${{toolbar}}
       <div class="bets-cards" id="bets-cards">${{cardsBody}}</div>
       ${{renderBankrollCard(state.bankroll)}}
       ${{renderBetsTotals(totals)}}
       ${{heatmapHTML}}
       ${{formHTML}}`;
+  }}
+
+  function renderUserChip(me) {{
+    if (!me || !me.user_id) return "";
+    const name = escapeHTML(me.display_name || me.user_id);
+    return `<div class="user-chip">
+      <span class="user-chip-name">Signed in as <strong>${{name}}</strong></span>
+      <a href="#" id="logout-link" class="user-chip-logout">Sign out</a>
+    </div>`;
   }}
 
   // Event delegation: one click handler on the panel handles all
@@ -5758,6 +5933,27 @@ def _render_js() -> str:
     const panel = document.getElementById("bets-panel");
     if (!panel) return;
     panel.innerHTML = '<p class="muted">Loading…</p>';
+
+    // Auth gate: figure out whether to show login form, setup wizard,
+    // or the normal bets UI. Cheap call (always 200), so we always
+    // hit it — handles cases where the session expired since last load.
+    let me;
+    try {{
+      me = await apiWhoami();
+    }} catch (e) {{
+      panel.innerHTML = `<p class="empty-msg">Bets API unavailable. Make sure the Flask server is running.</p>`;
+      return;
+    }}
+
+    if (!me.user_id) {{
+      renderLoginForm(panel);
+      return;
+    }}
+    if (!me.has_setup) {{
+      renderSetupWizard(panel, me);
+      return;
+    }}
+
     try {{
       // Fetch bets + slate + bankroll in parallel so the dropdown is
       // populated and the bankroll card has data by the time we render.
@@ -5767,6 +5963,7 @@ def _render_js() -> str:
         apiBankroll(),
       ]);
       state.bankroll = bankroll;
+      state.me = me;
       slatePitchers = pitchers;
       slateById = new Map(pitchers.map(p => [p.pitcher_id, p]));
       // Keep the pitcher-tab badge index aligned with whatever the bets
@@ -5776,14 +5973,164 @@ def _render_js() -> str:
       repaintBetBadges();
       panel.innerHTML = renderBetsTab(state);
       wireBetsHandlers(panel);
+      wireLogoutHandler(panel);
       // Kick off live K refresh for any pending bets with a pitcher_id,
       // then start the 60s auto-poll so K counts update without the
       // user clicking Refresh live.
       refreshLiveKs();
       startBetsLivePoll();
     }} catch (e) {{
-      panel.innerHTML = `<p class="empty-msg">Bets API unavailable. Make sure the local Flask server is running (python -m bets.server).</p>`;
+      panel.innerHTML = `<p class="empty-msg">Bets API unavailable. Make sure the Flask server is running.</p>`;
     }}
+  }}
+
+  // ──── Auth UI ──────────────────────────────────────────────────────
+
+  function renderLoginForm(panel) {{
+    panel.innerHTML = `
+      <div class="auth-card">
+        <h2 class="auth-title">Sign in</h2>
+        <form id="login-form" class="auth-form">
+          <label class="auth-row">
+            <span>Username</span>
+            <input name="username" type="text" autocomplete="username" required autofocus>
+          </label>
+          <label class="auth-row">
+            <span>Password</span>
+            <input name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <div id="login-error" class="auth-error" hidden></div>
+          <button type="submit" class="auth-submit">Sign in</button>
+        </form>
+      </div>
+    `;
+    const form = panel.querySelector("#login-form");
+    const errEl = panel.querySelector("#login-error");
+    form.addEventListener("submit", async (ev) => {{
+      ev.preventDefault();
+      errEl.hidden = true;
+      const fd = new FormData(form);
+      const submit = form.querySelector("button[type=submit]");
+      submit.disabled = true;
+      submit.textContent = "Signing in…";
+      try {{
+        await apiLogin(fd.get("username"), fd.get("password"));
+        await loadBetsTab();
+      }} catch (e) {{
+        errEl.textContent = e.message || "Sign-in failed";
+        errEl.hidden = false;
+        submit.disabled = false;
+        submit.textContent = "Sign in";
+      }}
+    }});
+  }}
+
+  function renderSetupWizard(panel, me) {{
+    const name = me.display_name || me.user_id;
+    panel.innerHTML = `
+      <div class="auth-card auth-wizard">
+        <h2 class="auth-title">Welcome, ${{escapeHTML(name)}}</h2>
+        <p class="auth-sub">A few quick questions to set up your bankroll. You can change all of this later.</p>
+        <form id="setup-form" class="auth-form">
+          <label class="auth-row">
+            <span>Display name</span>
+            <input name="display_name" type="text" value="${{escapeHTML(name)}}" required>
+          </label>
+          <label class="auth-row">
+            <span>Starting bankroll ($)</span>
+            <input name="starting_bankroll" type="number" min="1" step="1" value="300" required>
+          </label>
+          <label class="auth-row">
+            <span>Pause-review threshold ($)</span>
+            <input name="pause_at" type="number" min="0" step="1" value="150" required>
+            <small class="auth-hint">If your bankroll drops to this, time to step back and review. Default = 50% of starting.</small>
+          </label>
+          <label class="auth-row">
+            <span>End threshold ($)</span>
+            <input name="end_at" type="number" min="0" step="1" value="0" required>
+            <small class="auth-hint">Bust line — experiment over.</small>
+          </label>
+          <div class="auth-row-pair">
+            <label class="auth-row">
+              <span>1 unit ($)</span>
+              <input name="stake_1u" type="number" min="0.5" step="0.5" value="5" required>
+            </label>
+            <label class="auth-row">
+              <span>2 units ($)</span>
+              <input name="stake_2u" type="number" min="0.5" step="0.5" value="10" required>
+            </label>
+          </div>
+          <label class="auth-row">
+            <span>Pushover user key (optional)</span>
+            <input name="pushover_user_key" type="text" placeholder="leave blank to skip notifications">
+            <small class="auth-hint">Personal Pushover user key for bet-settled, pulled-starter, and parlay alerts. Get one at pushover.net.</small>
+          </label>
+
+          <div class="auth-rules">
+            <h3>Bump rules — read before confirming</h3>
+            <p><strong>1 unit (default):</strong> standard stake on most picks.</p>
+            <p><strong>2 units (bump):</strong> only when at least one of these is true:</p>
+            <ul>
+              <li><em>All-focus parlay</em> — every leg in the 0.05–0.15 edge band on the dashboard.</li>
+              <li><em>Targeted boost</em> — site offers a price improvement on this specific market.</li>
+              <li><em>Material info</em> — late lineup/weather/scratch info the slate couldn't have known.</li>
+            </ul>
+            <p><strong>Veto rules — even if a trigger fires, stay at 1u when:</strong></p>
+            <ul>
+              <li>Today's bankroll is below yesterday's (no chasing losses)</li>
+              <li>Parlay has 3+ legs (variance too high to double up)</li>
+              <li>Bankroll is in the bottom third of starting</li>
+            </ul>
+            <label class="auth-ack">
+              <input type="checkbox" name="rules_acknowledged" required>
+              <span>I understand the bump rules and will follow them</span>
+            </label>
+          </div>
+
+          <div id="setup-error" class="auth-error" hidden></div>
+          <button type="submit" class="auth-submit">Save and continue</button>
+        </form>
+      </div>
+    `;
+    const form = panel.querySelector("#setup-form");
+    const errEl = panel.querySelector("#setup-error");
+    form.addEventListener("submit", async (ev) => {{
+      ev.preventDefault();
+      errEl.hidden = true;
+      const fd = new FormData(form);
+      const payload = {{
+        display_name: fd.get("display_name"),
+        starting_bankroll: fd.get("starting_bankroll"),
+        pause_at: fd.get("pause_at"),
+        end_at: fd.get("end_at"),
+        stake_1u: fd.get("stake_1u"),
+        stake_2u: fd.get("stake_2u"),
+        pushover_user_key: fd.get("pushover_user_key") || "",
+        rules_acknowledged: !!fd.get("rules_acknowledged"),
+      }};
+      const submit = form.querySelector("button[type=submit]");
+      submit.disabled = true;
+      submit.textContent = "Saving…";
+      try {{
+        await apiSetup(payload);
+        await loadBetsTab();
+      }} catch (e) {{
+        errEl.textContent = e.message || "Setup failed";
+        errEl.hidden = false;
+        submit.disabled = false;
+        submit.textContent = "Save and continue";
+      }}
+    }});
+  }}
+
+  function wireLogoutHandler(panel) {{
+    const btn = panel.querySelector("#logout-link");
+    if (!btn) return;
+    btn.addEventListener("click", async (ev) => {{
+      ev.preventDefault();
+      await apiLogout();
+      await loadBetsTab();
+    }});
   }}
 
   // Collect unique pitcher_ids from currently-pending bets and fetch
@@ -6999,12 +7346,15 @@ def _render_js() -> str:
     return h === "" || h === "localhost" || h === "127.0.0.1";
   }}
 
-  // True when bets data is reachable from this origin: the Air's Flask,
-  // accessed via Tailscale Serve URL (https://<host>.<tailnet>.ts.net/).
-  // Bets tab is hidden everywhere else — public Cloudflare URL never sees
-  // it, and the laptop's localhost server has stale data after migration.
+  // True when bets data is reachable from this origin. Two cases:
+  //  1. Air's Flask via Tailscale Serve (https://<host>.<tailnet>.ts.net/)
+  //  2. Local laptop dev server (localhost / 127.0.0.1) — Flask binds to
+  //     127.0.0.1 only, so nobody on the network can reach it.
+  // Public Cloudflare URL never matches — it sees a static dashboard
+  // with no Bets tab, and Caddy 404s /api/* routes anyway.
   function isBets() {{
-    return /\.ts\.net$/i.test(location.hostname);
+    const h = location.hostname;
+    return /\.ts\.net$/i.test(h) || h === "localhost" || h === "127.0.0.1";
   }}
 
   // Default-hide the noise + no-line rows so the eye lands on focus
@@ -7693,7 +8043,7 @@ def generate(target_date: date | None = None) -> Path | None:
     local_check = (
         "(function(){var h=location.hostname;var d=document.documentElement;"
         "if(h===''||h==='localhost'||h==='127.0.0.1')d.classList.add('is-local');"
-        "if(/\\.ts\\.net$/i.test(h))d.classList.add('is-bets');"
+        "if(/\\.ts\\.net$/i.test(h)||h==='localhost'||h==='127.0.0.1')d.classList.add('is-bets');"
         "try{var t=localStorage.getItem('bets-theme');"
         "if(t==='light'||t==='dark')d.setAttribute('data-theme',t);}catch(e){}"
         "})();"

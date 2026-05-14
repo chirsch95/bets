@@ -35,7 +35,7 @@ from flask import (
     send_from_directory,
 )
 
-from . import bankroll, health, live, notify, wagers
+from . import auth, bankroll, health, live, notify, wagers
 from .config import OUTPUT_DIR, PROJECT_ROOT
 from .settle import settle_date, settle_hitters_date
 
@@ -47,7 +47,16 @@ from .settle import settle_date, settle_hitters_date
 
 load_dotenv(PROJECT_ROOT / ".env")
 
+# One-time migration: move legacy data/bets.json + data/bankroll.json
+# into data/users/chad/. Idempotent — no-op once done.
+auth.migrate_legacy_if_needed()
+
 app = Flask(__name__)
+app.secret_key = auth.get_or_create_secret_key()
+# 30-day "remember me" sessions. Cookie itself is signed; lifetime is the
+# permanent_session_lifetime cap, refreshed on activity by Flask.
+from datetime import timedelta as _timedelta  # local: only needed for config
+app.permanent_session_lifetime = _timedelta(days=30)
 
 # Serialize pipeline runs. Two simultaneous /refresh clicks would each
 # burn ~16 Odds API credits and race to overwrite the same CSV (last
@@ -216,29 +225,117 @@ def push():
         _pipeline_lock.release()
 
 
+@app.get("/api/whoami")
+def api_whoami():
+    """Returns auth + setup status. The bets-tab JS calls this on load
+    to decide whether to render the login modal, the first-login wizard,
+    or the normal bets UI. Always 200 — `user_id: null` means logged out."""
+    uid = auth.current_user_id()
+    if not uid or auth.get_user(uid) is None:
+        return jsonify({"user_id": None, "display_name": None, "has_setup": False})
+    prefs = auth.load_prefs(uid) or {}
+    return jsonify({
+        "user_id": uid,
+        "display_name": prefs.get("display_name") or uid,
+        "has_setup": auth.has_completed_setup(uid),
+    })
+
+
+@app.post("/api/login")
+def api_login():
+    payload = request.get_json(silent=True) or {}
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    user = auth.verify_password(username, password)
+    if user is None:
+        return jsonify({"error": "invalid username or password"}), 401
+    auth.login(user)
+    prefs = auth.load_prefs(user["id"]) or {}
+    return jsonify({
+        "user_id": user["id"],
+        "display_name": prefs.get("display_name") or user["id"],
+        "has_setup": auth.has_completed_setup(user["id"]),
+    })
+
+
+@app.post("/api/logout")
+def api_logout():
+    auth.logout()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/setup")
+@auth.login_required
+def api_setup():
+    """First-login wizard target. Creates the user's bankroll + prefs.
+    Idempotent on display_name / stake_units / pushover_user_key (those
+    can be re-saved later). Refuses to overwrite an existing bankroll —
+    seeding a starting balance is a one-time event."""
+    uid = auth.current_user_id()
+    payload = request.get_json(silent=True) or {}
+
+    def _f(key, default):
+        try:
+            return float(payload.get(key, default))
+        except (TypeError, ValueError):
+            return default
+
+    starting = _f("starting_bankroll", 0.0)
+    if starting <= 0:
+        return jsonify({"error": "starting bankroll must be > 0"}), 400
+    pause_at = _f("pause_at", starting * 0.5)
+    end_at = _f("end_at", 0.0)
+    stake_1u = _f("stake_1u", 5.0)
+    stake_2u = _f("stake_2u", 10.0)
+    display_name = (payload.get("display_name") or "").strip() or uid
+    pushover_key = (payload.get("pushover_user_key") or "").strip()
+    acknowledged = bool(payload.get("rules_acknowledged"))
+
+    # Bankroll: only init if it doesn't exist yet. Returning 409 lets the
+    # UI catch the "already set up" case rather than silently overwriting.
+    if auth.bankroll_path(uid).exists():
+        return jsonify({"error": "bankroll already initialized"}), 409
+    bankroll.init(uid, starting=starting, pause_at=pause_at, end_at=end_at)
+
+    auth.save_prefs(uid, {
+        "display_name": display_name,
+        "stake_1u": stake_1u,
+        "stake_2u": stake_2u,
+        "pushover_user_key": pushover_key,
+        "rules_acknowledged_at": (
+            auth._now_iso() if acknowledged else None
+        ),
+    })
+    return jsonify({"ok": True})
+
+
 @app.get("/api/bets")
+@auth.login_required
 def api_list_bets():
-    state = wagers.load_bets()
-    return jsonify({"bets": state["bets"], "totals": wagers.totals(state)})
+    uid = auth.current_user_id()
+    state = wagers.load_bets(uid)
+    return jsonify({"bets": state["bets"], "totals": wagers.totals(uid, state)})
 
 
 @app.post("/api/bets")
+@auth.login_required
 def api_add_bet():
+    uid = auth.current_user_id()
     payload = request.get_json(silent=True) or {}
-    bet = wagers.add_bet(payload)
-    return jsonify({"bet": bet, "totals": wagers.totals()})
+    bet = wagers.add_bet(uid, payload)
+    return jsonify({"bet": bet, "totals": wagers.totals(uid)})
 
 
-def _settle_bet_with_notify(bet_id: str, payload: dict) -> dict | None:
+def _settle_bet_with_notify(user_id: str, bet_id: str, payload: dict) -> dict | None:
     """Update a bet and fire the bet-settled Pushover on pending → W/L.
     Shared by PUT /api/bets and the background alerts loop so both paths
     hit the same notification flow."""
     prior = next(
-        (b for b in wagers.load_bets()["bets"] if b.get("id") == bet_id),
+        (b for b in wagers.load_bets(user_id)["bets"] if b.get("id") == bet_id),
         None,
     )
     prior_result = prior.get("result") if prior else None
-    updated = wagers.update_bet(bet_id, payload)
+    updated = wagers.update_bet(user_id, bet_id, payload)
     if updated is None:
         return None
     # Bankroll ledger: replay the settlement event for this bet (idempotent
@@ -246,18 +343,21 @@ def _settle_bet_with_notify(bet_id: str, payload: dict) -> dict | None:
     # Run on every update — record_settlement removes the prior settle event
     # if the bet is no longer in W/L state.
     try:
-        bankroll.record_settlement(updated)
+        bankroll.record_settlement(user_id, updated)
     except Exception as exc:  # noqa: BLE001
         app.logger.warning("bankroll settle for %s failed: %s", bet_id, exc)
     if prior_result is None and updated.get("result") in ("W", "L"):
         formatted = notify.format_bet_settle(updated)
         if formatted:
-            notify.send_pushover(*formatted)
+            title, body = formatted
+            notify.send_pushover(title, body, user_id=user_id)
     return updated
 
 
 @app.put("/api/bets/<bet_id>")
+@auth.login_required
 def api_update_bet(bet_id: str):
+    uid = auth.current_user_id()
     payload = request.get_json(silent=True) or {}
     # Defense in depth against the bets-tab auto-settle bug fixed in
     # 04a3b9f: refuse to flip an already-settled bet between W and L
@@ -265,7 +365,7 @@ def api_update_bet(bet_id: str):
     # running pre-fix JS would otherwise re-grade old bets against
     # today's K count for the same pitcher_id.
     prior = next(
-        (b for b in wagers.load_bets()["bets"] if b.get("id") == bet_id),
+        (b for b in wagers.load_bets(uid)["bets"] if b.get("id") == bet_id),
         None,
     )
     if prior is not None and "result" in payload:
@@ -291,30 +391,39 @@ def api_update_bet(bet_id: str):
                 ),
                 409,
             )
-    updated = _settle_bet_with_notify(bet_id, payload)
+    updated = _settle_bet_with_notify(uid, bet_id, payload)
     if updated is None:
         return jsonify({"error": "not found"}), 404
-    return jsonify({"bet": updated, "totals": wagers.totals()})
+    return jsonify({"bet": updated, "totals": wagers.totals(uid)})
 
 
 @app.delete("/api/bets/<bet_id>")
+@auth.login_required
 def api_delete_bet(bet_id: str):
-    if not wagers.delete_bet(bet_id):
+    uid = auth.current_user_id()
+    if not wagers.delete_bet(uid, bet_id):
         return jsonify({"error": "not found"}), 404
-    return jsonify({"ok": True, "totals": wagers.totals()})
+    return jsonify({"ok": True, "totals": wagers.totals(uid)})
 
 
 @app.get("/api/bankroll")
+@auth.login_required
 def api_bankroll():
     """Bankroll snapshot for the dashboard pill. Pending exposure is
     reported separately so the UI can show free cash vs deployed cash."""
-    bets = wagers.load_bets()["bets"]
+    uid = auth.current_user_id()
+    # If the user hasn't completed setup yet, there's no bankroll file
+    # and load() would raise. Return a setup-needed marker so the JS can
+    # show the wizard without a crashing fetch in the console.
+    if not auth.bankroll_path(uid).exists():
+        return jsonify({"setup_required": True}), 409
+    bets = wagers.load_bets(uid)["bets"]
     pending_stake = sum(
         float(b.get("stake") or 0)
         for b in bets
         if not b.get("result") and not b.get("free_entry")
     )
-    return jsonify(bankroll.snapshot(pending_stake))
+    return jsonify(bankroll.snapshot(uid, pending_stake))
 
 
 @app.get("/api/slate-pitchers")
@@ -367,12 +476,16 @@ def api_live_ks():
         target = _today()
     results = live.live_ks(pitcher_ids, target)
     # Piggyback live-game alerts (pulled starter / parlay one-to-go) on
-    # the dashboard's existing 60s poll. Wrapped broadly so a bug here
-    # never breaks the live-ks fetch the UI depends on.
-    try:
-        notify.check_live_alerts(results, target.isoformat())
-    except Exception as exc:  # noqa: BLE001
-        app.logger.warning("live alerts check failed: %s", exc)
+    # the dashboard's existing 60s poll, but only for the logged-in
+    # user — otherwise we'd fire alerts when an anonymous tab on the
+    # public Pitcher tab polls. The 60s daemon (_alerts_tick) covers
+    # alerts for users who never visit the Bets tab.
+    uid = auth.current_user_id()
+    if uid:
+        try:
+            notify.check_live_alerts(uid, results, target.isoformat())
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning("live alerts check failed: %s", exc)
     return jsonify({"date": target.isoformat(), "results": results})
 
 
@@ -421,27 +534,47 @@ def _alerts_tick() -> None:
     except Exception as exc:  # noqa: BLE001
         app.logger.warning("alerts tick: check_quota_alerts failed: %s", exc)
 
-    state = wagers.load_bets()
-    pending = [b for b in state["bets"] if not b.get("result")]
-
-    # Scratch check: needs at least one pending bet for today, and is
-    # rate-limited to 5 min so we don't pummel the MLB Stats API every
-    # 60s. Scratches usually announce 1-3 hours pre-game so the cooldown
-    # is plenty of resolution.
-    todays_pending = [b for b in pending if (b.get("date") or "") == target_iso]
-    if todays_pending and time.time() - _last_scratch_check_at >= 300:
-        _last_scratch_check_at = time.time()
+    # Iterate every user's pending bets — each gets their own alerts and
+    # auto-settles into their own bankroll. A pitcher who appears in two
+    # users' bets fires one Pushover per user (dedup keys are
+    # user-scoped in notify.py). Pitcher-id set is unioned across users
+    # so we make one MLB API call regardless of overlap.
+    by_user_pending: dict[str, list[dict]] = {}
+    for uid in auth.all_user_ids():
         try:
-            notify.check_scratch_alerts(target_iso)
+            user_state = wagers.load_bets(uid)
         except Exception as exc:  # noqa: BLE001
-            app.logger.warning("alerts tick: check_scratch_alerts failed: %s", exc)
+            app.logger.warning("alerts tick: load_bets(%s) failed: %s", uid, exc)
+            continue
+        by_user_pending[uid] = [b for b in user_state["bets"] if not b.get("result")]
+
+    # Scratch check: per user, needs at least one pending bet today, and
+    # the whole tick is rate-limited to 5 min so we don't pummel the MLB
+    # Stats API every 60s. Scratches usually announce 1-3 hours pre-game
+    # so the cooldown is plenty of resolution.
+    todays_any = any(
+        any((b.get("date") or "") == target_iso for b in pending)
+        for pending in by_user_pending.values()
+    )
+    if todays_any and time.time() - _last_scratch_check_at >= 300:
+        _last_scratch_check_at = time.time()
+        for uid, pending in by_user_pending.items():
+            if not any((b.get("date") or "") == target_iso for b in pending):
+                continue
+            try:
+                notify.check_scratch_alerts(uid, target_iso)
+            except Exception as exc:  # noqa: BLE001
+                app.logger.warning(
+                    "alerts tick: check_scratch_alerts(%s) failed: %s", uid, exc
+                )
 
     pids: set[int] = set()
-    for b in pending:
-        for leg in b.get("legs") or []:
-            pid = leg.get("pitcher_id")
-            if isinstance(pid, int):
-                pids.add(pid)
+    for pending in by_user_pending.values():
+        for b in pending:
+            for leg in b.get("legs") or []:
+                pid = leg.get("pitcher_id")
+                if isinstance(pid, int):
+                    pids.add(pid)
     if not pids:
         return
     try:
@@ -449,41 +582,48 @@ def _alerts_tick() -> None:
     except Exception as exc:  # noqa: BLE001
         app.logger.warning("alerts tick: live_ks failed: %s", exc)
         return
-    try:
-        notify.check_live_alerts(results, target_iso)
-    except Exception as exc:  # noqa: BLE001
-        app.logger.warning("alerts tick: check_live_alerts failed: %s", exc)
-    for bet in pending:
-        leg_states = []
-        for leg in bet.get("legs") or []:
-            pid = leg.get("pitcher_id")
-            data = results.get(pid) if isinstance(pid, int) else None
-            if not data:
-                leg_states.append(None)
-                continue
-            leg_states.append(
-                _leg_hit_state(
-                    data.get("ks"),
-                    leg.get("line"),
-                    leg.get("ou"),
-                    data.get("status"),
-                    bool(data.get("done")),
-                )
-            )
-        verdict = _parlay_verdict(leg_states)
-        if verdict is None or bet.get("result") == verdict:
-            continue
-        payout = (
-            round((bet.get("stake") or 0) * (bet.get("odds") or 0), 2)
-            if verdict == "W"
-            else 0
-        )
+
+    for uid, pending in by_user_pending.items():
         try:
-            _settle_bet_with_notify(bet["id"], {"result": verdict, "payout": payout})
+            notify.check_live_alerts(uid, results, target_iso)
         except Exception as exc:  # noqa: BLE001
             app.logger.warning(
-                "alerts tick: auto-settle for %s failed: %s", bet.get("id"), exc
+                "alerts tick: check_live_alerts(%s) failed: %s", uid, exc
             )
+        for bet in pending:
+            leg_states = []
+            for leg in bet.get("legs") or []:
+                pid = leg.get("pitcher_id")
+                data = results.get(pid) if isinstance(pid, int) else None
+                if not data:
+                    leg_states.append(None)
+                    continue
+                leg_states.append(
+                    _leg_hit_state(
+                        data.get("ks"),
+                        leg.get("line"),
+                        leg.get("ou"),
+                        data.get("status"),
+                        bool(data.get("done")),
+                    )
+                )
+            verdict = _parlay_verdict(leg_states)
+            if verdict is None or bet.get("result") == verdict:
+                continue
+            payout = (
+                round((bet.get("stake") or 0) * (bet.get("odds") or 0), 2)
+                if verdict == "W"
+                else 0
+            )
+            try:
+                _settle_bet_with_notify(
+                    uid, bet["id"], {"result": verdict, "payout": payout}
+                )
+            except Exception as exc:  # noqa: BLE001
+                app.logger.warning(
+                    "alerts tick: auto-settle for %s/%s failed: %s",
+                    uid, bet.get("id"), exc
+                )
 
 
 def _start_alerts_loop() -> None:

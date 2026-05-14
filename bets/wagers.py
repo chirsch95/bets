@@ -1,8 +1,8 @@
-"""Personal bet ledger backed by data/bets.json.
+"""Per-user bet ledger backed by data/users/<id>/bets.json.
 
-Local-only feature — the JSON file lives in data/ which is gitignored,
-so it never reaches GitHub or the public URL. The Flask server exposes CRUD
-endpoints; the dashboard renders a local-only "Bets" tab against them.
+Each user's ledger lives in their own directory (gitignored). All
+functions take a `user_id` so the wrong user's bets can never be read or
+written by accident — there is no implicit "current user" at this layer.
 
 Schema for one bet (one row in the spreadsheet ≈ one parlay ticket):
     {
@@ -29,30 +29,27 @@ and `ou` strings. Those are converted on read by `_migrate_legacy()`.
 On the next write the bet is persisted in the new schema; until then
 the legacy strings are kept for safety (migration is non-destructive).
 
-CRUD is single-user / single-process — no locking. Read-modify-write is
-fine for a personal local tracker.
+CRUD is single-process — no locking. Read-modify-write is fine.
 """
 
 from __future__ import annotations
 
 import json
 import secrets
-from pathlib import Path
 
-from .config import PROJECT_ROOT
-
-BETS_PATH = PROJECT_ROOT / "data" / "bets.json"
+from . import auth
 
 
 def _empty_state() -> dict:
     return {"bets": []}
 
 
-def load_bets() -> dict:
-    if not BETS_PATH.exists():
+def load_bets(user_id: str) -> dict:
+    path = auth.bets_path(user_id)
+    if not path.exists():
         return _empty_state()
     try:
-        raw = json.loads(BETS_PATH.read_text())
+        raw = json.loads(path.read_text())
     except json.JSONDecodeError:
         # Corrupted file — refuse to silently overwrite. Bubble up.
         raise
@@ -62,9 +59,10 @@ def load_bets() -> dict:
     return raw
 
 
-def save_bets(state: dict) -> None:
-    BETS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    BETS_PATH.write_text(json.dumps(state, indent=2) + "\n")
+def save_bets(user_id: str, state: dict) -> None:
+    path = auth.bets_path(user_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2) + "\n")
 
 
 def _new_id() -> str:
@@ -236,8 +234,8 @@ def _capture_leg_slate(leg: dict, slate_by_pid: dict) -> None:
     leg["slate_captured_at"] = datetime.now(timezone.utc).isoformat()
 
 
-def add_bet(bet: dict) -> dict:
-    state = load_bets()
+def add_bet(user_id: str, bet: dict) -> dict:
+    state = load_bets(user_id)
     normalized = _normalize(bet)
     # Stamp the bankroll number at placement time if the caller didn't
     # provide one. Records "what was my free cash when I sized this bet"
@@ -245,7 +243,7 @@ def add_bet(bet: dict) -> dict:
     if normalized.get("bankroll_at_time") is None:
         try:
             from . import bankroll as _bk
-            normalized["bankroll_at_time"] = round(_bk.current_balance(), 2)
+            normalized["bankroll_at_time"] = round(_bk.current_balance(user_id), 2)
         except Exception as e:  # noqa: BLE001
             print(f"bankroll stamp failed: {e}")
     # Stamp each leg with the current slate row so the bet object records
@@ -263,33 +261,33 @@ def add_bet(bet: dict) -> dict:
     except Exception as e:  # noqa: BLE001
         print(f"bet-time slate capture failed: {e}")
     state["bets"].append(normalized)
-    save_bets(state)
+    save_bets(user_id, state)
     return normalized
 
 
-def update_bet(bet_id: str, updates: dict) -> dict | None:
-    state = load_bets()
+def update_bet(user_id: str, bet_id: str, updates: dict) -> dict | None:
+    state = load_bets(user_id)
     for i, b in enumerate(state["bets"]):
         if b.get("id") == bet_id:
             merged = {**b, **updates, "id": bet_id}
             normalized = _normalize(merged)
             state["bets"][i] = normalized
-            save_bets(state)
+            save_bets(user_id, state)
             return normalized
     return None
 
 
-def delete_bet(bet_id: str) -> bool:
-    state = load_bets()
+def delete_bet(user_id: str, bet_id: str) -> bool:
+    state = load_bets(user_id)
     before = len(state["bets"])
     state["bets"] = [b for b in state["bets"] if b.get("id") != bet_id]
     if len(state["bets"]) == before:
         return False
-    save_bets(state)
+    save_bets(user_id, state)
     return True
 
 
-def totals(state: dict | None = None) -> dict:
+def totals(user_id: str, state: dict | None = None) -> dict:
     """Aggregate stats across all bets — drives the totals strip.
 
     Free-entry bets are excluded from staked / settled_staked (no money
@@ -298,7 +296,7 @@ def totals(state: dict | None = None) -> dict:
     Counts of wins / losses / pending include free entries. Bonus
     winnings from free entries are also reported separately for visibility.
     """
-    state = state or load_bets()
+    state = state or load_bets(user_id)
     bets = state["bets"]
     paid = [b for b in bets if not b.get("free_entry")]
     free = [b for b in bets if b.get("free_entry")]
