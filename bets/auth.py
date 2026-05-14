@@ -123,7 +123,7 @@ def create_user(username: str, password: str) -> dict:
     user = {
         "id": username,
         "username": username,
-        "password_hash": generate_password_hash(password),
+        "password_hash": generate_password_hash(password, method="pbkdf2:sha256"),
         "created_at": _now_iso(),
     }
     state = load_users()
@@ -137,7 +137,7 @@ def set_password(user_id: str, password: str) -> bool:
     state = load_users()
     for u in state["users"]:
         if u.get("id") == user_id:
-            u["password_hash"] = generate_password_hash(password)
+            u["password_hash"] = generate_password_hash(password, method="pbkdf2:sha256")
             save_users(state)
             return True
     return False
@@ -152,7 +152,10 @@ def verify_password(username: str, password: str) -> dict | None:
     if user is None:
         # Equalize timing — check against a throwaway hash so a username
         # that doesn't exist takes about as long as a wrong password.
-        check_password_hash(generate_password_hash("dummy"), password or "")
+        check_password_hash(
+            generate_password_hash("dummy", method="pbkdf2:sha256"),
+            password or "",
+        )
         return None
     if not check_password_hash(user.get("password_hash") or "", password or ""):
         return None
