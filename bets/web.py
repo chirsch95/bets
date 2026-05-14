@@ -6837,6 +6837,11 @@ def _render_js() -> str:
             await apiBets("POST", data);
             msg.textContent = "Saved.";
           }}
+          // Re-render rebuilds the form HTML in add-mode (title/button
+          // text + empty inputs), but editingBetId is module-scoped and
+          // survives. Without this reset, the next save silently PUTs
+          // over the just-edited bet — i.e. "second bet replaces first".
+          editingBetId = null;
           await loadBetsTab();
         }} catch (e) {{
           msg.classList.add("error");
