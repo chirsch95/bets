@@ -1,0 +1,5 @@
+date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev
+2026-05-14,two_leg,1,2,Chase Burns,695505,under,6.5,200.0,0.554,0.453,Mike Burrows,681347,over,5.5,220.0,0.528,0.445,,,,,,,,860,9.6,0.292512,0.201585,0.090927,1.808115
+2026-05-14,two_leg,2,2,Anthony Kay,641743,over,3.5,116.0,0.561,0.45,Emmet Sheehan,686218,over,5.5,-115.0,0.63,0.524,,,,,,,,304,4.038261,0.35343,0.2358,0.11763,0.427243
+2026-05-14,two_leg,3,2,Kris Bubic,663460,over,5.5,100.0,0.571,0.49,Chris Sale,519242,under,6.5,118.0,0.515,0.441,,,,,,,,336,4.36,0.294065,0.21609,0.077975,0.282123
+2026-05-14,three_leg,1,3,Anthony Kay,641743,over,3.5,116.0,0.561,0.45,Emmet Sheehan,686218,over,5.5,-115.0,0.63,0.524,Chris Sale,519242,under,6.5,118.0,0.515,0.441,780,8.803409,0.182016,0.103988,0.078029,0.602365
