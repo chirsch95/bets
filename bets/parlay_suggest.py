@@ -192,7 +192,12 @@ def _select_diverse(sorted_evals: list[dict], top: int, max_per: int) -> list[di
     return out
 
 
-def _build_section(legs: list[dict], k: int, top: int) -> list[dict]:
+def _build_section(
+    legs: list[dict],
+    k: int,
+    top: int,
+    exclude_pids: set[int] | None = None,
+) -> list[dict]:
     if len(legs) < k:
         return []
     parlays: list[dict] = []
@@ -202,6 +207,10 @@ def _build_section(legs: list[dict], k: int, top: int) -> list[dict]:
             continue
         if not _game_times_within_window(combo_list):
             continue
+        if exclude_pids:
+            combo_pids = {l["pitcher_id"] for l in combo_list if l["pitcher_id"] is not None}
+            if combo_pids & exclude_pids:
+                continue
         ev = _evaluate_parlay(combo_list)
         if ev["ev"] <= 0:
             continue
@@ -229,10 +238,17 @@ def suggest_parlays(
     legs = legs[:PARLAY_INPUT_CAP]
     if len(legs) < 2:
         return {"two_leg": [], "three_leg": []}
-    return {
-        "two_leg": _build_section(legs, 2, TOP_TWO),
-        "three_leg": _build_section(legs, 3, TOP_THREE),
-    }
+    two_leg = _build_section(legs, 2, TOP_TWO)
+    # Force the 3-leg section disjoint from the top-1 2-leg card. A shared
+    # pitcher between the headline tickets meant a single bad start sank
+    # both; disjoint decorrelates the two bets the user actually wagers.
+    exclude_pids: set[int] = set()
+    if two_leg:
+        exclude_pids = {
+            l["pitcher_id"] for l in two_leg[0]["legs"] if l["pitcher_id"] is not None
+        }
+    three_leg = _build_section(legs, 3, TOP_THREE, exclude_pids=exclude_pids)
+    return {"two_leg": two_leg, "three_leg": three_leg}
 
 
 # ---------- CSV serialization ----------

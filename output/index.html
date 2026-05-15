@@ -3897,6 +3897,9 @@
   //     be committing to a leg without the input that drives its edge
   //   - per-pitcher appearance cap across the section — keeps the top-N
   //     from collapsing onto a single hot pitcher
+  //   - 3-leg section disjoint from the top-1 2-leg card — historically the
+  //     two headline tickets shared their anchor pitcher ~100% of the time,
+  //     so one bad start tanked both. Disjoint decorrelates the two bets.
   function renderParlaySuggestions(rows) {
     const PARLAY_INPUT_CAP = 8;       // cap focus pool before exploding combos
     const TOP_TWO = 5;
@@ -3965,30 +3968,50 @@
       return out;
     };
 
-    const buildSection = (k, top, label) => {
-      if (legs.length < k) return "";
+    const buildSection = (k, top, label, excludePids) => {
+      if (legs.length < k) return { html: "", picked: [] };
       const sorted = combos(legs, k)
         .filter(uniqueGames)
         .filter(gameTimesWithinWindow)
+        .filter(combo => {
+          if (!excludePids || excludePids.size === 0) return true;
+          for (const l of combo) {
+            if (l.pitcher_id !== null && l.pitcher_id !== undefined
+                && excludePids.has(l.pitcher_id)) return false;
+          }
+          return true;
+        })
         .map(evaluateParlay)
         .filter(p => p.ev > 0)
         .sort((a, b) => b.ev - a.ev);
       const ranked = selectDiverse(sorted, top, MAX_APPEARANCES);
-      if (!ranked.length) return "";
-      return `<div class="parlay-section">
+      if (!ranked.length) return { html: "", picked: ranked };
+      const html = `<div class="parlay-section">
         <div class="parlay-section-title">${label}</div>
         <div class="parlay-grid">${ranked.map(renderParlayCard).join("")}</div>
       </div>`;
+      return { html, picked: ranked };
     };
 
-    const twoLeg = buildSection(2, TOP_TWO, "Top 2-leg parlays");
-    const threeLeg = buildSection(3, TOP_THREE, "Top 3-leg parlays");
+    const twoResult = buildSection(2, TOP_TWO, "Top 2-leg parlays", null);
+    // Force the 3-leg section disjoint from the top-1 2-leg card. A shared
+    // pitcher between the headline tickets meant a single bad start sank
+    // both; disjoint decorrelates the two bets the user actually wagers.
+    const exclude = new Set();
+    if (twoResult.picked.length) {
+      for (const l of twoResult.picked[0].legs) {
+        if (l.pitcher_id !== null && l.pitcher_id !== undefined) exclude.add(l.pitcher_id);
+      }
+    }
+    const threeResult = buildSection(3, TOP_THREE, "Top 3-leg parlays", exclude);
+    const twoLeg = twoResult.html;
+    const threeLeg = threeResult.html;
     if (!twoLeg && !threeLeg) return "";
 
     return `<section class="parlay-suggester">
       <div class="parlay-suggester-header">
         <h3>Parlay Suggestions</h3>
-        <span class="parlay-note">Positive-EV combos · one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1</span>
+        <span class="parlay-note">Positive-EV combos · one leg per game · games within 3 hrs · capped per pitcher · 3-leg disjoint from top 2-leg · ranked by EV per $1</span>
       </div>
       ${twoLeg}
       ${threeLeg}
