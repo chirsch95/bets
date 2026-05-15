@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="K-Edge">
-<script>(function(){var h=location.hostname;var d=document.documentElement;if(h===''||h==='localhost'||h==='127.0.0.1')d.classList.add('is-local');if(/\.ts\.net$/i.test(h)||h==='localhost'||h==='127.0.0.1')d.classList.add('is-bets');try{var t=localStorage.getItem('bets-theme');if(t==='light'||t==='dark')d.setAttribute('data-theme',t);}catch(e){}})();</script>
+<script>(function(){var h=location.hostname;var d=document.documentElement;if(h===''||h==='localhost'||h==='127.0.0.1')d.classList.add('is-local');if(/\.ts\.net$/i.test(h))d.classList.add('is-bets');try{var t=localStorage.getItem('bets-theme');if(t==='light'||t==='dark')d.setAttribute('data-theme',t);}catch(e){}})();</script>
 <style>
   :root {
     --bg: #0a1628;
@@ -7292,15 +7292,14 @@
     return h === "" || h === "localhost" || h === "127.0.0.1";
   }
 
-  // True when bets data is reachable from this origin. Two cases:
-  //  1. Air's Flask via Tailscale Serve (https://<host>.<tailnet>.ts.net/)
-  //  2. Local laptop dev server (localhost / 127.0.0.1) — Flask binds to
-  //     127.0.0.1 only, so nobody on the network can reach it.
-  // Public Cloudflare URL never matches — it sees a static dashboard
-  // with no Bets tab, and Caddy 404s /api/* routes anyway.
+  // True when bets data is reachable from this origin. Only Air's Flask
+  // via Tailscale Serve (https://<host>.<tailnet>.ts.net/) qualifies.
+  // Localhost dev server and the public Cloudflare URL both render as
+  // public — the Bets tab is hidden so localhost previews exactly what
+  // an unauthenticated visitor sees.
   function isBets() {
     const h = location.hostname;
-    return /\.ts\.net$/i.test(h) || h === "localhost" || h === "127.0.0.1";
+    return /\.ts\.net$/i.test(h);
   }
 
   // Default-hide the noise + no-line rows so the eye lands on focus
