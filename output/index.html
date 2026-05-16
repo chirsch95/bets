@@ -3702,7 +3702,6 @@
     const season = f(r.season_k_pct);
     const oppK = f(r.opp_k_pct);
     const park = f(r.park_factor);
-    const framing = f(r.framing_factor);
     const proj = f(r.proj_ks_v2);
     const line = f(r.line);
     const tilt = (v, mean, eps) => {
@@ -3731,12 +3730,6 @@
     if (park !== null) {
       const t = tilt(park, 1.00, 0.01);
       items.push(`<li><span class="why-label">Park factor</span><span class="why-val">${park.toFixed(2)}</span><span class="why-tilt ${t.cls}">${t.sym}</span></li>`);
-    }
-    if (framing !== null && Math.abs(framing - 1.00) > 0.002) {
-      const t = tilt(framing, 1.00, 0.005);
-      const catcher = (r.catcher_name || "").split(",")[0] || "";
-      const lbl = catcher ? `Catcher framing (${catcher})` : "Catcher framing";
-      items.push(`<li><span class="why-label">${lbl}</span><span class="why-val">${framing.toFixed(3)}</span><span class="why-tilt ${t.cls}">${t.sym}</span></li>`);
     }
     if (proj !== null && line !== null) {
       const delta = proj - line;

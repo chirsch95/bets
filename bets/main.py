@@ -15,10 +15,6 @@ from dotenv import load_dotenv
 from tabulate import tabulate
 
 from .config import (
-    FRAMING_FACTOR_BOUND,
-    FRAMING_FACTOR_DEFAULT,
-    FRAMING_FACTOR_SCALE,
-    LEAGUE_FRAMING_PCT,
     LEAGUE_K_PCT,
     OUTPUT_DIR,
     PARK_K_FACTORS,
@@ -26,8 +22,6 @@ from .config import (
     PROJECT_ROOT,
 )
 from .fetch import (
-    FRAMING_MIN_PITCHES,
-    catcher_framing_lookup,
     lineup_k_rate,
     pitcher_stats,
     pitcher_swstr_lookup,
@@ -142,12 +136,6 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
     else:
         print("SwStr% lookup unavailable — v2 will fall back to actual K%.\n")
 
-    framing_lookup = catcher_framing_lookup(season)
-    if framing_lookup:
-        print(f"Loaded framing for {len(framing_lookup)} catchers.\n")
-    else:
-        print("Framing lookup unavailable — v2 will use neutral framing factor.\n")
-
     rows = []
     for s in starters:
         ps = pitcher_stats(s["pitcher_id"], season)
@@ -164,24 +152,6 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
 
         swstr = swstr_lookup.get(s["pitcher_id"], 0.0)
         park_factor = PARK_K_FACTORS.get(s["home_team_id"], PARK_K_FACTOR_DEFAULT)
-
-        # Catcher framing → K% multiplier. Pulls the pitcher's own-side
-        # catcher (set when the lineup posts; None pre-lineup) and maps
-        # the catcher's shadow-zone called-strike rate (pct_tot) into a
-        # bounded multiplier centered on LEAGUE_FRAMING_PCT. Low-sample
-        # catchers (and missing lookups) collapse to the neutral default.
-        catcher_id = s.get("catcher_id")
-        framing_entry = framing_lookup.get(catcher_id) if catcher_id else None
-        if framing_entry and framing_entry.get("pitches", 0) >= FRAMING_MIN_PITCHES:
-            raw = 1.0 + FRAMING_FACTOR_SCALE * (
-                framing_entry["pct_tot"] - LEAGUE_FRAMING_PCT
-            )
-            framing_factor = max(
-                1.0 - FRAMING_FACTOR_BOUND,
-                min(1.0 + FRAMING_FACTOR_BOUND, raw),
-            )
-        else:
-            framing_factor = FRAMING_FACTOR_DEFAULT
 
         v0 = project_pitcher_ks_v0(ps["season_k_pct"], ps["recent_k_pct"])
         v1 = project_pitcher_ks_v1(
@@ -200,7 +170,6 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
             season_bf_per_start=ps["season_bf_per_start"],
             recent_bf_per_start=ps["recent_bf_per_start"],
             park_factor=park_factor,
-            framing_factor=framing_factor,
             league_k_pct=LEAGUE_K_PCT,
         )
 
@@ -236,9 +205,6 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
             "opp_k_pct": round(opp_k, 3),
             "opp_k_source": opp_k_source,
             "park_factor": park_factor,
-            "catcher_id": catcher_id or "",
-            "catcher_name": s.get("catcher_name", ""),
-            "framing_factor": round(framing_factor, 3),
             "matchup_k_pct": round(v2["matchup_k_pct"], 3),
             "exp_bf": round(v2["expected_bf"], 1),
             "proj_ks_v0": round(v0, 2),

@@ -15,7 +15,6 @@ from scipy.stats import poisson
 
 from .config import (
     DEFAULT_EXPECTED_BF,
-    FRAMING_FACTOR_DEFAULT,
     LEAGUE_K_PCT,
     LEAGUE_SWSTR_PCT,
     PARK_K_FACTOR_DEFAULT,
@@ -150,17 +149,12 @@ def project_pitcher_ks_v2(
     season_bf_per_start: float,
     recent_bf_per_start: float,
     park_factor: float = PARK_K_FACTOR_DEFAULT,
-    framing_factor: float = FRAMING_FACTOR_DEFAULT,
     league_k_pct: float = LEAGUE_K_PCT,
 ) -> dict:
-    """v2: SwStr-blended K%, lineup-or-team opp K%, park × framing multipliers."""
+    """v2: SwStr-blended K%, lineup-or-team opp K%, park multiplier."""
     blended_actual = blended_k_rate(season_k_pct, recent_k_pct)
     pitcher_k = blended_pitcher_k_with_swstr(blended_actual, swstr_pct)
-    matchup = (
-        matchup_k_rate(pitcher_k, opp_k_pct, league_k_pct)
-        * park_factor
-        * framing_factor
-    )
+    matchup = matchup_k_rate(pitcher_k, opp_k_pct, league_k_pct) * park_factor
     bf = expected_batters_faced(season_bf_per_start, recent_bf_per_start)
     return {
         "blended_actual_k": blended_actual,

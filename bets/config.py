@@ -33,16 +33,6 @@ SWSTR_BLEND_WEIGHT = 0.35
 # Park K-rate factors (1.00 = neutral). Keyed by HOME team_id.
 # Approximations from multi-year FanGraphs Guts! data — refine annually.
 # Anything not listed defaults to PARK_K_FACTOR_DEFAULT.
-# Catcher-framing factor. Multiplies matchup K% the same way park_factor
-# does. Centered on LEAGUE_FRAMING_PCT (called-strike rate on shadow-zone
-# takes — Savant's pct_tot), scaled by FRAMING_FACTOR_SCALE, and clamped
-# to FRAMING_FACTOR_BOUND. Top framers add ~1-2% to their pitchers' K
-# rates per public research, which is what these defaults reproduce.
-LEAGUE_FRAMING_PCT = 0.469
-FRAMING_FACTOR_SCALE = 0.4
-FRAMING_FACTOR_BOUND = 0.025  # cap effect at ±2.5%
-FRAMING_FACTOR_DEFAULT = 1.00
-
 PARK_K_FACTOR_DEFAULT = 1.00
 PARK_K_FACTORS = {
     115: 0.92,  # Rockies (Coors) — thin air dampens breaking balls
