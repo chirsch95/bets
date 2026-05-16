@@ -119,6 +119,42 @@ def output_file(filename: str):
     return send_from_directory(OUTPUT_DIR, filename)
 
 
+def _commit_and_push_output() -> tuple[bool, str]:
+    """Stage output/, commit if dirty, push to origin/main. Returns
+    (ok, message). No-op (ok=True) when the working tree is clean."""
+    add = subprocess.run(
+        ["git", "add", "output/"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if add.returncode != 0:
+        return False, f"git add failed:\n{add.stderr}"
+    diff = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        cwd=PROJECT_ROOT,
+    )
+    if diff.returncode != 0:
+        msg = f"refresh: {_today().isoformat()} dashboard update"
+        commit = subprocess.run(
+            ["git", "commit", "-m", msg],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if commit.returncode != 0:
+            return False, f"git commit failed:\n{commit.stderr}"
+    push_proc = subprocess.run(
+        ["git", "push", "origin", "main"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if push_proc.returncode != 0:
+        return False, f"git push failed:\n{push_proc.stderr}"
+    return True, "pushed"
+
+
 @app.post("/refresh")
 def refresh():
     if not _pipeline_lock.acquire(blocking=False):
@@ -136,6 +172,15 @@ def refresh():
         if proc.returncode != 0:
             body = (proc.stderr or proc.stdout or "pipeline exited non-zero").strip()
             return f"<pre>refresh failed:\n{body}</pre>", 500
+        # On the prod host (Air), commit+push under the same lock so the
+        # 60s gitpull cron never observes a dirty working tree mid-refresh.
+        # Laptop dev runs leave BETS_AUTO_PUSH unset, so manual /push (or
+        # plain git) still ships their work and dev cycles don't spam
+        # commits.
+        if os.environ.get("BETS_AUTO_PUSH") == "1":
+            ok, push_msg = _commit_and_push_output()
+            if not ok:
+                return f"<pre>refresh ran, push failed:\n{push_msg}</pre>", 500
         return redirect("/")
     finally:
         _pipeline_lock.release()
@@ -185,41 +230,13 @@ def settle():
 @app.post("/push")
 def push():
     """Stage output/, commit if there are changes, push to origin/main.
-    The Air's gitpull picks it up within 60s. Reuses the pipeline lock
-    so we never push partial state mid-refresh."""
+    Reuses the pipeline lock so we never push partial state mid-refresh."""
     if not _pipeline_lock.acquire(blocking=False):
         return "<pre>A pipeline run is already in progress. Wait for it to finish.</pre>", 409
     try:
-        add = subprocess.run(
-            ["git", "add", "output/"],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=True,
-        )
-        if add.returncode != 0:
-            return f"<pre>git add failed:\n{add.stderr}</pre>", 500
-        diff = subprocess.run(
-            ["git", "diff", "--cached", "--quiet"],
-            cwd=PROJECT_ROOT,
-        )
-        if diff.returncode != 0:
-            msg = f"refresh: {_today().isoformat()} dashboard update"
-            commit = subprocess.run(
-                ["git", "commit", "-m", msg],
-                cwd=PROJECT_ROOT,
-                capture_output=True,
-                text=True,
-            )
-            if commit.returncode != 0:
-                return f"<pre>git commit failed:\n{commit.stderr}</pre>", 500
-        push_proc = subprocess.run(
-            ["git", "push", "origin", "main"],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=True,
-        )
-        if push_proc.returncode != 0:
-            return f"<pre>git push failed:\n{push_proc.stderr}</pre>", 500
+        ok, msg = _commit_and_push_output()
+        if not ok:
+            return f"<pre>{msg}</pre>", 500
         return redirect("/")
     finally:
         _pipeline_lock.release()
