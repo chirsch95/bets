@@ -3,9 +3,24 @@
 Trains on settled CSV rows (output/pitcher_ks_*_settled.csv) where the
 pitcher actually started (gs == 1). Produces proj_ks_ml as a shadow
 column alongside the hand-tuned v0/v1/v2 projections — no betting
-decisions are made from this output yet. The intent is to compare
-ML accuracy/calibration against v2 over a multi-week sample before
-promoting it.
+decisions are made from this output yet.
+
+Promotion bar (revised 2026-05-16, replaces the old ≥0.1 K RMSE bar
+which was barely above the statistical noise floor on the available
+sample). Both must hold for promotion:
+
+  (1) Diebold-Mariano paired t-test on per-outing squared errors
+      yields t ≥ 2.0 (≈ p < 0.05). Computed against the fixed v2
+      incumbent — any v2 change resets this clock.
+
+  (2) On the same window, simulated bet hit rate at |edge| ≥ 5%
+      and ≥ 10% is within ±2 percentage points of v2's. Catches the
+      failure mode where ML wins on average squared error but
+      diverges on the marginal calls that flip an over/under decision.
+
+Run `python -m bets.analyze` to see the live verdict. Realistic timeline
+for clearing both bars is late summer / early fall 2026; check monthly,
+not weekly. Full discussion in project_ml_phase1 memory.
 
 CLI:
     python -m bets.main --train-ml      # retrain from all settled rows

@@ -259,6 +259,113 @@ def slice_table(rows: list[dict]) -> None:
             print(tabulate(rows_out, headers="keys", floatfmt=".3f"))
 
 
+def promotion_verdict(rows: list[dict]) -> None:
+    """Apply the v2-vs-ML promotion bar locked in by the 2026-05-16 grill
+    (see project_ml_phase1 memory). Two checks must BOTH pass for promotion:
+
+    1. Diebold-Mariano paired t-test on per-outing squared errors:
+       t >= 2.0 (≈ p < 0.05). v2 baseline is fixed; squared error of v2
+       minus squared error of ML, averaged, divided by its SE.
+
+    2. Operational hit-rate sanity: at each edge threshold the user actually
+       acts on (≥5%, ≥10%), ML's hit rate must be within ±2pp of v2's.
+       Catches the failure mode where ML wins on average squared error but
+       diverges on the marginal calls that flip an over/under decision.
+
+    OLD bar (≥0.1 K RMSE) is deprecated — see project_ml_phase1.
+    """
+    paired = [
+        r
+        for r in rows
+        if _f(r.get("error_v2")) is not None
+        and _f(r.get("error_ml")) is not None
+    ]
+    if len(paired) < 30:
+        print(f"\n=== Promotion verdict ===")
+        print(f"Only {len(paired)} paired v2/ml outings — need ≥30 for any verdict.")
+        return
+
+    # (1) Diebold-Mariano paired t-test on squared errors
+    diffs = [
+        _f(r["error_v2"]) ** 2 - _f(r["error_ml"]) ** 2 for r in paired
+    ]
+    n = len(diffs)
+    mean_d = sum(diffs) / n
+    var_d = sum((d - mean_d) ** 2 for d in diffs) / (n - 1) if n > 1 else 0
+    se_d = math.sqrt(var_d / n) if n > 1 else 0
+    t_stat = mean_d / se_d if se_d > 0 else 0
+    stat_pass = t_stat >= 2.0
+
+    # (2) Hit-rate comparison at each operational edge threshold
+    def _hit_for(direction: str, over_hit: int | None) -> int | None:
+        if over_hit is None:
+            return None
+        return over_hit if direction == "over" else (1 - over_hit)
+
+    sanity_rows = []
+    sanity_pass = True
+    for thresh in (0.05, 0.10):
+        v2_subset, ml_subset = [], []
+        for r in paired:
+            ce_v2 = _f(r.get("cal_edge_v2")) or _f(r.get("edge"))
+            ce_ml = _f(r.get("cal_edge_ml"))
+            oh = _f(r.get("over_hit"))
+            if oh is None:
+                continue
+            if ce_v2 is not None and abs(ce_v2) >= thresh:
+                v2_subset.append(_hit_for("over" if ce_v2 > 0 else "under", int(oh)))
+            if ce_ml is not None and abs(ce_ml) >= thresh:
+                ml_subset.append(_hit_for("over" if ce_ml > 0 else "under", int(oh)))
+        if len(v2_subset) >= 10 and len(ml_subset) >= 10:
+            v2_rate = mean(v2_subset)
+            ml_rate = mean(ml_subset)
+            gap_pp = (ml_rate - v2_rate) * 100
+            ok = abs(gap_pp) <= 2.0
+            if not ok:
+                sanity_pass = False
+            sanity_rows.append([
+                f"|edge|≥{thresh:.2f}",
+                f"{len(v2_subset)}",
+                f"{v2_rate*100:.1f}%",
+                f"{len(ml_subset)}",
+                f"{ml_rate*100:.1f}%",
+                f"{gap_pp:+.1f}pp",
+                "ok" if ok else "GAP > ±2pp",
+            ])
+        else:
+            sanity_rows.append([
+                f"|edge|≥{thresh:.2f}",
+                f"{len(v2_subset)}",
+                "—",
+                f"{len(ml_subset)}",
+                "—",
+                "—",
+                "need more data",
+            ])
+
+    print(f"\n=== Promotion verdict ({n} paired outings) ===")
+    print(f"\n(1) Diebold-Mariano paired t-test on squared errors:")
+    print(f"    mean(v2² − ml²) = {mean_d:+.4f}  SE = {se_d:.4f}  t = {t_stat:+.2f}")
+    print(f"    bar: t ≥ 2.0  →  {'PASS' if stat_pass else 'FAIL'}")
+    print(f"\n(2) Hit-rate sanity (ML within ±2pp of v2):")
+    print(tabulate(
+        sanity_rows,
+        headers=["threshold", "v2_n", "v2_hit%", "ml_n", "ml_hit%", "gap", "verdict"],
+    ))
+
+    if stat_pass and sanity_pass:
+        print("\n>>> PROMOTE ML to primary. Both bars cleared.")
+    elif stat_pass and not sanity_pass:
+        print("\n>>> HOLD — statistical bar cleared but hit-rate sanity failed.")
+        print("    ML likely wins on easy projections, loses on marginal calls.")
+        print("    Consider the form-divergence hybrid (project_ml_form_divergence).")
+    elif not stat_pass and sanity_pass:
+        print("\n>>> HOLD — sanity check passed but statistical bar not cleared.")
+        print("    Likely a noise-level difference; needs more data.")
+    else:
+        print("\n>>> HOLD — neither bar cleared. Keep ML as shadow.")
+
+
 def run() -> None:
     rows = load_all_settled()
     if not rows:
@@ -273,6 +380,7 @@ def run() -> None:
     calibration_table(rows)
     edge_strategy(rows)
     slice_table(rows)
+    promotion_verdict(rows)
 
 
 if __name__ == "__main__":
