@@ -11,9 +11,10 @@ Two sources today:
   pipeline — today's pitcher_ks CSV must exist by SLATE_EXPECTED_HOUR
     with at least one row carrying an Odds API line, the slate-snapshot
     twin must be present, and (after LINEUPS_EXPECTED_HOUR) at least
-    one row must carry an opposing lineup. Retry triggers GH Actions
-    only — output/ is git-tracked, so the Air can't safely run the
-    pipeline locally without conflicting with the next git pull.
+    one row must carry an opposing lineup. Retry POSTs localhost Flask
+    /refresh, which runs the pipeline and (with BETS_AUTO_PUSH=1)
+    commits+pushes atomically under Flask's pipeline lock — so the
+    gitpull cron never observes a dirty working tree mid-refresh.
 
   swstr — data/swstr_<season>.json must be < 24h old. Retry refreshes
     the cache in-process (data/ is gitignored, so no conflicts).
@@ -27,9 +28,11 @@ from __future__ import annotations
 import csv
 import json
 import logging
-import shutil
+import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -50,8 +53,8 @@ RETRY_CAP = 3
 # Active hours (local time). Outside this, staleness is recorded but
 # retries are deferred — no point burning Odds API credits at 3am.
 # Window starts at 7am so the first morning tick can auto-trigger
-# GH Actions (settle yesterday + project today) if nobody's run the
-# pipeline locally yet.
+# a local /refresh (settle yesterday + project today) if the slate
+# hasn't been produced yet.
 ACTIVE_HOUR_START = 7
 ACTIVE_HOUR_END = 21
 
@@ -64,9 +67,6 @@ SLATE_EXPECTED_HOUR = 7
 # Hour after which missing lineups are "stale". MLB usually posts
 # lineups 2-3 hours before first pitch.
 LINEUPS_EXPECTED_HOUR = 15
-
-GH_REPO = "chirsch95/bets"
-GH_WORKFLOW = "Refresh dashboard"
 
 PIPELINE_SOURCE = "pipeline"
 SWSTR_SOURCE = "swstr"
@@ -169,22 +169,32 @@ def check_swstr() -> CheckResult:
 # ---------- retry actions ----------
 
 
-def retry_pipeline_remote() -> tuple[bool, str]:
-    """Trigger the GH Actions Refresh workflow. Doesn't wait for it to
-    finish — the next health tick (30 min later) verifies whether the
-    state cleared."""
-    if not shutil.which("gh"):
-        return False, "gh CLI not installed on this host"
-    proc = subprocess.run(
-        ["gh", "workflow", "run", GH_WORKFLOW, "-R", GH_REPO],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    output = (proc.stdout or "") + (proc.stderr or "")
-    if proc.returncode == 0:
-        return True, f"triggered GH Actions: {output.strip()[:200]}"
-    return False, f"gh workflow run failed (rc={proc.returncode}): {output.strip()[:300]}"
+def retry_pipeline_local() -> tuple[bool, str]:
+    """POST localhost Flask /refresh. Flask runs bets.main and (with
+    BETS_AUTO_PUSH=1) commits+pushes under its pipeline lock — so this
+    can't race a user-initiated /refresh, and the gitpull cron never
+    observes a dirty working tree. Blocks until the pipeline finishes
+    (~10-30s typical); fine because the watcher tick is every 30 min.
+    A 409 from Flask means a refresh is already running — counted as
+    fail here, but the next tick will see fresh state and recover."""
+    port = os.environ.get("BETS_PORT", "8000")
+    url = f"http://localhost:{port}/refresh"
+    try:
+        req = urllib.request.Request(url, method="POST")
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            status = resp.status
+        if 200 <= status < 400:
+            return True, f"local /refresh ok ({status})"
+        return False, f"local /refresh returned {status}"
+    except urllib.error.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read(500).decode("utf-8", "replace") if exc.fp else ""
+        except Exception:  # noqa: BLE001
+            pass
+        return False, f"local /refresh HTTP {exc.code}: {body[:200].strip()}"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"local /refresh failed: {exc}"
 
 
 def retry_swstr_local() -> tuple[bool, str]:
@@ -261,7 +271,7 @@ SOURCES = [
         name=PIPELINE_SOURCE,
         description="Pipeline (lines + lineups + slate)",
         check=check_pipeline,
-        retry=retry_pipeline_remote,
+        retry=retry_pipeline_local,
     ),
     SourceConfig(
         name=SWSTR_SOURCE,
