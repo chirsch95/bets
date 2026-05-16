@@ -1,4 +1,4 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
-2026-05-16,two_leg,1,2,Logan Henderson,701656,over,5.5,255.0,0.467,0.424,Joey Cantillo,676282,under,4.5,250.0,0.56,0.423,,,,,,,,1142,12.425,0.26152,0.179352,0.082168,2.249386,
+2026-05-16,two_leg,1,2,Joey Cantillo,676282,under,4.5,240.0,0.68,0.41,Logan Henderson,701656,over,5.5,255.0,0.467,0.424,,,,,,,,1107,12.07,0.31756,0.17384,0.14372,2.832949,
 2026-05-16,two_leg,2,2,Bryce Elder,693821,over,5.5,120.0,0.547,0.443,Justin Wrobleski,680736,under,4.5,123.0,0.613,0.432,,,,,,,,391,4.906,0.335311,0.191376,0.143935,0.645036,
-2026-05-16,three_leg,1,3,Logan Henderson,701656,over,5.5,255.0,0.467,0.424,Bryce Elder,693821,over,5.5,120.0,0.547,0.443,Joey Cantillo,676282,under,4.5,250.0,0.56,0.423,2634,27.335,0.143051,0.079453,0.063599,2.910311,Logan Henderson
+2026-05-16,three_leg,1,3,Joey Cantillo,676282,under,4.5,240.0,0.68,0.41,Logan Henderson,701656,over,5.5,255.0,0.467,0.424,Bryce Elder,693821,over,5.5,120.0,0.547,0.443,2555,26.554,0.173705,0.077011,0.096694,3.612571,Joey Cantillo
