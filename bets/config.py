@@ -26,9 +26,13 @@ LEAGUE_K_PCT = 0.225
 LEAGUE_SWSTR_PCT = 0.115
 
 # How much to weight SwStr-implied K% vs. the pitcher's actual K%.
-# Higher = trust SwStr more (better against early-season noise / regression
-# candidates). Lower = lean on observed K% from this season.
-SWSTR_BLEND_WEIGHT = 0.35
+# Tuned to 0.0 on 2026-05-16 from the residuals report sweep — at 0.35 the
+# blend was systematically over-projecting high-SwStr pitchers by ~1 K per
+# start (top-tercile bias -0.96 K). Every step down from 0.35 to 0 reduced
+# overall bias, top-tercile bias, AND RMSE; the relationship was monotonic.
+# The blend code path is kept as a tunable knob in case future data points
+# back the other way; today the data says ignore it.
+SWSTR_BLEND_WEIGHT = 0.0
 
 # Park K-rate factors (1.00 = neutral). Keyed by HOME team_id.
 # Approximations from multi-year FanGraphs Guts! data — refine annually.
