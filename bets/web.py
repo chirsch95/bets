@@ -204,19 +204,28 @@ CSS = """
     background: var(--green);
     filter: brightness(1.08);
   }
-  /* Force re-fetch: amber to signal "costs Odds API credits"; distinct
-     from green data-refresh so accidental taps are unlikely. */
-  header .float-btn.force-refresh-btn {
-    width: 36px;
-    background: #d97706;
-    border-color: #d97706;
-    color: #1a0a00;
-  }
-  header .float-btn.force-refresh-btn:hover {
-    background: #d97706;
-    filter: brightness(1.08);
-  }
+  /* Force re-fetch lives in the status-row (right side on desktop, below
+     brand-area on phone), NOT in the brand-actions cluster, so accidental
+     phone taps near the green Refresh button can't fire it. Amber outline
+     to signal "this one's different." */
   header .force-refresh-form { display: contents; }
+  .status-row .force-refresh-btn {
+    height: 22px;
+    min-width: 28px;
+    padding: 0 6px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid #d97706;
+    color: #d97706;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+  }
+  .status-row .force-refresh-btn:hover { background: rgba(217, 119, 6, 0.12); }
+  .status-row .force-refresh-btn svg { width: 13px; height: 13px; }
+  .status-row .force-refresh-btn:disabled { opacity: 0.5; cursor: wait; }
   header .float-btn.loading svg { animation: ptr-spin 0.8s linear infinite; }
   header .float-btn:disabled { opacity: 0.5; cursor: wait; }
   header .float-btn .theme-sun { display: block; }
@@ -227,7 +236,6 @@ CSS = """
     header .float-btn { height: 32px; min-width: 32px; }
     header .float-btn.theme-btn { width: 32px; }
     header .float-btn.refresh-btn { width: 32px; }
-    header .float-btn.force-refresh-btn { width: 32px; }
   }
   /* Admin overflow (local-only). Native <details> for zero-JS dropdown. */
   header .admin-menu {
@@ -2868,6 +2876,30 @@ CSS = """
 """
 
 
+def _force_refresh_status_html() -> str:
+    """Force re-fetch button — lives in the header's status-row, NOT in
+    the brand-actions cluster. Reason: the cluster also holds the green
+    Refresh button, and accidental phone taps were a real concern. The
+    status-row sits on the opposite side of the header on desktop and
+    stacks below the brand area on phone — clear physical separation."""
+    force_svg = (
+        '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+        '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
+    )
+    force_confirm = (
+        "Force re-fetch lines from The Odds API? "
+        "Use when books have repriced mid-day. Continue?"
+    )
+    return (
+        f'<form class="force-refresh-form" action="/refresh" method="post" '
+        f'onsubmit="if (!confirm({force_confirm!r})) return false; document.body.classList.add(&#x27;loading&#x27;);">'
+        f'<input type="hidden" name="force" value="1">'
+        f'<button type="submit" id="force-refresh-btn" class="force-refresh-btn" '
+        f'aria-label="Force re-fetch lines from Odds API" title="Force re-fetch lines from Odds API">'
+        f'{force_svg}</button></form>'
+    )
+
+
 def _action_buttons_html() -> str:
     """Header utility cluster — sits in the top-right of the new header
     layout (right of the logo block). Returns three icon buttons:
@@ -2894,22 +2926,8 @@ def _action_buttons_html() -> str:
         'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
         '<path d="M21 12a9 9 0 1 1-3.5-7.1"/><polyline points="21 4 21 9 16 9"/></svg>'
     )
-    # Filled lightning bolt — distinct from the green refresh arrow above,
-    # signals "force / power / costs something."
-    force_svg = (
-        '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
-        '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
-    )
-    force_confirm = (
-        "Force re-fetch lines from The Odds API? "
-        "Use when books have repriced mid-day. Continue?"
-    )
     return f"""<button type="button" id="theme-toggle" class="float-btn theme-btn" aria-label="Toggle light/dark" title="Toggle light/dark">{sun_svg}{moon_svg}</button>
     <button type="button" id="refresh-btn" class="float-btn refresh-btn" aria-label="Refresh data" title="Refresh data">{refresh_svg}</button>
-    <form class="force-refresh-form" action="/refresh" method="post" onsubmit="if (!confirm({force_confirm!r})) return false; document.body.classList.add('loading');">
-      <input type="hidden" name="force" value="1">
-      <button type="submit" id="force-refresh-btn" class="float-btn force-refresh-btn" aria-label="Force re-fetch lines from Odds API" title="Force re-fetch lines from Odds API">{force_svg}</button>
-    </form>
     <details class="admin-menu local-only">
       <summary aria-label="Local admin tools" title="Local admin tools">⋯</summary>
       <div class="admin-items">
@@ -8138,6 +8156,7 @@ def generate(target_date: date | None = None) -> Path | None:
     target_date = target_date or date.today()
 
     actions_block = _action_buttons_html()
+    force_refresh = _force_refresh_status_html()
     js = _render_js()
 
     # Tab nav: pitchers always visible. Hitters when SHOW_HITTERS.
@@ -8223,6 +8242,7 @@ def generate(target_date: date | None = None) -> Path | None:
       <span class="last-refresh" id="last-refresh"></span>
       <span class="quota-pill" id="quota-pill" title=""></span>
       <span class="health-pill" id="health-pill" title=""><span class="dot"></span><span class="label">Health</span></span>
+      {force_refresh}
     </div>
   </div>
 </header>
