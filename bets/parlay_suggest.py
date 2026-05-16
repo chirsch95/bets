@@ -20,7 +20,7 @@ from itertools import combinations
 from pathlib import Path
 
 from .config import OUTPUT_DIR
-from .live import FOCUS_EDGE_MAX, FOCUS_EDGE_MIN, INVESTIGATE_EDGE
+from .live import FOCUS_EDGE_MAX, FOCUS_EDGE_MIN, INVESTIGATE_EDGE, MIN_LINE_FOR_FOCUS
 
 # Suggester knobs. Mirror the JS constants in web.py's
 # renderParlaySuggestions — update both sides if you tune one.
@@ -240,7 +240,15 @@ def suggest_parlays(
     `is_eligible(edge)` controls the band: defaults to the production focus
     band; pass `_is_focus_or_gap` for the shadow expanded band.
     """
-    eligible_rows = [r for r in slate_rows if is_eligible(_pick_edge(r))]
+    # Filter by edge band AND by the role-mismatch line gate. See web.py
+    # MIN_LINE_FOR_FOCUS comment — books pricing a starter < 3.0 K signal
+    # a reliever/opener role our model isn't equipped to project.
+    def _eligible(r: dict) -> bool:
+        if not is_eligible(_pick_edge(r)):
+            return False
+        line = _safe_float(r.get("line"))
+        return line is not None and line >= MIN_LINE_FOR_FOCUS
+    eligible_rows = [r for r in slate_rows if _eligible(r)]
     if len(eligible_rows) < 2:
         return {"two_leg": [], "three_leg": []}
     legs = [_pick_leg_from_row(r) for r in eligible_rows]

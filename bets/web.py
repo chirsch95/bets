@@ -43,6 +43,14 @@ SHOW_HITTERS = False
 FOCUS_EDGE_MIN = 0.065
 FOCUS_EDGE_MAX = 0.15
 INVESTIGATE_EDGE = 0.20
+# Minimum line to consider a pitcher as a focus pick. Real starters are
+# almost never priced below 3.5 K; lines at or under 2.5 K signal the
+# book treating the pitcher as an opener / reliever / spot appearance.
+# Our model has no role-detection — it pulls season K% and multiplies by
+# season-average BF, so it mis-projects relievers as full starts (e.g.,
+# Brazobán 2026-05-16: line 0.5, our proj 5.5). The gate filters these
+# from focus picks and parlay suggestions; they still show in the table.
+MIN_LINE_FOR_FOCUS = 3.0
 
 
 CSS = """
@@ -1169,11 +1177,10 @@ CSS = """
      The disjoint rule was dropped 2026-05-16 for visibility, but the
      2026-05-15 audit (overlapping 3-legs went -78% ROI vs disjoint
      +22%) is preserved as a UI signal so the user makes a conscious
-     overlap decision instead of a silent one. */
+     overlap decision instead of a silent one. Inline above the legs
+     so it doesn't overlap leg content (time on the right, pill on the left). */
   .parlay-overlap-badge {
-    position: absolute;
-    top: 6px;
-    right: 8px;
+    align-self: flex-start;
     font-size: 10px;
     color: var(--yellow);
     background: rgba(245, 195, 35, 0.12);
@@ -2902,6 +2909,7 @@ def _render_js() -> str:
   const FOCUS_MIN = {FOCUS_EDGE_MIN};
   const FOCUS_MAX = {FOCUS_EDGE_MAX};
   const INVESTIGATE = {INVESTIGATE_EDGE};
+  const MIN_LINE_FOR_FOCUS = {MIN_LINE_FOR_FOCUS};
   const RAW_BASE = "{raw_base}";
   const SHOW_HITTERS = {show_hitters_js};
 
@@ -2983,6 +2991,19 @@ def _render_js() -> str:
     if (a >= INVESTIGATE) return "investigate";
     if (a >= FOCUS_MIN && a <= FOCUS_MAX) return "focus";
     return "noise";
+  }}
+
+  // Role-mismatch gate: book lines below MIN_LINE_FOR_FOCUS signal an
+  // opener / reliever / spot appearance, but our model uses
+  // season-average BF so it treats every row as a full start. Returns
+  // false → the row is skipped from focus picks and parlay suggestions
+  // even if its calibrated edge lands in the focus band. The row still
+  // shows in the slate table (just not as a bet recommendation).
+  function isBettableFocus(r) {{
+    const e = pickEdge(r);
+    if (e === null || classify(e) !== "focus") return false;
+    const line = f(r.line);
+    return line !== null && line >= MIN_LINE_FOR_FOCUS;
   }}
 
   function label(cls, dir) {{
@@ -3914,10 +3935,8 @@ def _render_js() -> str:
   }}
 
   function renderHeroPicks(rows) {{
-    const focus = rows.filter(r => {{
-      const e = pickEdge(r);
-      return e !== null && classify(e) === "focus";
-    }}).sort((a, b) => Math.abs(pickEdge(b)) - Math.abs(pickEdge(a)));
+    const focus = rows.filter(isBettableFocus)
+      .sort((a, b) => Math.abs(pickEdge(b)) - Math.abs(pickEdge(a)));
 
     if (!focus.length) {{
       return `<section class="picks-hero">
@@ -4029,10 +4048,7 @@ def _render_js() -> str:
     // (lineups land ~3 hrs pre-game), so we'd be locking in a leg without
     // the input that drives its edge. Keep in sync with parlay_suggest.py.
     const MAX_GAP_MS = 3 * 3600 * 1000;
-    const focus = rows.filter(r => {{
-      const e = pickEdge(r);
-      return e !== null && classify(e) === "focus";
-    }});
+    const focus = rows.filter(isBettableFocus);
     if (focus.length < 2) return "";
 
     const legs = focus

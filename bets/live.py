@@ -33,6 +33,10 @@ from .fetch import HTTP_TIMEOUT, MLB_STATS_BASE
 FOCUS_EDGE_MIN = 0.065
 FOCUS_EDGE_MAX = 0.15
 INVESTIGATE_EDGE = 0.20
+# Role-mismatch gate: see web.py MIN_LINE_FOR_FOCUS comment. Lines below
+# this floor signal the book is treating the pitcher as a reliever/opener;
+# our starter-mode projection won't be meaningful.
+MIN_LINE_FOR_FOCUS = 3.0
 
 # Fields pinned_csv_text() leaves live (not overwritten by the morning
 # slate snapshot once a game starts). The pin's job is to freeze the
