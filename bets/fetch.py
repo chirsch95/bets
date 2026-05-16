@@ -17,6 +17,10 @@ from .config import DATA_DIR
 MLB_STATS_BASE = "https://statsapi.mlb.com/api/v1"
 HTTP_TIMEOUT = 10
 SWSTR_CACHE_TTL_HOURS = 12
+FRAMING_CACHE_TTL_HOURS = 24
+# Catchers with fewer tracked pitches than this get treated as league-avg
+# rather than dragging their pitcher's projection on a 50-pitch sample.
+FRAMING_MIN_PITCHES = 200
 
 
 def todays_probable_starters(target_date: date | None = None) -> list[dict]:
@@ -72,6 +76,19 @@ def todays_probable_starters(target_date: date | None = None) -> list[dict]:
                     if "id" in p
                 ]
 
+                # Same-side catcher — picked from the pitcher's own lineup
+                # card so we can pair pitcher → catcher → framing factor.
+                # primaryPosition.code == "2" is catcher.
+                same_players = lineups.get(f"{side}Players") or []
+                catcher_id = None
+                catcher_name = ""
+                for p in same_players:
+                    pos = (p.get("primaryPosition") or {}).get("code")
+                    if pos == "2" and "id" in p:
+                        catcher_id = p["id"]
+                        catcher_name = p.get("fullName", "")
+                        break
+
                 starters.append(
                     {
                         "game_pk": game_pk,
@@ -87,6 +104,8 @@ def todays_probable_starters(target_date: date | None = None) -> list[dict]:
                         "opp_team_name": opp_team_name,
                         "opp_lineup_ids": opp_lineup_ids,
                         "opp_lineup": opp_lineup,
+                        "catcher_id": catcher_id,
+                        "catcher_name": catcher_name,
                     }
                 )
     return starters
@@ -398,4 +417,90 @@ def pitcher_swstr_lookup(season: int) -> dict[int, float]:
 
     if result:
         _save_swstr_cache(season, result)
+    return result
+
+
+# ---------- Catcher framing lookup (Baseball Savant, cached to disk) ----------
+
+
+def _framing_cache_path(season: int) -> Path:
+    return DATA_DIR / f"framing_{season}.json"
+
+
+def _load_framing_cache(season: int) -> dict[int, dict] | None:
+    path = _framing_cache_path(season)
+    if not path.exists():
+        return None
+    try:
+        with path.open() as f:
+            blob = json.load(f)
+        gen_at = datetime.fromisoformat(blob["generated_at"])
+        age_hours = (datetime.now(timezone.utc) - gen_at).total_seconds() / 3600
+        if age_hours > FRAMING_CACHE_TTL_HOURS:
+            return None
+        return {int(k): v for k, v in blob["data"].items()}
+    except (KeyError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _save_framing_cache(season: int, data: dict[int, dict]) -> None:
+    path = _framing_cache_path(season)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as f:
+        json.dump(
+            {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "data": {str(k): v for k, v in data.items()},
+            },
+            f,
+        )
+
+
+def catcher_framing_lookup(season: int) -> dict[int, dict]:
+    """Return {catcher_mlb_id: {pct_tot, rv_tot, pitches}} from Baseball Savant.
+
+    pct_tot = called-strike rate on shadow-zone takes (the headline framing
+    stat). rv_tot = total run value vs avg. Cached 24h on disk. Returns
+    empty dict on failure — callers fall back to FRAMING_FACTOR_DEFAULT.
+    """
+    cached = _load_framing_cache(season)
+    if cached is not None:
+        return cached
+
+    url = (
+        "https://baseballsavant.mlb.com/leaderboard/catcher-framing"
+        f"?year={season}&team=&min=q&sort=4,1&csv=true"
+    )
+    try:
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return {}
+
+    try:
+        import csv
+        import io as _io
+
+        # Savant serves this CSV with a UTF-8 BOM; decode with utf-8-sig so
+        # the first column key parses as "id" rather than "﻿id".
+        text = resp.content.decode("utf-8-sig")
+        reader = csv.DictReader(_io.StringIO(text))
+        result: dict[int, dict] = {}
+        for row in reader:
+            raw_id = row.get("id")
+            if not raw_id:
+                continue
+            try:
+                cid = int(raw_id)
+                pct = float(row.get("pct_tot") or 0.0)
+                rv = float(row.get("rv_tot") or 0.0)
+                pitches = int(float(row.get("pitches") or 0))
+            except (TypeError, ValueError):
+                continue
+            result[cid] = {"pct_tot": pct, "rv_tot": rv, "pitches": pitches}
+    except Exception:  # noqa: BLE001
+        return {}
+
+    if result:
+        _save_framing_cache(season, result)
     return result

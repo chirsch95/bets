@@ -1,0 +1,6 @@
+date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev
+2026-05-16,two_leg,1,2,Cade Cavalli,676917,over,4.5,260.0,0.679,0.568,Cristopher Sánchez,650911,over,7.5,117.0,0.531,0.437,,,,,,,,681,7.812,0.360549,0.248216,0.112333,1.816609
+2026-05-16,two_leg,2,2,Justin Wrobleski,680736,under,5.5,110.0,0.721,0.586,Bryce Elder,693821,over,5.5,121.0,0.53,0.459,,,,,,,,364,4.641,0.38213,0.268974,0.113156,0.773465
+2026-05-16,two_leg,3,2,Bubba Chandler,696149,under,4.5,-120.0,0.6,0.524,Joey Cantillo,676282,under,4.5,126.0,0.497,0.425,,,,,,,,314,4.143333,0.2982,0.2227,0.0755,0.235542
+2026-05-16,three_leg,1,3,Justin Wrobleski,680736,under,5.5,110.0,0.721,0.586,Jacob deGrom,594798,under,7.5,-145.0,0.638,0.555,Bryce Elder,693821,over,5.5,121.0,0.53,0.459,684,7.84169,0.243799,0.149281,0.094518,0.911796
+2026-05-16,three_leg,2,3,Bubba Chandler,696149,under,4.5,-120.0,0.6,0.524,Chris Bassitt,605135,under,4.5,-150.0,0.645,0.568,Joey Cantillo,676282,under,4.5,126.0,0.497,0.425,591,6.905556,0.192339,0.126494,0.065845,0.328208
