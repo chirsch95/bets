@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh bets-host 'launchctl *)",
+      "Bash(ssh bets-host 'cd ~/bets && /Users/chadhirsch/bets/.venv/bin/python *)",
+      "Bash(ssh bets-host 'cd ~/bets && git *)",
+      "Bash(ssh bets-host 'cd ~/bets && grep *)",
+      "Bash(ssh bets-host 'cd ~/bets && echo *)"
+    ]
+  }
+}

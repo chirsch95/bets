@@ -3,28 +3,26 @@
 A data pipeline and modeling system for identifying +EV prop bets on daily fantasy sites (PrizePicks, Underdog). Currently active: **MLB pitcher strikeouts**. The hitter strikeouts pipeline exists but is paused while the pitcher model accumulates calibration data — see [Re-enabling hitters](#re-enabling-hitters).
 
 The dashboard has two main surfaces:
-- **Pitcher Ks tab** — public, self-hosted on an M1 MacBook Air via Cloudflare Tunnel + Caddy. Today's slate (with first-pitch time in Central), "Today's Picks" hero cards for actionable focus picks, Parlay Suggestions ranked by EV per $1 (with one-click handoff to the Bets tab when running locally), Yesterday's Results report card, and a 14-day Track Record (sparkline + trend arrows + OVER/UNDER split).
-- **Bets tab** — local-only personal parlay ledger with live K tracking from MLB Stats API. Picker-driven entry from today's slate, live Combined stats panel (Payout / Hit % / Edge / EV / Profit-if-hit) that recomputes on every leg change, mid-game lock-in for HIT/MISS, auto-settle on definitive verdicts, free-entry exclusion from totals.
+- **Pitcher Ks tab** — Today's slate (with first-pitch time in Central), "Today's Picks" hero cards for actionable focus picks, Parlay Suggestions ranked by EV per $1 (with one-click handoff to the Bets tab), Yesterday's Results report card, and a 14-day Track Record (sparkline + trend arrows + OVER/UNDER split).
+- **Bets tab** — personal parlay ledger with live K tracking from MLB Stats API. Picker-driven entry from today's slate, live Combined stats panel (Payout / Hit % / Edge / EV / Profit-if-hit) that recomputes on every leg change, mid-game lock-in for HIT/MISS, auto-settle on definitive verdicts, free-entry exclusion from totals.
+
+Both surfaces live on the same Flask app served from an **M1 MacBook Air over Tailscale** — see [Deployment](#deployment-self-hosted-on-m1-air). Multi-user accounts gate the Bets tab per-person; the dashboard view is shared.
 
 ## Daily Routine
 
-The dashboard is served from an M1 MacBook Air on your home network via Cloudflare Tunnel — see [Deployment](#deployment-self-hosted-on-m1-air). The public URL changes whenever `cloudflared` restarts (cost of running quick-tunnel mode); fetch the current one from the host:
+Open the Tailscale URL for the Air's Flask in any browser (your phone over Tailscale works too) — the dashboard fetches the latest CSVs from this GitHub repo at page-load.
 
-```sh
-ssh bets-host '~/bets/ops/bets-url.sh'
-```
+**Air is the canonical pipeline.** Click **Re-run pipeline** in the dashboard — Flask's `/refresh` on the Air runs `bets.main`, then commits and pushes `output/` atomically under its pipeline lock (driven by the `BETS_AUTO_PUSH=1` env var set in the Air's `.env`). The laptop's `gitpull` cron picks it up within 60s for offline browsing; the dashboard updates as soon as the commit lands.
 
-Open that URL in any browser. The dashboard fetches the latest CSVs from this GitHub repo at page-load — click **Refresh data** any time to re-pull.
-
-**Local is the canonical pipeline.** Run it from your main laptop close to first pitch:
+For local dev work (editing `bets/web.py`, testing changes before pushing), run Flask manually on the laptop:
 
 ```sh
 .venv/bin/python -m bets.server   # http://127.0.0.1:8000
 ```
 
-Click **Re-run pipeline** in the local dashboard. When the run finishes, `git add output/ && git commit && git push`. The M1 Air `git pull`s every 60s, so the public URL reflects the new HTML within a minute. CSV-only changes go live faster — the browser fetches CSVs directly from `raw.githubusercontent.com`, which updates the moment GitHub does.
+The laptop's `/refresh` does NOT auto-push (no `BETS_AUTO_PUSH` env var set) — it's safe to click during dev iteration. When happy, push via the laptop's `/push` button or `git push` directly.
 
-**Escape hatch — `gh workflow run` (use sparingly).** When you're away from your laptop and need lines updated:
+**Escape hatch — `gh workflow run` (rarely needed now).** When the Air is down (rebooting, network issue) and you can't ssh in to bring it back:
 
 ```sh
 gh workflow run "Refresh dashboard" -R chirsch95/bets
@@ -66,13 +64,17 @@ bets/
 ├── .env.example
 ├── .venv/                          virtualenv (gitignored)
 ├── ops/                            self-hosting artifacts deployed on the M1 Air (see Deployment):
-│   ├── Caddyfile                   serves /, /index.html, the PNG icons + manifest from output/ on :8080; everything else 404s
-│   ├── git-pull.sh                 60s-cron script that runs `git pull --ff-only` on the Air
-│   ├── bets-url.sh                 prints the current quick-tunnel public URL by scanning cloudflared logs
-│   └── launchd/
-│       ├── com.bets.caddy.plist        LaunchAgent: caddy run, KeepAlive
-│       ├── com.bets.cloudflared.plist  LaunchAgent: cloudflared quick tunnel, KeepAlive
-│       └── com.bets.gitpull.plist      LaunchAgent: git-pull.sh, StartInterval=60
+│   ├── git-pull.sh                 60s-cron script that runs `git pull --ff-only` on Air and laptop
+│   ├── bets-url.sh                 legacy helper from the trycloudflare era; harmless to keep
+│   ├── launchd/
+│   │   ├── com.bets.flask.plist        LaunchAgent: python -m bets.server, KeepAlive
+│   │   ├── com.bets.gitpull.plist      LaunchAgent: git-pull.sh, StartInterval=60
+│   │   ├── com.bets.health.plist       LaunchAgent: bets.health watcher
+│   │   └── com.bets.databackup.plist   LaunchAgent: 3am mirror of data/ to bets-data-backup repo
+│   └── legacy/                     retired 2026-05-16 when Air went Tailscale-only:
+│       ├── Caddyfile                   served public output/ via Cloudflare Tunnel
+│       ├── com.bets.caddy.plist
+│       └── com.bets.cloudflared.plist
 ├── bets/                           package
 │   ├── __init__.py
 │   ├── config.py                   constants: blend weights, park factors, lineup PA, paths
@@ -86,12 +88,14 @@ bets/
 │   ├── live.py                     Slate-pitcher list + live K-count + pitches + IP from MLB Stats API boxscore + schedule (60s in-memory cache); also surfaces is_home for vs/@ rendering
 │   ├── wagers.py                   Personal bet ledger: load/save/CRUD on data/bets.json; legs[] schema; totals exclude free entries; per-site by_site breakdown
 │   ├── notify.py                   Optional Pushover notifications: bet settle (server-fired) + pulled-starter / one-to-go alerts (live-ks-piggyback). No-op without PUSHOVER_TOKEN/PUSHOVER_USER in .env
-│   ├── web.py                      HTML+JS dashboard shell (client-side rendered); same HTML works on the public URL + localhost (runtime hostname check hides local-only buttons/tab)
-│   └── server.py                   Local Flask server (port 8000); GET / serves shell + output/ CSVs as static; /api/bets, /api/slate-pitchers, /api/live-ks for the local-only Bets tab
-├── data/                           gitignored — caches + private bet ledger:
+│   ├── web.py                      HTML+JS dashboard shell (client-side rendered); same HTML for Air/laptop, runtime hostname check toggles dev-only affordances
+│   ├── server.py                   Flask server (port 8000); GET / serves shell + output/ CSVs as static; /api/bets, /api/slate-pitchers, /api/live-ks for the Bets tab; /refresh runs bets.main and (with BETS_AUTO_PUSH=1) commits+pushes atomically
+│   ├── auth.py                     Multi-user login, per-user data/users/<id>/ namespacing
+│   └── health.py                   Watcher (launchd): staleness checks + in-process retry via local /refresh
+├── data/                           gitignored — caches + per-user ledgers:
 │   ├── swstr_<season>.json
-│   └── bets.json                   personal bet ledger (NEVER committed; never reaches the public URL)
-└── output/                         tracked — the M1 Air pulls and Caddy serves from here:
+│   └── users/<id>/bets.json        personal bet ledger (NEVER committed)
+└── output/                         tracked — Air writes here, laptop gitpulls for read-only sync:
     ├── pitcher_ks_<date>.csv               live state, overwritten on each run
     ├── pitcher_ks_<date>_slate.csv         frozen first-run snapshot for grading
     ├── pitcher_ks_<date>_settled.csv       projections + actuals + slate_* fields
@@ -121,7 +125,7 @@ The Flask server's **Re-run pipeline** button runs the pitcher pipeline (hitter 
 
 ## Local Development
 
-The local Flask server is for **testing code changes before they hit the public URL** — the M1 Air pulls every 60s, so any push lands on the live dashboard within a minute. Iterate locally first.
+The local Flask server is for **testing code changes before they hit Air's Tailscale dashboard** — the Air pulls every 60s, so any push lands on the live dashboard within a minute. Iterate locally first.
 
 ```sh
 cd ~/bets
@@ -135,9 +139,9 @@ Override the port if 8000 is taken: `BETS_PORT=5050 python -m bets.server`. macO
 1. Edit code in `~/bets/bets/`
 2. Restart the server (Ctrl+C, then re-run) to pick up Python changes — browser hard-refresh (Cmd+Shift+R) is enough for HTML/CSS only
 3. Verify the change at `http://127.0.0.1:8000`
-4. Commit + push **only when satisfied** — within ~1 minute the M1 Air's `git pull` cron picks it up and the public URL updates
+4. Commit + push **only when satisfied** — within ~1 minute the M1 Air's `git pull` cron picks it up and the Tailscale dashboard updates
 
-**Why localhost and the public URL can show different data:** `bets/web.py:baseUrl()` swaps the CSV fetch root based on `location.hostname`. On `localhost`/`127.0.0.1` it fetches `./pitcher_ks_*.csv` from the local Flask server's filesystem (so unpushed working-tree CSVs show up). On the public URL it fetches from `raw.githubusercontent.com` (so only pushed CSVs show up). If hero cards or stats differ between the two surfaces, you almost certainly have unpushed CSV changes locally.
+**Why localhost and Air's Tailscale URL can show different data:** `bets/web.py:baseUrl()` swaps the CSV fetch root based on `location.hostname`. On `localhost`/`127.0.0.1` it fetches `./pitcher_ks_*.csv` from the laptop's Flask filesystem (so unpushed working-tree CSVs show up). On the Tailscale URL it fetches from `raw.githubusercontent.com` (so only pushed CSVs show up). If hero cards or stats differ between the two surfaces, you almost certainly have unpushed CSV changes locally.
 
 ## Dashboard
 
@@ -206,7 +210,7 @@ Slate-time fields (`slate_edge`, `slate_line`, `slate_over_hit`, etc.) are added
 
 ### Bets tab (local only)
 
-A **personal parlay ledger** for tracking actual DFS bets, hidden on the public URL (visible only when the page is loaded from `localhost`/`127.0.0.1`). Backed by `data/bets.json` which is gitignored.
+A **personal parlay ledger** for tracking actual DFS bets, gated behind per-user login and Tailscale (no public exposure). Backed by `data/users/<id>/bets.json` which is gitignored.
 
 - **Structured parlay entry** with leg-count selector (2–6 legs, matching DFS-site minimums). Each leg has a pitcher picker (auto-fills from today's slate including model recommendation), a per-leg line override (DFS lines often differ from sportsbook), and an O/U toggle.
 - **Live Combined stats panel** above the stake/odds inputs: recomputes Payout, Hit %, Edge, EV per $1, and Profit-if-hit on every leg-state change (pitcher select, line input, O/U toggle, leg-count, stake). Auto-fills the Odds field with the parlay decimal — once you type into Odds yourself, your value sticks. Reading from the slate's `p_over` / `novig_over`, so the math you see in the editor matches what the Pitcher-tab Parlay Suggestions show.
@@ -220,19 +224,19 @@ A **personal parlay ledger** for tracking actual DFS bets, hidden on the public 
 - **Per-site P&L row**: under the totals strip, a "By site:" line breaks out tickets · W–L–pending · net · ROI for each of PP / UD / DK separately, so you can see whether one site is actually paying off differently. Tickets with no site tag are excluded from the row.
 - **Mobile quick-status strip** (≤600px only): a compact band above the toolbar shows one tappable row per still-pending bet, one chip per leg. Each chip leads with the wagered side + line (`U7.5`, `O8.5`) so the K count reads against what was bet, then appends `5K · 87P · 4th` while live or settles to `5K ✓` / `9K ✗` once `legHitState` locks in. Chip color = verdict (green/red/yellow/gray); tooltip carries the longer state. Tap a row to expand + scroll to the matching ledger card. Strip is hidden on desktop.
 
-The Flask server's `/api/bets` (CRUD), `/api/slate-pitchers`, and `/api/live-ks` routes serve the tab. None of these reach the public URL — the tab itself is hidden via the `local-only` CSS class plus a synchronous head script that adds `is-local` to `<html>` only when `location.hostname` matches localhost. (The Caddyfile on the M1 Air also 404s any path other than `/`, `/index.html`, the PNG icons, and `/manifest.webmanifest`, so even the API routes can't be reached publicly even if the JS were tampered with.)
+The Flask server's `/api/bets` (CRUD), `/api/slate-pitchers`, and `/api/live-ks` routes serve the tab. Access is gated by Tailscale — only tailnet members reach the Flask URL at all, and per-user login further scopes the Bets tab to its owner.
 
 ### Install as an iPhone app (PWA)
 
 The dashboard ships a web app manifest + apple-touch icons, so it installs from Safari as a standalone home-screen app — no App Store, no Apple Developer account, no Xcode.
 
-1. Open the **Tailscale URL** (`https://chadhirschs-macbook-air.tail4082dd.ts.net/`) in Safari on your iPhone. Install from this URL specifically — the public Cloudflare URL also serves the manifest, but it doesn't have the Bets tab, so the app would be missing your most-used surface.
+1. Open the **Tailscale URL** for the Air's Flask in Safari on your iPhone (the Tailscale app must be active on the phone).
 2. Tap **Share → Add to Home Screen**. Default name is "K Props".
 3. Tap the new icon — it opens full-screen with no Safari chrome, dark theme matching the dashboard, and your phone treats it like any other app (icon on the home screen, lives in the app switcher).
 
 **Refresh patterns:** in-app **Refresh data** / **↻ Refresh live** buttons reload data only. Pull-to-refresh from the top of the screen does a full page reload (iOS 16+). After a deploy that changes UI, force-quit + re-open the app via the app switcher to guarantee a fresh load of HTML/JS.
 
-**Files involved:** `output/manifest.webmanifest` declares the app; `output/apple-touch-icon.png` (180×180) is what iOS pins to the home screen; `icon-192.png` / `icon-512.png` are referenced by the manifest for non-iOS contexts. Caddy's allowlist on the Air is extended to serve all of these so the manifest also resolves from the public URL.
+**Files involved:** `output/manifest.webmanifest` declares the app; `output/apple-touch-icon.png` (180×180) is what iOS pins to the home screen; `icon-192.png` / `icon-512.png` are referenced by the manifest for non-iOS contexts. Flask serves these as static files from `output/`.
 
 ### Pushover notifications (optional, local-only)
 
@@ -255,36 +259,28 @@ The pulled-starter and one-to-go alerts piggyback on the dashboard's `/api/live-
 
 ## Deployment (self-hosted on M1 Air)
 
-The dashboard runs on a dedicated **M1 MacBook Air** sitting on the home network, exposed to the public internet via a **Cloudflare Tunnel** (no inbound ports opened on the router). Architecture:
+The dashboard runs on a dedicated **M1 MacBook Air** sitting on the home network, accessed exclusively over **Tailscale** — no public internet exposure. Architecture (as of 2026-05-16):
 
-1. **GitHub Actions** runs the pipeline only on demand (`workflow_dispatch`). Trigger via `gh workflow run "Refresh dashboard" -R <user>/<repo>`, the Actions tab, or the local **Re-run pipeline** button. Cron was removed 2026-05-01 to conserve Odds API quota — the pipeline costs ~16 credits/run on a typical 15-game day, so a daily cron alone (~480/month) would burn nearly the whole 500/month free tier. Re-runs skip games already priced in today's CSV (`skip_team_pairs` in `odds.py`).
-2. Whoever runs the pipeline (locally or via the Action) regenerates `output/`, commits, and pushes to GitHub.
-3. **The M1 Air** runs three LaunchAgents that together host the dashboard:
-   - `com.bets.gitpull` runs `ops/git-pull.sh` every 60s, so any push hits the Air's filesystem within a minute.
-   - `com.bets.caddy` serves `output/` on `localhost:8080` via Caddy. The Caddyfile (`ops/Caddyfile`) is an allowlist — only `/`, `/index.html`, the PNG icons, and `/manifest.webmanifest` are served; every other path returns 404, so the CSVs sitting in `output/` stay private (the browser fetches them from `raw.githubusercontent.com` instead).
-   - `com.bets.cloudflared` runs `cloudflared tunnel --url http://localhost:8080`, which opens an outbound persistent connection to Cloudflare's edge and gets a public `*.trycloudflare.com` URL. No port forwarding, no DDNS, no inbound firewall rules.
-4. The browser fetches CSV data directly from `https://raw.githubusercontent.com/chirsch95/bets/main/output/*.csv` on each page load, so the Air doesn't need to serve them — and CSV-only updates appear on the public URL almost instantly (limited only by GitHub's CDN cache, ~30s).
+1. **The M1 Air** is the canonical pipeline writer. Four LaunchAgents run there:
+   - `com.bets.flask` runs `python -m bets.server`, served on Tailscale. `/refresh` runs the pipeline; with `BETS_AUTO_PUSH=1` set in `.env`, it also commits and pushes `output/` atomically under the same lock, so the 60s gitpull cron never sees a dirty working tree mid-refresh.
+   - `com.bets.gitpull` runs `ops/git-pull.sh` every 60s. Mostly a no-op on the Air (it's the writer), but useful for picking up code changes pushed from the laptop.
+   - `com.bets.health` periodically checks slate/lineups/swstr freshness; on staleness it POSTs to the local `/refresh` for an in-process retry (no GH Actions round-trip), with Pushover alert after `RETRY_CAP=3` failures.
+   - `com.bets.databackup` runs at 3am, mirroring `data/` (gitignored) into the private `bets-data-backup` repo so the SwStr cache, residuals scratch, and `health_state.json` survive disk loss.
+2. **The laptop** is the dev/escape-hatch host. It runs only `com.bets.gitpull` (60s) for read-only sync of `output/`, useful for offline browsing and manual `bets.main` runs (which hit the `all_covered` short-circuit and burn 0 Odds API credits). To preview UI changes mid-dev, run `python -m bets.server` manually — `/refresh` on the laptop does NOT auto-push because `BETS_AUTO_PUSH` is not set.
+3. **GH Actions** keeps the `Refresh dashboard` workflow as a manual disaster fallback — fire it from your laptop if the Air is wedged.
 
-This requires the repo to be **public** (so `raw.githubusercontent.com` can serve the CSVs unauthenticated). Picks are already public via the dashboard URL, so making the source repo public doesn't expose anything new.
-
-The published page is **read-only** by runtime detection — a synchronous head script checks `location.hostname` and only reveals the local-server-only buttons (Re-run pipeline, Settle yesterday) and the local-only Bets tab when running from `localhost`/`127.0.0.1`. Same `index.html` works on the public URL and locally — no env-var gotcha at build time. The `ODDS_API_KEY` lives only in GitHub Secrets and the local `.env`, never on the Air.
-
-### Quick-tunnel caveat
-
-The current setup uses Cloudflare's free **quick tunnel**, which assigns a random `*.trycloudflare.com` URL that **changes every time `cloudflared` restarts** (reboot, crash, network blip). To find the current URL:
-
-```sh
-ssh bets-host '~/bets/ops/bets-url.sh'
-```
-
-When the URL-changes behavior gets annoying, upgrade to a **named tunnel** with a stable URL like `bets.yourdomain.com`. That requires a domain on Cloudflare (~$10/yr via Cloudflare Registrar). The swap is a one-line change to `ops/launchd/com.bets.cloudflared.plist` after a one-time `cloudflared tunnel login` + DNS routing.
+The dashboard fetches CSVs from `https://raw.githubusercontent.com/chirsch95/bets/main/output/*.csv` on each page load, so the Flask host doesn't need to re-serve them; updates appear within ~30s of the commit landing on GitHub.
 
 ### Network + access architecture
 
-- **Tailscale** is installed on the Air and on the main laptop, putting both on a private overlay network. SSH into the Air uses the alias `bets-host` (`~/.ssh/config` on the main Mac maps it to the Tailscale IP). Works from any network — the Air doesn't need to be on the same wifi.
+- **Tailscale** is installed on the Air, the main laptop, and any phones/devices that need dashboard access. SSH into the Air uses the alias `bets-host` (`~/.ssh/config` maps it to the Tailscale IP). Works from any network — the Air doesn't need to be on the same wifi.
 - The Air sits on the **Asus router's guest VLAN** (Access Intranet disabled), so even if it's compromised it can't reach other devices on the home LAN.
-- The router has no inbound port forwarding. The Cloudflare Tunnel is purely outbound from the Air.
+- The router has no inbound port forwarding. There's no public surface — `trycloudflare.com` and Caddy were retired 2026-05-16; their configs live in `ops/legacy/` for reference.
 - The Air is configured to **never sleep** (`pmset disablesleep 1` + Energy Saver tweaks), so the lid can be closed without taking the dashboard down. Auto-login is on so LaunchAgents start without manual intervention after reboots.
+
+### Auth: git push from Air
+
+The Air's deploy key is registered on the GitHub repo with **Allow write access** enabled. Air's local repo config sets `user.name = bets-host` and `user.email = bets-host@local` so auto-refresh commits are visibly distinct from manual laptop commits in `git log`.
 
 ### One-time setup
 
@@ -294,24 +290,21 @@ git init -b main
 git add .
 git commit -m "initial commit"
 
-# 2. Create a public GitHub repo and push (gh CLI shown; web UI also works)
+# 2. Create a GitHub repo and push (gh CLI shown; web UI also works)
 gh repo create bets --public --source=. --remote=origin --push
 
-# 3. Add the Odds API key as a GitHub Actions secret
+# 3. Add the Odds API key as a GitHub Actions secret (for the disaster-fallback workflow)
 gh secret set ODDS_API_KEY     # paste your key when prompted
 
 # 4. Set up the M1 Air host:
-#    - Install Tailscale, sign in (same account as main laptop)
-#    - Generate an SSH deploy key on the Air, add it (read-only) to GitHub repo settings
+#    - Install Tailscale, sign in (same account as your laptop and phone)
+#    - Generate an SSH deploy key on the Air, add it to GitHub repo settings with "Allow write access" checked
 #    - git clone the repo into ~/bets
-#    - brew install caddy cloudflared
-#    - Symlink ~/.config/caddy/Caddyfile → ~/bets/ops/Caddyfile
-#    - Symlink ~/Library/LaunchAgents/com.bets.*.plist → ~/bets/ops/launchd/*.plist
-#    - launchctl bootstrap each plist
+#    - Copy .env (must include ODDS_API_KEY and BETS_AUTO_PUSH=1)
+#    - git config user.name "bets-host" && git config user.email "bets-host@local"  (in ~/bets)
+#    - launchctl bootstrap each plist in ops/launchd/
 #    - pmset/Energy-Saver to never sleep, auto-login enabled
 ```
-
-If you later want a scheduled pull (e.g. weekly to keep settled CSVs current), add a `schedule:` block back to `.github/workflows/refresh.yml` — the existing `workflow_dispatch` trigger is preserved.
 
 ## Status
 
@@ -331,7 +324,7 @@ The hitter pipeline is paused for **~1 month** (paused 2026-05-01, target re-eva
 1. Flip `SHOW_HITTERS = False` to `True` in `bets/web.py`
 2. Uncomment the "Project today's hitters" step in `.github/workflows/refresh.yml`
 3. Uncomment the `run_hitter_projections()` block in `bets/server.py:refresh`
-4. Commit + push — the M1 Air will pick up the new `index.html` on its next 60s `git pull` and the public URL will show the hitter tab
+4. Commit + push — the M1 Air will pick up the new `index.html` on its next 60s `git pull` and the Tailscale dashboard will show the hitter tab
 
 That's it. The model code, settle path, and CSV format are all preserved untouched. Note: re-enabling adds another full per-game odds call to each pipeline run (`batter_strikeouts` market) — roughly doubles the per-run credit cost. With manual-only pulls this is manageable but worth keeping in mind before triggering many re-runs in a day.
 
@@ -340,8 +333,8 @@ That's it. The model code, settle path, and CSV format are all preserved untouch
 - ✅ Line preservation across same-day reruns (`load_previous_*_lines` + `merge_lines`) so a late run doesn't wipe morning lines when books pull markets
 - ✅ Calibration harness: settle vs actual outcomes, MAE / RMSE / bias for v0 / v1 / v2 head-to-head, P(over) buckets, edge-threshold ROI
 - ✅ HTML dashboard with focus highlighting, OVER / UNDER recommendations, Recent Results section. Currently single-tab (Pitcher Ks); tabbed layout returns when hitters are re-enabled.
-- ✅ Local Flask server (port 8000) with Refresh Lines / Settle Yesterday buttons — dev/test only
-- ✅ **Self-hosted public dashboard on M1 Air** (Cloudflare Tunnel + Caddy + launchd, Tailscale-managed) — replaces Netlify as of 2026-05-06. **Client-side rendering**: thin HTML+JS shell on the Air, browser fetches CSVs from raw.githubusercontent.com → CSV updates appear on the public URL within ~30s of `git push`. Manual **Refresh data** button re-fetches at any time. URL: `ssh bets-host '~/bets/ops/bets-url.sh'`.
+- ✅ Flask server (port 8000) on Air with Re-run pipeline / Settle Yesterday / Push buttons; `/refresh` auto-commits+pushes when `BETS_AUTO_PUSH=1` is set
+- ✅ **Self-hosted dashboard on M1 Air, Tailscale-only as of 2026-05-16.** The Cloudflare Tunnel + Caddy public path was retired; everything (read + bets) is served by Flask over Tailscale. Pipeline runs on Air; laptop is dev/escape-hatch.
 
 **Future**
 - ⏳ Empirical-Bayes shrinkage, catcher framing, umpire tendencies
