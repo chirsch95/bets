@@ -33,6 +33,19 @@ SWSTR_BLEND_WEIGHT = 0.35
 # Park K-rate factors (1.00 = neutral). Keyed by HOME team_id.
 # Approximations from multi-year FanGraphs Guts! data — refine annually.
 # Anything not listed defaults to PARK_K_FACTOR_DEFAULT.
+# Weather K% factor. Multiplies matchup K% — domes/closed roofs are
+# neutral; cold weather is mildly K-positive (bat speed slows more than
+# pitcher grip suffers); wind blowing IN keeps fly balls alive so the
+# at-bat reaches more deep counts → slightly more K, wind OUT is the
+# reverse. Coefficients are conservative because the published K-specific
+# weather effect is small (most weather signal lives in totals/HR, not
+# K). Capped at ±1.5% so weather can't dominate a projection.
+WEATHER_TEMP_COEF = 0.0005      # per °F below 70 → +K
+WEATHER_TEMP_PIVOT = 70
+WEATHER_WIND_COEF = 0.0007      # per mph in/out
+WEATHER_FACTOR_BOUND = 0.015    # cap effect at ±1.5%
+WEATHER_FACTOR_DEFAULT = 1.00
+
 # Catcher-framing factor. Multiplies matchup K% the same way park_factor
 # does. Centered on LEAGUE_FRAMING_PCT (called-strike rate on shadow-zone
 # takes — Savant's pct_tot), scaled by FRAMING_FACTOR_SCALE, and clamped

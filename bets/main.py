@@ -41,6 +41,7 @@ from .model import (
     project_pitcher_ks_v0,
     project_pitcher_ks_v1,
     project_pitcher_ks_v2,
+    weather_k_factor,
 )
 from .odds import (
     canonical_team_name,
@@ -183,6 +184,12 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
         else:
             framing_factor = FRAMING_FACTOR_DEFAULT
 
+        weather_factor = weather_k_factor(
+            s.get("weather_condition"),
+            s.get("weather_temp"),
+            s.get("weather_wind"),
+        )
+
         v0 = project_pitcher_ks_v0(ps["season_k_pct"], ps["recent_k_pct"])
         v1 = project_pitcher_ks_v1(
             season_k_pct=ps["season_k_pct"],
@@ -201,6 +208,7 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
             recent_bf_per_start=ps["recent_bf_per_start"],
             park_factor=park_factor,
             framing_factor=framing_factor,
+            weather_factor=weather_factor,
             league_k_pct=LEAGUE_K_PCT,
         )
 
@@ -239,6 +247,10 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
             "catcher_id": catcher_id or "",
             "catcher_name": s.get("catcher_name", ""),
             "framing_factor": round(framing_factor, 3),
+            "weather_condition": s.get("weather_condition", ""),
+            "weather_temp": s.get("weather_temp", ""),
+            "weather_wind": s.get("weather_wind", ""),
+            "weather_factor": round(weather_factor, 4),
             "matchup_k_pct": round(v2["matchup_k_pct"], 3),
             "exp_bf": round(v2["expected_bf"], 1),
             "proj_ks_v0": round(v0, 2),

@@ -34,7 +34,7 @@ def todays_probable_starters(target_date: date | None = None) -> list[dict]:
     url = (
         f"{MLB_STATS_BASE}/schedule"
         f"?sportId=1&date={target_date.isoformat()}"
-        f"&hydrate=probablePitcher,lineups"
+        f"&hydrate=probablePitcher,lineups,weather"
     )
     resp = requests.get(url, timeout=HTTP_TIMEOUT)
     resp.raise_for_status()
@@ -52,6 +52,10 @@ def todays_probable_starters(target_date: date | None = None) -> list[dict]:
             home_team_name = home["team"]["name"]
             away_team_name = away["team"]["name"]
             lineups = game.get("lineups", {}) or {}
+            weather = game.get("weather") or {}
+            weather_condition = weather.get("condition", "")
+            weather_temp = weather.get("temp", "")
+            weather_wind = weather.get("wind", "")
 
             for side, is_home in (("home", True), ("away", False)):
                 team = game["teams"][side]
@@ -106,6 +110,9 @@ def todays_probable_starters(target_date: date | None = None) -> list[dict]:
                         "opp_lineup": opp_lineup,
                         "catcher_id": catcher_id,
                         "catcher_name": catcher_name,
+                        "weather_condition": weather_condition,
+                        "weather_temp": weather_temp,
+                        "weather_wind": weather_wind,
                     }
                 )
     return starters
