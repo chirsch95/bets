@@ -21,11 +21,6 @@ from .config import (
     PARK_K_FACTOR_DEFAULT,
     RECENT_FORM_WEIGHT,
     SWSTR_BLEND_WEIGHT,
-    WEATHER_FACTOR_BOUND,
-    WEATHER_FACTOR_DEFAULT,
-    WEATHER_TEMP_COEF,
-    WEATHER_TEMP_PIVOT,
-    WEATHER_WIND_COEF,
 )
 
 
@@ -156,17 +151,15 @@ def project_pitcher_ks_v2(
     recent_bf_per_start: float,
     park_factor: float = PARK_K_FACTOR_DEFAULT,
     framing_factor: float = FRAMING_FACTOR_DEFAULT,
-    weather_factor: float = WEATHER_FACTOR_DEFAULT,
     league_k_pct: float = LEAGUE_K_PCT,
 ) -> dict:
-    """v2: SwStr-blended K%, lineup-or-team opp K%, park × framing × weather."""
+    """v2: SwStr-blended K%, lineup-or-team opp K%, park × framing multipliers."""
     blended_actual = blended_k_rate(season_k_pct, recent_k_pct)
     pitcher_k = blended_pitcher_k_with_swstr(blended_actual, swstr_pct)
     matchup = (
         matchup_k_rate(pitcher_k, opp_k_pct, league_k_pct)
         * park_factor
         * framing_factor
-        * weather_factor
     )
     bf = expected_batters_faced(season_bf_per_start, recent_bf_per_start)
     return {
@@ -176,52 +169,6 @@ def project_pitcher_ks_v2(
         "expected_bf": bf,
         "proj_ks": matchup * bf,
     }
-
-
-def weather_k_factor(
-    condition: str | None,
-    temp: str | int | None,
-    wind: str | None,
-) -> float:
-    """Map MLB Stats API weather block → K% multiplier in [1-bound, 1+bound].
-
-    Inputs are the raw shapes returned by hydrate=weather:
-        condition: e.g. "Partly Cloudy", "Dome", "Roof Closed", "Clear"
-        temp:      Fahrenheit, returned as a string ("66") or int
-        wind:      e.g. "8 mph, Out To CF", "0 mph, None", "12 mph, L To R"
-
-    Returns WEATHER_FACTOR_DEFAULT (1.00) when weather is unparseable,
-    when the roof is closed, or for cross-winds (L↔R) that don't carry
-    or kill fly balls.
-    """
-    cond_lower = (condition or "").strip().lower()
-    if cond_lower in ("dome", "roof closed"):
-        return WEATHER_FACTOR_DEFAULT
-
-    temp_adj = 0.0
-    try:
-        t = int(temp) if temp not in (None, "") else None
-    except (TypeError, ValueError):
-        t = None
-    if t is not None:
-        temp_adj = (WEATHER_TEMP_PIVOT - t) * WEATHER_TEMP_COEF
-
-    wind_adj = 0.0
-    if wind:
-        try:
-            speed_part, dir_part = wind.split(",", 1)
-            speed = int(speed_part.strip().split()[0])
-            dir_lower = dir_part.strip().lower()
-            if "out" in dir_lower:
-                wind_adj = -speed * WEATHER_WIND_COEF
-            elif "in" in dir_lower:
-                wind_adj = +speed * WEATHER_WIND_COEF
-            # Cross-winds (L To R / R To L) and "None" leave wind_adj=0.
-        except (ValueError, IndexError):
-            pass
-
-    factor = 1.0 + temp_adj + wind_adj
-    return max(1.0 - WEATHER_FACTOR_BOUND, min(1.0 + WEATHER_FACTOR_BOUND, factor))
 
 
 # ---------- Hitter strikeouts ----------
