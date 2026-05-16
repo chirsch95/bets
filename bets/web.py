@@ -2902,8 +2902,7 @@ def _action_buttons_html() -> str:
     )
     force_confirm = (
         "Force re-fetch lines from The Odds API? "
-        "This bypasses the all-covered short-circuit and costs ~1 credit per game (~16 total on a full slate). "
-        "Use when books have repriced and you want fresh lines mid-day. Continue?"
+        "Use when books have repriced mid-day. Continue?"
     )
     return f"""<button type="button" id="theme-toggle" class="float-btn theme-btn" aria-label="Toggle light/dark" title="Toggle light/dark">{sun_svg}{moon_svg}</button>
     <button type="button" id="refresh-btn" class="float-btn refresh-btn" aria-label="Refresh data" title="Refresh data">{refresh_svg}</button>

@@ -49,7 +49,7 @@ cp .env.example .env   # then edit .env to add your ODDS_API_KEY
 chmod 600 .env
 ```
 
-Get a free Odds API key at https://the-odds-api.com (500 requests / month). Without a key the projections still run; only the line-comparison and EV columns are skipped.
+Get an Odds API key at https://the-odds-api.com. The free Starter tier (500 req/month) works for low-volume use; the 20K plan ($30/mo) is comfortable headroom for daily morning pulls plus mid-day force-refreshes. Without a key the projections still run; only the line-comparison and EV columns are skipped.
 
 ## Project Layout
 
@@ -161,7 +161,7 @@ The Opponent column prefixes the team name with **`vs`** when the pitcher is the
 
 ### Odds API quota pill
 
-A pill in the header (`Odds API: 188/500 · +9 today`) tracks usage against the 500/month free-tier cap. The `used/cap` figures come from `x-requests-remaining` / `x-requests-used` headers The Odds API returns on every response, so they're authoritative — captured by `_log_quota` in `bets/odds.py` after each fetch and persisted to `output/odds_api_usage.json` (latest snapshot + per-call history capped at 500 entries). The `+N today` segment is computed locally from the log and answers "did this re-run consume too many credits?" — useful for confirming the skip-covered-games optimization is doing its job (a same-day re-run after every starter is priced should bump it by 0). Pill turns yellow at ≥75% used, red at ≥90%. Hover for last-update time and breakdown. Note: `/events` calls cost 0 credits; only the per-event `/odds` calls bill against quota.
+A pill in the header (`Odds API: 188/20000 · +9 today`) tracks usage against the active plan's monthly cap. The `used/cap` figures come from `x-requests-remaining` / `x-requests-used` headers The Odds API returns on every response, so they're authoritative — captured by `_log_quota` in `bets/odds.py` after each fetch and persisted to `output/odds_api_usage.json` (latest snapshot + per-call history capped at 500 entries). The `+N today` segment is computed locally from the log and answers "did this re-run consume too many credits?" — useful for confirming the skip-covered-games optimization is doing its job (a same-day re-run after every starter is priced should bump it by 0). Pill turns yellow at ≥75% used, red at ≥90%. Hover for last-update time and breakdown. Note: `/events` calls cost 0 credits; only the per-event `/odds` calls bill against quota.
 
 ### Time + live status column
 
