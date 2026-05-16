@@ -52,6 +52,17 @@ def _safe_int(v) -> int | None:
         return None
 
 
+def _pick_edge(r: dict) -> float | None:
+    """Mirror of the JS pickEdge() helper: prefer calibrated edge,
+    fall back to raw edge for rows that predate the Platt calibration
+    (cal_edge_v2 was introduced 2026-05-11). Path C uses cal_edge_v2 as
+    the bet-classification source."""
+    cal = _safe_float(r.get("cal_edge_v2"))
+    if cal is not None:
+        return cal
+    return _safe_float(r.get("edge"))
+
+
 def _is_focus(edge: float | None) -> bool:
     if edge is None:
         return False
@@ -98,7 +109,7 @@ def _parse_game_ts(s: str | None) -> float | None:
 def _pick_leg_from_row(r: dict) -> dict | None:
     """Mirror pickLegFromRow: turn a slate row into a normalized leg, or
     None if it can't be priced (no odds on the picked side, no novig)."""
-    edge = _safe_float(r.get("edge"))
+    edge = _pick_edge(r)
     if edge is None:
         return None
     direction = "over" if edge > 0 else "under"
@@ -229,7 +240,7 @@ def suggest_parlays(
     `is_eligible(edge)` controls the band: defaults to the production focus
     band; pass `_is_focus_or_gap` for the shadow expanded band.
     """
-    eligible_rows = [r for r in slate_rows if is_eligible(_safe_float(r.get("edge")))]
+    eligible_rows = [r for r in slate_rows if is_eligible(_pick_edge(r))]
     if len(eligible_rows) < 2:
         return {"two_leg": [], "three_leg": []}
     legs = [_pick_leg_from_row(r) for r in eligible_rows]

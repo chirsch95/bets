@@ -37,8 +37,10 @@ BRANCH = "main"
 # plus re-adding the workflow step + server route is all you need.
 SHOW_HITTERS = False
 
-# Edge bands. Mirror values used by the JS classifier — keep in sync.
-FOCUS_EDGE_MIN = 0.05
+# Edge bands. Mirror values used by the JS classifier — keep in sync with
+# live.py + parlay_suggest.py. Applied against CALIBRATED edge (cal_edge_v2)
+# under Path C — see pickEdge() helper in the JS below and project_path_c memory.
+FOCUS_EDGE_MIN = 0.065
 FOCUS_EDGE_MAX = 0.15
 INVESTIGATE_EDGE = 0.20
 
@@ -2946,6 +2948,16 @@ def _render_js() -> str:
     return isNaN(n) ? null : n;
   }}
 
+  // pickEdge — returns the calibrated edge (cal_edge_v2) if present,
+  // else falls back to raw `edge` for backward compat with pre-Platt
+  // historical settled rows (pre-2026-05-11). All pick classification,
+  // sorting, filtering, and bucketing routes through this. Path C bet
+  // criterion is applied against pickEdge(r), not r.edge.
+  function pickEdge(r) {{
+    const cal = f(r.cal_edge_v2);
+    return cal !== null ? cal : f(r.edge);
+  }}
+
   function classify(edge) {{
     if (edge === null) return "noline";
     const a = Math.abs(edge);
@@ -3007,7 +3019,7 @@ def _render_js() -> str:
   // Convert a focus-pick row into a normalized leg, or null if it can't
   // be priced (missing odds on the picked side, missing novig, etc.).
   function pickLegFromRow(r) {{
-    const edge = f(r.edge);
+    const edge = pickEdge(r);
     if (edge === null) return null;
     const dir = edge > 0 ? "over" : "under";
     const odds = dir === "over" ? f(r.over_odds) : f(r.under_odds);
@@ -3579,7 +3591,7 @@ def _render_js() -> str:
   }}
 
   function sortKey(r, projField) {{
-    const edge = f(r.edge);
+    const edge = pickEdge(r);
     const cls = classify(edge);
     const clsRank = {{ focus: 0, investigate: 1, noise: 2, noline: 3 }}[cls];
     const edgeRank = edge === null ? 0 : -Math.abs(edge);
@@ -3625,7 +3637,7 @@ def _render_js() -> str:
   }}
 
   function pitcherRow(r) {{
-    const edge = f(r.edge);
+    const edge = pickEdge(r);
     const cls = classify(edge);
     const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
     const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + (edge * 100).toFixed(1) + "%";
@@ -3828,7 +3840,7 @@ def _render_js() -> str:
   }}
 
   function renderHeroPickCard(r) {{
-    const edge = f(r.edge);
+    const edge = pickEdge(r);
     if (edge === null) return "";
     const dir = edge > 0 ? "over" : "under";
     const edgeStr = (edge > 0 ? "+" : "") + (edge * 100).toFixed(1) + "%";
@@ -3884,9 +3896,9 @@ def _render_js() -> str:
 
   function renderHeroPicks(rows) {{
     const focus = rows.filter(r => {{
-      const e = f(r.edge);
+      const e = pickEdge(r);
       return e !== null && classify(e) === "focus";
-    }}).sort((a, b) => Math.abs(f(b.edge)) - Math.abs(f(a.edge)));
+    }}).sort((a, b) => Math.abs(pickEdge(b)) - Math.abs(pickEdge(a)));
 
     if (!focus.length) {{
       return `<section class="picks-hero">
@@ -3994,7 +4006,7 @@ def _render_js() -> str:
     // the input that drives its edge. Keep in sync with parlay_suggest.py.
     const MAX_GAP_MS = 3 * 3600 * 1000;
     const focus = rows.filter(r => {{
-      const e = f(r.edge);
+      const e = pickEdge(r);
       return e !== null && classify(e) === "focus";
     }});
     if (focus.length < 2) return "";
@@ -4101,7 +4113,7 @@ def _render_js() -> str:
   }}
 
   function hitterRow(r) {{
-    const edge = f(r.edge);
+    const edge = pickEdge(r);
     const cls = classify(edge);
     const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
     const edgeStr = edge === null ? "—" : (edge > 0 ? "+" : "") + (edge * 100).toFixed(1) + "%";
@@ -6957,7 +6969,7 @@ def _render_js() -> str:
 
   function counts(rows) {{
     const c = {{ focus: 0, investigate: 0, noise: 0, noline: 0 }};
-    for (const r of rows) c[classify(f(r.edge))]++;
+    for (const r of rows) c[classify(pickEdge(r))]++;
     return c;
   }}
 

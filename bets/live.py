@@ -28,7 +28,9 @@ from .config import OUTPUT_DIR
 from .fetch import HTTP_TIMEOUT, MLB_STATS_BASE
 
 # Edge bands — kept in sync with web.py's FOCUS_EDGE_MIN/MAX/INVESTIGATE.
-FOCUS_EDGE_MIN = 0.05
+# Applied against CALIBRATED edge (cal_edge_v2) under Path C, not raw edge.
+# 0.065 floor locked in 2026-05-16; see project_path_c memory.
+FOCUS_EDGE_MIN = 0.065
 FOCUS_EDGE_MAX = 0.15
 INVESTIGATE_EDGE = 0.20
 
