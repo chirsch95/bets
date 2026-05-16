@@ -1,0 +1,277 @@
+{
+  "n_outings": 424,
+  "overall_mean_signed_err": -0.37863207547169814,
+  "bar": {
+    "min_bias_k": 0.2,
+    "min_bucket_n": 30,
+    "max_p_value": 0.05
+  },
+  "variables": [
+    {
+      "variable": "swstr_pct",
+      "p_value": 0.0,
+      "verdict": "FACTOR WORTH EXPLORING",
+      "buckets": [
+        {
+          "label": "bottom",
+          "n": 141,
+          "var_lo": 0.0,
+          "var_hi": 0.098,
+          "mean_signed_err": 0.15851063829787235
+        },
+        {
+          "label": "middle",
+          "n": 141,
+          "var_lo": 0.098,
+          "var_hi": 0.123,
+          "mean_signed_err": -0.3334042553191489
+        },
+        {
+          "label": "top",
+          "n": 142,
+          "var_lo": 0.123,
+          "var_hi": 0.21,
+          "mean_signed_err": -0.9569014084507043
+        }
+      ]
+    },
+    {
+      "variable": "season_k_pct",
+      "p_value": 0.888,
+      "verdict": "no signal \u2014 p=0.888 (\u2265 0.05)",
+      "buckets": [
+        {
+          "label": "bottom",
+          "n": 141,
+          "var_lo": 0.0,
+          "var_hi": 0.191,
+          "mean_signed_err": -0.28085106382978725
+        },
+        {
+          "label": "middle",
+          "n": 141,
+          "var_lo": 0.191,
+          "var_hi": 0.247,
+          "mean_signed_err": -0.4174468085106383
+        },
+        {
+          "label": "top",
+          "n": 142,
+          "var_lo": 0.247,
+          "var_hi": 0.395,
+          "mean_signed_err": -0.4371830985915493
+        }
+      ]
+    },
+    {
+      "variable": "recent_k_pct",
+      "p_value": 0.107,
+      "verdict": "no signal \u2014 p=0.107 (\u2265 0.05), non-monotonic",
+      "buckets": [
+        {
+          "label": "bottom",
+          "n": 141,
+          "var_lo": 0.0,
+          "var_hi": 0.184,
+          "mean_signed_err": -0.7097163120567376
+        },
+        {
+          "label": "middle",
+          "n": 141,
+          "var_lo": 0.184,
+          "var_hi": 0.237,
+          "mean_signed_err": -0.03907801418439718
+        },
+        {
+          "label": "top",
+          "n": 142,
+          "var_lo": 0.238,
+          "var_hi": 0.455,
+          "mean_signed_err": -0.38704225352112676
+        }
+      ]
+    },
+    {
+      "variable": "form_divergence (recent - season)",
+      "p_value": 0.004,
+      "verdict": "no signal \u2014 non-monotonic",
+      "buckets": [
+        {
+          "label": "bottom",
+          "n": 141,
+          "var_lo": -0.348,
+          "var_hi": -0.014000000000000012,
+          "mean_signed_err": -1.096099290780142
+        },
+        {
+          "label": "middle",
+          "n": 141,
+          "var_lo": -0.014000000000000012,
+          "var_hi": 0.0,
+          "mean_signed_err": -0.013687943262411338
+        },
+        {
+          "label": "top",
+          "n": 142,
+          "var_lo": 0.0010000000000000009,
+          "var_hi": 0.18499999999999997,
+          "mean_signed_err": -0.028591549295774652
+        }
+      ]
+    },
+    {
+      "variable": "opp_k_pct",
+      "p_value": 0.679,
+      "verdict": "no signal \u2014 p=0.679 (\u2265 0.05)",
+      "buckets": [
+        {
+          "label": "bottom",
+          "n": 141,
+          "var_lo": 0.144,
+          "var_hi": 0.209,
+          "mean_signed_err": -0.2791489361702128
+        },
+        {
+          "label": "middle",
+          "n": 141,
+          "var_lo": 0.209,
+          "var_hi": 0.227,
+          "mean_signed_err": -0.3021985815602837
+        },
+        {
+          "label": "top",
+          "n": 142,
+          "var_lo": 0.227,
+          "var_hi": 0.31,
+          "mean_signed_err": -0.5533098591549296
+        }
+      ]
+    },
+    {
+      "variable": "park_factor",
+      "p_value": 0.625,
+      "verdict": "no signal \u2014 p=0.625 (\u2265 0.05), non-monotonic",
+      "buckets": [
+        {
+          "label": "bottom",
+          "n": 141,
+          "var_lo": 0.92,
+          "var_hi": 1.0,
+          "mean_signed_err": -0.33588652482269504
+        },
+        {
+          "label": "middle",
+          "n": 141,
+          "var_lo": 1.0,
+          "var_hi": 1.0,
+          "mean_signed_err": -0.5524113475177305
+        },
+        {
+          "label": "top",
+          "n": 142,
+          "var_lo": 1.0,
+          "var_hi": 1.03,
+          "mean_signed_err": -0.24852112676056337
+        }
+      ]
+    },
+    {
+      "variable": "matchup_k_pct",
+      "p_value": 0.242,
+      "verdict": "no signal \u2014 p=0.242 (\u2265 0.05), non-monotonic",
+      "buckets": [
+        {
+          "label": "bottom",
+          "n": 141,
+          "var_lo": 0.075,
+          "var_hi": 0.19,
+          "mean_signed_err": -0.05617021276595745
+        },
+        {
+          "label": "middle",
+          "n": 141,
+          "var_lo": 0.19,
+          "var_hi": 0.234,
+          "mean_signed_err": -0.5938297872340426
+        },
+        {
+          "label": "top",
+          "n": 142,
+          "var_lo": 0.234,
+          "var_hi": 0.521,
+          "mean_signed_err": -0.48514084507042254
+        }
+      ]
+    },
+    {
+      "variable": "exp_bf",
+      "p_value": 0.0,
+      "verdict": "FACTOR WORTH EXPLORING",
+      "buckets": [
+        {
+          "label": "bottom",
+          "n": 141,
+          "var_lo": 7.8,
+          "var_hi": 22.1,
+          "mean_signed_err": 0.28815602836879434
+        },
+        {
+          "label": "middle",
+          "n": 141,
+          "var_lo": 22.1,
+          "var_hi": 23.6,
+          "mean_signed_err": -0.34078014184397165
+        },
+        {
+          "label": "top",
+          "n": 142,
+          "var_lo": 23.6,
+          "var_hi": 73.6,
+          "mean_signed_err": -1.0783098591549296
+        }
+      ]
+    },
+    {
+      "variable": "is_home",
+      "p_value": 0.059,
+      "verdict": "no signal \u2014 p=0.059 (\u2265 0.05)",
+      "buckets": [
+        {
+          "label": "False",
+          "n": 186,
+          "var_lo": null,
+          "var_hi": null,
+          "mean_signed_err": -0.6847849462365592
+        },
+        {
+          "label": "True",
+          "n": 186,
+          "var_lo": null,
+          "var_hi": null,
+          "mean_signed_err": -0.13091397849462366
+        }
+      ]
+    },
+    {
+      "variable": "opp_k_source",
+      "p_value": 0.274,
+      "verdict": "no signal \u2014 p=0.274 (\u2265 0.05)",
+      "buckets": [
+        {
+          "label": "lineup",
+          "n": 369,
+          "var_lo": null,
+          "var_hi": null,
+          "mean_signed_err": -0.434579945799458
+        },
+        {
+          "label": "team",
+          "n": 55,
+          "var_lo": null,
+          "var_hi": null,
+          "mean_signed_err": -0.0032727272727272683
+        }
+      ]
+    }
+  ]
+}
