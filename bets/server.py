@@ -163,8 +163,14 @@ def refresh():
         # bets.main runs the pitcher pipeline and ends with a dashboard
         # regen, so this single subprocess covers both. Hitter pipeline
         # is paused — re-enable inside bets.main when ready.
+        # force=1 (form param or query) appends --force-fetch, which
+        # bypasses the all_covered short-circuit so books re-price.
+        force = (request.form.get("force") or request.args.get("force") or "") == "1"
+        argv = [sys.executable, "-m", "bets.main"]
+        if force:
+            argv.append("--force-fetch")
         proc = subprocess.run(
-            [sys.executable, "-m", "bets.main"],
+            argv,
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,

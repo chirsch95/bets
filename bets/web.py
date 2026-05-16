@@ -204,6 +204,19 @@ CSS = """
     background: var(--green);
     filter: brightness(1.08);
   }
+  /* Force re-fetch: amber to signal "costs Odds API credits"; distinct
+     from green data-refresh so accidental taps are unlikely. */
+  header .float-btn.force-refresh-btn {
+    width: 36px;
+    background: #d97706;
+    border-color: #d97706;
+    color: #1a0a00;
+  }
+  header .float-btn.force-refresh-btn:hover {
+    background: #d97706;
+    filter: brightness(1.08);
+  }
+  header .force-refresh-form { display: contents; }
   header .float-btn.loading svg { animation: ptr-spin 0.8s linear infinite; }
   header .float-btn:disabled { opacity: 0.5; cursor: wait; }
   header .float-btn .theme-sun { display: block; }
@@ -214,6 +227,7 @@ CSS = """
     header .float-btn { height: 32px; min-width: 32px; }
     header .float-btn.theme-btn { width: 32px; }
     header .float-btn.refresh-btn { width: 32px; }
+    header .float-btn.force-refresh-btn { width: 32px; }
   }
   /* Admin overflow (local-only). Native <details> for zero-JS dropdown. */
   header .admin-menu {
@@ -2880,8 +2894,23 @@ def _action_buttons_html() -> str:
         'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
         '<path d="M21 12a9 9 0 1 1-3.5-7.1"/><polyline points="21 4 21 9 16 9"/></svg>'
     )
+    # Filled lightning bolt — distinct from the green refresh arrow above,
+    # signals "force / power / costs something."
+    force_svg = (
+        '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+        '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
+    )
+    force_confirm = (
+        "Force re-fetch lines from The Odds API? "
+        "This bypasses the all-covered short-circuit and costs ~1 credit per game (~16 total on a full slate). "
+        "Use when books have repriced and you want fresh lines mid-day. Continue?"
+    )
     return f"""<button type="button" id="theme-toggle" class="float-btn theme-btn" aria-label="Toggle light/dark" title="Toggle light/dark">{sun_svg}{moon_svg}</button>
     <button type="button" id="refresh-btn" class="float-btn refresh-btn" aria-label="Refresh data" title="Refresh data">{refresh_svg}</button>
+    <form class="force-refresh-form" action="/refresh" method="post" onsubmit="if (!confirm({force_confirm!r})) return false; document.body.classList.add('loading');">
+      <input type="hidden" name="force" value="1">
+      <button type="submit" id="force-refresh-btn" class="float-btn force-refresh-btn" aria-label="Force re-fetch lines from Odds API" title="Force re-fetch lines from Odds API">{force_svg}</button>
+    </form>
     <details class="admin-menu local-only">
       <summary aria-label="Local admin tools" title="Local admin tools">⋯</summary>
       <div class="admin-items">
