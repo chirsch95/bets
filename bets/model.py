@@ -17,6 +17,7 @@ from .config import (
     DEFAULT_EXPECTED_BF,
     LEAGUE_K_PCT,
     LEAGUE_SWSTR_PCT,
+    MAX_EXPECTED_BF,
     PARK_K_FACTOR_DEFAULT,
     RECENT_FORM_WEIGHT,
     SWSTR_BLEND_WEIGHT,
@@ -46,13 +47,15 @@ def expected_batters_faced(
     if recent_bf_per_start <= 0 and season_bf_per_start <= 0:
         return float(DEFAULT_EXPECTED_BF)
     if recent_bf_per_start <= 0:
-        return season_bf_per_start
-    if season_bf_per_start <= 0:
-        return recent_bf_per_start
-    return (
-        RECENT_FORM_WEIGHT * recent_bf_per_start
-        + (1 - RECENT_FORM_WEIGHT) * season_bf_per_start
-    )
+        blended = season_bf_per_start
+    elif season_bf_per_start <= 0:
+        blended = recent_bf_per_start
+    else:
+        blended = (
+            RECENT_FORM_WEIGHT * recent_bf_per_start
+            + (1 - RECENT_FORM_WEIGHT) * season_bf_per_start
+        )
+    return min(blended, float(MAX_EXPECTED_BF))
 
 
 def matchup_k_rate(

@@ -16,6 +16,16 @@ RECENT_FORM_WEIGHT = 0.4
 # Fallback expected batters faced when per-pitcher data is sparse.
 DEFAULT_EXPECTED_BF = 23
 
+# Hard ceiling on `expected_batters_faced`. A 9-inning complete game is
+# ~27-28 BF; anything projected above this is a data-quality artifact
+# (openers / spot starters / tiny BF-per-start samples blowing up the
+# rolling average — e.g., a reliever's 1-game 14 BF outing produces a
+# season_bf_per_start of 14 if it's their only appearance). Capping at 28
+# clips 21 of 424 historical outings and closes ~50% of the residuals-
+# report top-tercile bias without touching real ace starts.
+# Tuned 2026-05-16 from the residuals-report sweep on Task #8.
+MAX_EXPECTED_BF = 28
+
 # League-average K% used as the denominator in the log5 matchup formula.
 # MLB league K% has hovered in the .220–.230 range in recent seasons.
 # Refresh annually or replace with a dynamic fetch later.
