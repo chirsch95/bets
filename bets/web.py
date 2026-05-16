@@ -1163,6 +1163,25 @@ CSS = """
     display: flex;
     flex-direction: column;
     gap: 6px;
+    position: relative;
+  }
+  /* Marks a 3-leg card that shares a pitcher with the top 2-leg ticket.
+     The disjoint rule was dropped 2026-05-16 for visibility, but the
+     2026-05-15 audit (overlapping 3-legs went -78% ROI vs disjoint
+     +22%) is preserved as a UI signal so the user makes a conscious
+     overlap decision instead of a silent one. */
+  .parlay-overlap-badge {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    font-size: 10px;
+    color: var(--yellow);
+    background: rgba(245, 195, 35, 0.12);
+    border: 1px solid rgba(245, 195, 35, 0.35);
+    padding: 1px 6px;
+    border-radius: 8px;
+    cursor: help;
+    line-height: 1.4;
   }
   .parlay-card.pos { border-left-color: var(--green); }
   .parlay-card.neg { border-left-color: var(--red); }
@@ -3966,7 +3985,11 @@ def _render_js() -> str:
       ? `Waiting on lineups: ${{pendingLegs.map(l => l.pitcher).join(", ")}}`
       : "Add this parlay to your bets";
     const dataAttr = pendingLegs.length ? "" : ` data-legs='${{legsAttr}}'`;
+    const overlapBadge = p.overlapsTop2Leg
+      ? `<div class="parlay-overlap-badge" title="Shares ${{escapeHTML(p.overlapsTop2Leg)}} with the top 2-leg ticket. 2026-05-15 audit: overlapping 3-leg picks went -78% ROI vs disjoint +22% (small sample). Disjoint rule dropped 2026-05-16 for visibility — bet consciously.">⚠ overlap</div>`
+      : "";
     return `<div class="parlay-card ${{evCls}} ${{lineupCls}}"${{dataAttr}} title="${{escapeHTML(tip)}}">
+      ${{overlapBadge}}
       <div class="parlay-legs">${{legsHTML}}</div>
       <div class="parlay-stats">
         <div class="parlay-stat"><span class="parlay-stat-label">Payout</span><span class="parlay-stat-val">${{amerStr}}</span></div>
@@ -3991,9 +4014,10 @@ def _render_js() -> str:
   //     be committing to a leg without the input that drives its edge
   //   - per-pitcher appearance cap across the section — keeps the top-N
   //     from collapsing onto a single hot pitcher
-  //   - 3-leg section disjoint from the top-1 2-leg card — historically the
-  //     two headline tickets shared their anchor pitcher ~100% of the time,
-  //     so one bad start tanked both. Disjoint decorrelates the two bets.
+  //   - (2026-05-16) the 3-leg disjoint rule was dropped for visibility.
+  //     overlapping 3-legs now appear in the section but get a ⚠ badge
+  //     so the audit signal is preserved without hiding the cards. See
+  //     .parlay-overlap-badge style + project_path_c memory for rationale.
   function renderParlaySuggestions(rows) {{
     const PARLAY_INPUT_CAP = 8;       // cap focus pool before exploding combos
     const TOP_TWO = 5;
@@ -4088,27 +4112,45 @@ def _render_js() -> str:
     }};
 
     const twoResult = buildSection(2, TOP_TWO, "Top 2-leg parlays", null);
-    // Force the 3-leg section disjoint from the top-1 2-leg card. A shared
-    // pitcher between the headline tickets meant a single bad start sank
-    // both; disjoint decorrelates the two bets the user actually wagers.
-    const exclude = new Set();
+    // Disjoint rule dropped 2026-05-16 — Chad wanted visibility into all
+    // possible 3-legs. Audit signal preserved by marking overlapping cards
+    // in renderParlayCard (see .parlay-overlap-badge). overlapsTop2Leg
+    // stores the shared pitcher's name (truthy) or "" (falsy) for templating.
+    const top2LegPids = new Set();
+    let top2LegByPid = {{}};
     if (twoResult.picked.length) {{
       for (const l of twoResult.picked[0].legs) {{
-        if (l.pitcher_id !== null && l.pitcher_id !== undefined) exclude.add(l.pitcher_id);
+        if (l.pitcher_id !== null && l.pitcher_id !== undefined) {{
+          top2LegPids.add(l.pitcher_id);
+          top2LegByPid[l.pitcher_id] = l.pitcher;
+        }}
       }}
     }}
-    const threeResult = buildSection(3, TOP_THREE, "Top 3-leg parlays", exclude);
+    const threeResult = buildSection(3, TOP_THREE, "Top 3-leg parlays", null);
+    for (const card of threeResult.picked) {{
+      const shared = card.legs.find(l =>
+        l.pitcher_id !== null && l.pitcher_id !== undefined && top2LegPids.has(l.pitcher_id)
+      );
+      card.overlapsTop2Leg = shared ? (top2LegByPid[shared.pitcher_id] || shared.pitcher || "shared pitcher") : "";
+    }}
+    // The HTML for the 3-leg section was rendered inside buildSection
+    // before overlap info existed — re-render so the badge appears.
+    const threeLegHtml = threeResult.picked.length
+      ? `<div class="parlay-section">
+          <div class="parlay-section-title">Top 3-leg parlays</div>
+          <div class="parlay-grid">${{threeResult.picked.map(renderParlayCard).join("")}}</div>
+        </div>`
+      : "";
     const twoLeg = twoResult.html;
-    const threeLeg = threeResult.html;
-    if (!twoLeg && !threeLeg) return "";
+    if (!twoLeg && !threeLegHtml) return "";
 
     return `<section class="parlay-suggester">
       <div class="parlay-suggester-header">
         <h3>Parlay Suggestions</h3>
-        <span class="parlay-note">Positive-EV combos · one leg per game · games within 3 hrs · capped per pitcher · 3-leg disjoint from top 2-leg · ranked by EV per $1</span>
+        <span class="parlay-note">Positive-EV combos · one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1 · 3-legs marked ⚠ if they overlap the top 2-leg</span>
       </div>
       ${{twoLeg}}
-      ${{threeLeg}}
+      ${{threeLegHtml}}
     </section>`;
   }}
 

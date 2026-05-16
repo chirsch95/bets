@@ -250,15 +250,30 @@ def suggest_parlays(
     if len(legs) < 2:
         return {"two_leg": [], "three_leg": []}
     two_leg = _build_section(legs, 2, TOP_TWO)
-    # Force the 3-leg section disjoint from the top-1 2-leg card. A shared
-    # pitcher between the headline tickets meant a single bad start sank
-    # both; disjoint decorrelates the two bets the user actually wagers.
-    exclude_pids: set[int] = set()
+    # Disjoint rule dropped 2026-05-16 for visibility (Chad wanted to see
+    # all possible 3-legs, not just disjoint ones). The 2026-05-15 audit's
+    # finding (-78% ROI on overlapping 3-legs vs +22% on disjoint, small n)
+    # is preserved by tagging each card with `overlaps_top_2leg` for both
+    # the dashboard UI and the snapshot CSV — so we can re-test the audit
+    # under the corrected v2 model with a larger sample.
+    three_leg = _build_section(legs, 3, TOP_THREE)
+    top2_pids: set[int] = set()
+    top2_by_pid: dict[int, str] = {}
     if two_leg:
-        exclude_pids = {
-            l["pitcher_id"] for l in two_leg[0]["legs"] if l["pitcher_id"] is not None
-        }
-    three_leg = _build_section(legs, 3, TOP_THREE, exclude_pids=exclude_pids)
+        for l in two_leg[0]["legs"]:
+            if l["pitcher_id"] is not None:
+                top2_pids.add(l["pitcher_id"])
+                top2_by_pid[l["pitcher_id"]] = l["pitcher"]
+    for card in three_leg:
+        shared = next(
+            (l for l in card["legs"]
+             if l["pitcher_id"] is not None and l["pitcher_id"] in top2_pids),
+            None,
+        )
+        card["overlaps_top_2leg"] = (
+            top2_by_pid.get(shared["pitcher_id"], shared["pitcher"])
+            if shared else ""
+        )
     return {"two_leg": two_leg, "three_leg": three_leg}
 
 
@@ -274,6 +289,11 @@ def _suggestion_fieldnames() -> list[str]:
     base.extend([
         "combined_amer", "combined_dec", "combined_hit",
         "combined_novig", "combined_edge", "ev",
+        # Empty for two_leg cards; for three_leg, the shared pitcher name
+        # if this 3-leg shares a pitcher with the top 2-leg card, else "".
+        # Lets the eventual audit compare overlapping vs disjoint 3-leg ROI
+        # at larger n now that the disjoint rule has been dropped.
+        "overlaps_top_2leg",
     ])
     return base
 
@@ -290,6 +310,7 @@ def _suggestion_to_row(target_iso: str, section: str, rank: int, p: dict) -> dic
         "combined_novig": round(p["combinedNovig"], 6),
         "combined_edge": round(p["combinedEdge"], 6),
         "ev": round(p["ev"], 6),
+        "overlaps_top_2leg": p.get("overlaps_top_2leg", ""),
     }
     for i in (1, 2, 3):
         idx = i - 1
