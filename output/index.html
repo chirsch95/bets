@@ -2839,7 +2839,15 @@
   }
 
   async function fetchCSV(url) {
-    const r = await fetch(url, { cache: "no-cache" });
+    // Cache-bust every request: iOS Safari (especially PWA standalone)
+    // ignores cache: "no-cache" when responses lack strong validators,
+    // so the Refresh button silently served stale CSVs. A unique query
+    // string per call sidesteps every cache layer (browser, CDN) without
+    // changing what the server returns — Flask matches on path, query
+    // string is ignored. cache: "no-store" belt-and-suspenders for the
+    // rare engine that respects it.
+    const sep = url.includes("?") ? "&" : "?";
+    const r = await fetch(url + sep + "_t=" + Date.now(), { cache: "no-store" });
     if (!r.ok) return null;
     return await r.text();
   }
