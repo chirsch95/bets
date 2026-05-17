@@ -204,6 +204,17 @@ CSS = """
     background: var(--green);
     filter: brightness(1.08);
   }
+  header form.settle-form { display: contents; }
+  header .float-btn.settle-btn {
+    width: 36px;
+    background: var(--brand-blue);
+    border-color: var(--brand-blue);
+    color: #001a22;
+  }
+  header .float-btn.settle-btn:hover {
+    background: var(--brand-blue);
+    filter: brightness(1.08);
+  }
   /* Force re-fetch lives in the status-row (right side on desktop, below
      brand-area on phone), NOT in the brand-actions cluster, so accidental
      phone taps near the green Refresh button can't fire it. Amber outline
@@ -296,12 +307,10 @@ CSS = """
   body.loading header .float-btn,
   body.loading header .admin-items button { opacity: 0.5; cursor: wait; }
   /* Two visibility scopes set by the head script from location.hostname:
-     - .local-only: laptop only (refresh/settle/push pipeline buttons)
-     - .bets-only:  Tailscale URL only (bets tab + add-to-bets handoff —
-                    bets data is canonical on the Air, accessed via tailnet) */
+     - .local-only: laptop only (⋯ admin menu: re-run pipeline / settle / push)
+     - .bets-only:  Air's Tailscale URL (bets tab, settle button, add-to-bets) */
   .local-only { display: none; }
-  html.is-local .local-only,
-  html.is-bets .local-only { display: revert; }
+  html.is-local .local-only { display: revert; }
   .bets-only { display: none; }
   html.is-bets .bets-only { display: revert; }
   /* Status row: last-refresh + quota + health collapsed into a single
@@ -2927,8 +2936,18 @@ def _action_buttons_html() -> str:
         'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
         '<path d="M21 12a9 9 0 1 1-3.5-7.1"/><polyline points="21 4 21 9 16 9"/></svg>'
     )
+    settle_svg = (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        '<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>'
+        '<rect x="9" y="3" width="6" height="4" rx="1"/>'
+        '<path d="m9 14 2 2 4-4"/></svg>'
+    )
     return f"""<button type="button" id="theme-toggle" class="float-btn theme-btn" aria-label="Toggle light/dark" title="Toggle light/dark">{sun_svg}{moon_svg}</button>
     <button type="button" id="refresh-btn" class="float-btn refresh-btn" aria-label="Refresh data" title="Refresh data">{refresh_svg}</button>
+    <form action="/settle" method="post" class="settle-form bets-only" onsubmit="document.body.classList.add('loading');">
+      <button type="submit" class="float-btn settle-btn" aria-label="Settle yesterday" title="Settle yesterday">{settle_svg}</button>
+    </form>
     <details class="admin-menu local-only">
       <summary aria-label="Local admin tools" title="Local admin tools">⋯</summary>
       <div class="admin-items">
