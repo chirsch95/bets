@@ -897,7 +897,7 @@ CSS = """
   }
   .picks-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
   }
   .pick-card {
@@ -2681,7 +2681,7 @@ CSS = """
     .results-section { margin-top: 24px; }
     th, td { padding: 7px 8px; }
     th { font-size: 10px; }
-    .picks-grid { grid-template-columns: 1fr; }
+    .picks-grid { grid-template-columns: repeat(2, 1fr); }
     .parlay-grid { grid-template-columns: 1fr; }
     .track-summary { grid-template-columns: repeat(2, 1fr); }
     .report-card { grid-template-columns: repeat(2, 1fr); }
@@ -2703,6 +2703,7 @@ CSS = """
     .report-val { font-size: 18px; }
   }
   @media (max-width: 480px) {
+    .picks-grid { grid-template-columns: 1fr; }
     .track-summary { grid-template-columns: 1fr 1fr; }
     .report-card { grid-template-columns: 1fr 1fr; }
     .actions button { flex: 1; min-width: 0; }
