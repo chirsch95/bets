@@ -8126,7 +8126,24 @@ def _render_js() -> str:
     showTab(allowed.includes(initial) ? initial : "pitchers");
 
     const btn = document.getElementById("refresh-btn");
-    if (btn) btn.addEventListener("click", loadAndRender);
+    if (btn) {{
+      if (isBets()) {{
+        // On Air (Tailscale): run the pipeline so lineups update from MLB
+        // API. The all_covered guard in bets.main skips the Odds API after
+        // the morning run, so this costs 0 credits.
+        btn.addEventListener("click", () => {{
+          document.body.classList.add("loading");
+          btn.disabled = true;
+          const f = document.createElement("form");
+          f.method = "POST";
+          f.action = "/refresh";
+          document.body.appendChild(f);
+          f.submit();
+        }});
+      }} else {{
+        btn.addEventListener("click", loadAndRender);
+      }}
+    }}
 
     // Theme toggle. Head script already applied saved theme; this
     // syncs the button label + reacts to clicks. localStorage persists
