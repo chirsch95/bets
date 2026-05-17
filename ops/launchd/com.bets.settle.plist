@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.bets.settle</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/curl</string>
+        <string>-s</string>
+        <string>-X</string>
+        <string>POST</string>
+        <string>http://localhost:8000/settle</string>
+    </array>
+    <!-- WorkingDirectory not needed — curl has no project-relative paths. -->
+    <!-- Run once daily at 9:00am. Games from the night before are final
+         by then and MLB Stats API has the complete stat lines. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key><integer>9</integer>
+        <key>Minute</key><integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key><string>/Users/chadhirsch/Library/Logs/bets-settle.out</string>
+    <key>StandardErrorPath</key><string>/Users/chadhirsch/Library/Logs/bets-settle.err</string>
+</dict>
+</plist>

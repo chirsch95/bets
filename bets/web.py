@@ -300,7 +300,8 @@ CSS = """
      - .bets-only:  Tailscale URL only (bets tab + add-to-bets handoff —
                     bets data is canonical on the Air, accessed via tailnet) */
   .local-only { display: none; }
-  html.is-local .local-only { display: revert; }
+  html.is-local .local-only,
+  html.is-bets .local-only { display: revert; }
   .bets-only { display: none; }
   html.is-bets .bets-only { display: revert; }
   /* Status row: last-refresh + quota + health collapsed into a single

@@ -214,6 +214,12 @@ def settle():
             settle_hitters_date(target)
         except Exception as e:  # noqa: BLE001
             errors.append(f"hitter settle failed: {e}")
+        try:
+            from . import parlay_suggest as _pl
+            _pl.settle_suggestions(target)
+            _pl.settle_shadow_suggestions(target)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"parlay settle failed: {e}")
         proc = subprocess.run(
             [sys.executable, "-m", "bets.web", _today().isoformat()],
             cwd=PROJECT_ROOT,
@@ -225,6 +231,10 @@ def settle():
                 "dashboard regen failed: "
                 + (proc.stderr or proc.stdout or "non-zero exit").strip()
             )
+        if os.environ.get("BETS_AUTO_PUSH") == "1":
+            ok, push_msg = _commit_and_push_output()
+            if not ok:
+                errors.append(f"auto-push failed: {push_msg}")
         if errors:
             body = "<pre>" + "\n".join(errors) + "</pre>"
             return body, 500
