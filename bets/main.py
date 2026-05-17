@@ -95,7 +95,30 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
     )
 
     if force_fetch:
-        print("--force-fetch: re-pulling every game (bypassing all_covered guard).\n")
+        # Books pull player prop markets once a game starts, so fetching
+        # odds for started games wastes credits and returns nothing useful.
+        # Skip them even in force-fetch mode.
+        from . import live as _lv
+        try:
+            started_pks = _lv._started_game_pks(target_date.isoformat())
+            if started_pks:
+                by_game_f: dict[int, list[dict]] = {}
+                for s in starters:
+                    by_game_f.setdefault(s["game_pk"], []).append(s)
+                for gpk, gs in by_game_f.items():
+                    if gpk in started_pks and gs:
+                        first = gs[0]
+                        skip_pairs.add(frozenset({
+                            canonical_team_name(first["home_team"]),
+                            canonical_team_name(first["away_team"]),
+                        }))
+        except Exception:  # noqa: BLE001
+            pass
+        n_started = len(skip_pairs)
+        if n_started:
+            print(f"--force-fetch: re-pulling pre-game lines ({n_started} started game(s) skipped — props pulled mid-game).\n")
+        else:
+            print("--force-fetch: re-pulling every game (bypassing all_covered guard).\n")
 
     if all_covered:
         print(
