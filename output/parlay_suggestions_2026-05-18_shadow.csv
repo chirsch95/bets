@@ -1,5 +1,6 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
-2026-05-18,two_leg,1,2,Nick Lodolo,666157,under,5.5,114.0,0.804,0.496,Jake Irvin,663623,over,4.5,265.0,0.475,0.424,,,,,,,,681,7.811,0.3819,0.210304,0.171596,1.983021,
-2026-05-18,two_leg,2,2,Patrick Corbin,571578,under,3.5,120.0,0.634,0.429,Zac Gallen,668678,under,3.5,124.0,0.597,0.425,,,,,,,,393,4.928,0.378498,0.182325,0.196173,0.865238,
-2026-05-18,two_leg,3,2,Robbie Ray,592662,over,4.5,114.0,0.543,0.447,MacKenzie Gore,669022,under,5.5,132.0,0.527,0.424,,,,,,,,396,4.9648,0.286161,0.189528,0.096633,0.420732,
-2026-05-18,three_leg,1,3,Patrick Corbin,571578,under,3.5,120.0,0.634,0.429,Nick Lodolo,666157,under,5.5,114.0,0.804,0.496,Jake Irvin,663623,over,4.5,265.0,0.475,0.424,1618,17.1842,0.242125,0.09022,0.151904,3.160718,Nick Lodolo
+2026-05-18,two_leg,1,2,Andrew Painter,691725,under,4.5,235.0,0.586,0.434,Jake Irvin,663623,over,4.5,265.0,0.44,0.424,,,,,,,,1123,12.2275,0.25784,0.184016,0.073824,2.152739,
+2026-05-18,two_leg,2,2,Patrick Corbin,571578,under,3.5,120.0,0.662,0.429,Nick Lodolo,666157,under,5.5,114.0,0.798,0.496,,,,,,,,371,4.708,0.528276,0.212784,0.315492,1.487123,
+2026-05-18,two_leg,3,2,Zac Gallen,668678,under,3.5,124.0,0.597,0.425,MacKenzie Gore,669022,under,5.5,132.0,0.527,0.424,,,,,,,,420,5.1968,0.314619,0.1802,0.134419,0.635012,
+2026-05-18,three_leg,1,3,Patrick Corbin,571578,under,3.5,120.0,0.662,0.429,Andrew Painter,691725,under,4.5,235.0,0.586,0.434,Jake Irvin,663623,over,4.5,265.0,0.44,0.424,2590,26.9005,0.17069,0.078943,0.091747,3.591648,Andrew Painter
+2026-05-18,three_leg,2,3,Zac Gallen,668678,under,3.5,124.0,0.597,0.425,Nick Lodolo,666157,under,5.5,114.0,0.798,0.496,MacKenzie Gore,669022,under,5.5,132.0,0.527,0.424,1012,11.121152,0.251066,0.089379,0.161687,1.792143,
