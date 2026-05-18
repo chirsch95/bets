@@ -1,6 +1,6 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
 2026-05-18,two_leg,1,2,Zac Gallen,668678,under,3.5,138.0,0.597,0.417,Patrick Corbin,571578,under,3.5,120.0,0.662,0.444,,,,,,,,424,5.236,0.395214,0.185148,0.210066,1.069341,
-2026-05-18,two_leg,2,2,Brandon Sproat,687075,over,4.5,125.0,0.592,0.426,Robbie Ray,592662,over,4.5,115.0,0.543,0.454,,,,,,,,384,4.8375,0.321456,0.193404,0.128052,0.555043,
-2026-05-18,two_leg,3,2,Shota Imanaga,684007,over,5.5,125.0,0.501,0.437,Ryan Weathers,677960,over,5.5,118.0,0.485,0.437,,,,,,,,390,4.905,0.242985,0.190969,0.052016,0.191841,
-2026-05-18,three_leg,1,3,Brandon Sproat,687075,over,4.5,125.0,0.592,0.426,Zac Gallen,668678,under,3.5,138.0,0.597,0.417,Patrick Corbin,571578,under,3.5,120.0,0.662,0.444,1078,11.781,0.233967,0.078873,0.155094,1.756362,Zac Gallen
-2026-05-18,three_leg,2,3,Shota Imanaga,684007,over,5.5,125.0,0.501,0.437,Ryan Weathers,677960,over,5.5,118.0,0.485,0.437,Robbie Ray,592662,over,4.5,115.0,0.543,0.454,955,10.54575,0.131941,0.0867,0.045241,0.391415,
+2026-05-18,two_leg,2,2,Brandon Sproat,687075,over,4.5,125.0,0.607,0.426,Ryan Weathers,677960,over,5.5,118.0,0.574,0.437,,,,,,,,390,4.905,0.348418,0.186162,0.162256,0.70899,
+2026-05-18,two_leg,3,2,Shota Imanaga,684007,over,5.5,125.0,0.501,0.437,Robbie Ray,592662,over,4.5,115.0,0.543,0.454,,,,,,,,384,4.8375,0.272043,0.198398,0.073645,0.316008,
+2026-05-18,three_leg,1,3,Brandon Sproat,687075,over,4.5,125.0,0.607,0.426,Zac Gallen,668678,under,3.5,138.0,0.597,0.417,Patrick Corbin,571578,under,3.5,120.0,0.662,0.444,1078,11.781,0.239895,0.078873,0.161022,1.826202,Zac Gallen
+2026-05-18,three_leg,2,3,Ryan Weathers,677960,over,5.5,118.0,0.574,0.437,Shota Imanaga,684007,over,5.5,125.0,0.501,0.437,Robbie Ray,592662,over,4.5,115.0,0.543,0.454,955,10.54575,0.156153,0.0867,0.069453,0.646747,
