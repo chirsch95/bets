@@ -4428,7 +4428,13 @@ def _render_js() -> str:
             actual,
           }});
         }}
-        const edge = f(slateOrLive(r, "slate_edge", "edge"));
+        // Prefer calibrated cal_edge_v2 (slate-time when present) — same
+        // signal the live dashboard's pickEdge() uses for classification.
+        // Raw slate_edge/edge is the fallback for pre-Platt historical
+        // rows (pre-2026-05-11) that lack cal_edge_v2.
+        const calEdge = f(slateOrLive(r, "slate_cal_edge_v2", "cal_edge_v2"));
+        const rawEdge = f(slateOrLive(r, "slate_edge", "edge"));
+        const edge = calEdge !== null ? calEdge : rawEdge;
         if (edge === null) continue;
         const overHit = f(slateOrLive(r, "slate_over_hit", "over_hit"));
         if (overHit === null) continue;
@@ -4445,7 +4451,13 @@ def _render_js() -> str:
           pnl: pnl === null ? 0 : pnl,
         }};
         all.push(pick);
-        if (classify(edge) === "focus") focus.push(pick);
+        // isBettableFocus parity: focus band + line gate (openers /
+        // relievers with line < MIN_LINE_FOR_FOCUS are graded into `all`
+        // but excluded from the focus track record).
+        if (classify(edge) !== "focus") continue;
+        const line = f(slateOrLive(r, "slate_line", "line"));
+        if (line === null || line < MIN_LINE_FOR_FOCUS) continue;
+        focus.push(pick);
       }}
     }}
     return {{ focus, all, settled }};
@@ -7156,13 +7168,20 @@ def _render_js() -> str:
       }});
 
       // Distill the day's actionable picks (focus band) into W-L-units
-      // for the report-card header. Mirrors the Track Record logic but
-      // scoped to a single day. Slate-time fields preferred.
+      // for the report-card header. Must match what Today's Picks
+      // surfaces — i.e. isBettableFocus: calibrated cal_edge_v2 in the
+      // focus band AND line >= MIN_LINE_FOR_FOCUS (gates out
+      // openers/relievers). Falls back to raw edge for pre-Platt
+      // historical rows (pre-2026-05-11) that lack cal_edge_v2.
       const dayPicks = [];
       for (const r of settled.rows) {{
-        const edge = f(slateOrLive(r, "slate_edge", "edge"));
+        const calEdge = f(slateOrLive(r, "slate_cal_edge_v2", "cal_edge_v2"));
+        const rawEdge = f(slateOrLive(r, "slate_edge", "edge"));
+        const edge = calEdge !== null ? calEdge : rawEdge;
         if (edge === null) continue;
         if (classify(edge) !== "focus") continue;
+        const line = f(slateOrLive(r, "slate_line", "line"));
+        if (line === null || line < MIN_LINE_FOR_FOCUS) continue;
         const overHit = f(slateOrLive(r, "slate_over_hit", "over_hit"));
         if (overHit === null) continue;
         const dir = edge > 0 ? "over" : "under";
