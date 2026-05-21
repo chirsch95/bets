@@ -1,2 +1,2 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
-2026-05-21,two_leg,1,2,Braxton Ashcraft,677952,over,5.5,230.0,0.5,0.431,David Peterson,656849,over,4.5,-114.0,0.718,0.5,,,,,,,,519,6.194737,0.359,0.2155,0.1435,1.223911,
+2026-05-21,two_leg,1,2,Braxton Ashcraft,677952,over,5.5,230.0,0.523,0.431,David Peterson,656849,over,4.5,-114.0,0.718,0.5,,,,,,,,519,6.194737,0.375514,0.2155,0.160014,1.32621,
