@@ -1,6 +1,5 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
 2026-05-23,two_leg,1,2,Jake Irvin,663623,over,4.5,295.0,0.499,0.418,Andre Pallante,669467,over,4.5,230.0,0.576,0.453,,,,,,,,1204,13.035,0.287424,0.189354,0.09807,2.746572,
-2026-05-23,two_leg,2,2,Taj Bradley,671737,over,4.5,125.0,0.665,0.433,Drew Rasmussen,656876,over,5.5,240.0,0.435,0.425,,,,,,,,665,7.65,0.289275,0.184025,0.10525,1.212954,
-2026-05-23,two_leg,3,2,Adrian Houser,605288,under,3.5,130.0,0.619,0.416,Stephen Kolek,663568,over,4.5,132.0,0.404,0.415,,,,,,,,434,5.336,0.250076,0.17264,0.077436,0.334406,
+2026-05-23,two_leg,2,2,Robert Gasser,688107,under,3.5,260.0,0.7,0.426,Zac Gallen,668678,under,4.5,125.0,0.635,0.437,,,,,,,,710,8.1,0.4445,0.186162,0.258338,2.60045,
+2026-05-23,two_leg,3,2,Taj Bradley,671737,over,4.5,125.0,0.665,0.433,Adrian Houser,605288,under,3.5,130.0,0.619,0.416,,,,,,,,418,5.175,0.411635,0.180128,0.231507,1.130211,
 2026-05-23,three_leg,1,3,Taj Bradley,671737,over,4.5,125.0,0.665,0.433,Jake Irvin,663623,over,4.5,295.0,0.499,0.418,Andre Pallante,669467,over,4.5,230.0,0.576,0.453,2833,29.32875,0.191137,0.08199,0.109147,4.605808,Jake Irvin
-2026-05-23,three_leg,2,3,Adrian Houser,605288,under,3.5,130.0,0.619,0.416,Stephen Kolek,663568,over,4.5,132.0,0.404,0.415,Drew Rasmussen,656876,over,5.5,240.0,0.435,0.425,1714,18.1424,0.108783,0.073372,0.035411,0.973586,
