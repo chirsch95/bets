@@ -1,6 +1,6 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
-2026-05-23,two_leg,1,2,Taj Bradley,671737,over,4.5,128.0,0.713,0.425,Patrick Corbin,571578,under,4.5,100.0,0.806,0.489,,,,,,,,356,4.56,0.574678,0.207825,0.366853,1.620532,
-2026-05-23,two_leg,2,2,Adrian Houser,605288,under,3.5,131.0,0.618,0.412,Drew Rasmussen,656876,over,5.5,240.0,0.435,0.425,,,,,,,,685,7.854,0.26883,0.1751,0.09373,1.111391,
-2026-05-23,two_leg,3,2,Jake Irvin,663623,over,4.5,131.0,0.51,0.429,Andre Pallante,669467,over,4.5,112.0,0.592,0.452,,,,,,,,390,4.8972,0.30192,0.193908,0.108012,0.478563,
-2026-05-23,three_leg,1,3,Taj Bradley,671737,over,4.5,128.0,0.713,0.425,Patrick Corbin,571578,under,4.5,100.0,0.806,0.489,Drew Rasmussen,656876,over,5.5,240.0,0.435,0.425,1450,15.504,0.249985,0.088326,0.161659,2.875766,Taj Bradley
-2026-05-23,three_leg,2,3,Adrian Houser,605288,under,3.5,131.0,0.618,0.412,Jake Irvin,663623,over,4.5,131.0,0.51,0.429,Andre Pallante,669467,over,4.5,112.0,0.592,0.452,1031,11.312532,0.186587,0.07989,0.106696,1.110766,
+2026-05-23,two_leg,1,2,Patrick Corbin,571578,under,4.5,100.0,0.806,0.489,Drew Rasmussen,656876,over,5.5,240.0,0.435,0.425,,,,,,,,580,6.8,0.35061,0.207825,0.142785,1.384148,
+2026-05-23,two_leg,2,2,Adrian Houser,605288,under,3.5,131.0,0.618,0.414,Andre Pallante,669467,over,4.5,112.0,0.592,0.452,,,,,,,,390,4.8972,0.365856,0.187128,0.178728,0.79167,
+2026-05-23,two_leg,3,2,Jake Irvin,663623,over,4.5,131.0,0.51,0.429,Stephen Kolek,663568,over,4.5,134.0,0.423,0.423,,,,,,,,441,5.4054,0.21573,0.181467,0.034263,0.166107,
+2026-05-23,three_leg,1,3,Adrian Houser,605288,under,3.5,131.0,0.618,0.414,Patrick Corbin,571578,under,4.5,100.0,0.806,0.489,Drew Rasmussen,656876,over,5.5,240.0,0.435,0.425,1471,15.708,0.216677,0.08604,0.130637,2.403562,Patrick Corbin
+2026-05-23,three_leg,2,3,Jake Irvin,663623,over,4.5,131.0,0.51,0.429,Andre Pallante,669467,over,4.5,112.0,0.592,0.452,Stephen Kolek,663568,over,4.5,134.0,0.423,0.423,1046,11.459448,0.127712,0.082023,0.045689,0.463511,
