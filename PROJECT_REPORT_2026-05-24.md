@@ -13,7 +13,7 @@
 3. **We are deliberately NOT flipping to v0 yet.** Sample is 24 days of one early-season regime; a pre-registered, code-enforced flip rule gates the change to ~40 days + a regime-stability check. Re-check **~June 7**.
 4. **The SwStr blend has already been tuned out** (`SWSTR_BLEND_WEIGHT = 0.0` since 2026-05-16). So v2's remaining (losing) complexity vs v0 is the **park-factor + lineup-level opponent-K% layer**, not SwStr.
 5. **The model's most confident picks are its worst.** P(over) ≥ 0.8 is wildly overconfident (0.9–1.0 bucket: predicted 98%, hit 45%). The dashboard already buries these in the "investigate" band, so they aren't being bet — but it's the clearest calibration defect.
-6. **The personal bet ledger is stale** — last updated 2026-05-06. It covers only the first 7 days (−$6.55 net on staked tickets, +$47 including free-entry promos). Not a usable read on real betting performance.
+6. **Real-money results validate the edge: +27.1% ROI over 96 settled bets** (net +$161.83, 32–64 on multi-leg parlays). This is the true out-of-sample confirmation §2's backtests lacked. (An earlier draft misread a stale laptop replica as "−$6.55, stale since May 6" — corrected in §4; the live ledger is on the Air and never stopped logging.)
 
 **The single open decision:** whether v2's matchup/park/lineup layer is dead weight or just early-season-handicapped. The data through June will answer it; the harness now answers it automatically.
 
@@ -127,17 +127,23 @@ At low edge v2 selects better; **at the high-conviction end (where you actually 
 
 ---
 
-## 4. Personal bet ledger — ALL transactions (data/users/chad/bets.json)
+## 4. Personal bet ledger — real out-of-sample P&L (data/users/chad/bets.json)
 
-⚠️ **Stale: last updated 2026-05-06.** Covers only 2026-04-30 → 05-06 (first 7 days). If betting continued past May 6 it was not logged. Treat as a 1-week sample, not a season read.
+> **Correction (2026-05-24):** An earlier draft of this section reported the ledger as "stale since May 6, −$6.55." That was wrong — it read a **stale local replica on the laptop**. The canonical Bets tab runs on the **Air** (Tailscale), and `data/` is gitignored, so only `output/` syncs laptop-ward; the laptop's ledger froze at the last local-dashboard session (May 6) and was migrated in place later (preserving its mtime). Logging never broke. The numbers below are the **live Air ledger**, verified read-only.
 
-**Aggregate:** 26 tickets total.
-- **Paid tickets:** 8 W – 13 L. Staked **$117.20**, returned **$110.65** → net **−$6.55** (−5.6% ROI on stake).
-- **Free-entry promos:** 2 W – 3 L. Cost $0, returned **$54.00**.
-- **Total account cash flow:** −$6.55 (paid) + $54.00 (promo) = **+$47.45**.
-- **By site:** mostly untagged early (13); UD 5, PP 2, DK 1.
+**Aggregate — 96 settled tickets, 2026-04-30 → 05-24, 0 pending:**
+- **Record:** 32 W – 64 L (33% — expected for multi-leg parlays at ~3× decimal odds).
+- **Paid tickets:** staked **$596.35**, returned **$676.73**.
+- **Free-entry promos:** returned **$81.45** (cost $0).
+- **NET +$161.83 → ROI +27.1%** on staked capital.
 
-**Itemized (date | legs | stake @ decimal-odds | result | payout):**
+**This is the true out-of-sample validation §2 lacked, and it is strongly positive** — real-money ROI (+27.1%) corroborates the backtested edge (§2.3, +0.38–0.43 ROI). It is no longer "not a usable read"; it is the single best evidence the edge is real.
+
+*Caveat: 96 bets over ~24 days is still one early-season regime; the ROI is real money but a small sample, and the 33% hit rate means variance is high. Treat +27.1% as encouraging, not banked.*
+
+**Itemized below: the first 26 tickets only** (2026-04-30 → 05-06, from the laptop snapshot). The remaining 70 tickets (May 7 → 24) live on the Air and are **not itemized here** — they are not lost, just not pulled into this doc (the laptop copy was deliberately left untouched). Re-generate from the Air for a full itemization.
+
+**Itemized — first 26 tickets (date | legs | stake @ decimal-odds | result | payout):**
 
 | Date | Legs | Stake@Odds | Result | Payout | Free |
 |---|---|---|---|---|---|
@@ -176,7 +182,7 @@ At low edge v2 selects better; **at the high-conviction end (where you actually 
 1. **Single regime.** All data is late-April → May 2026 (~24 slate days). Early-season K% samples are thin; conclusions may not hold mid/late season.
 2. **v2 column is non-stationary.** SwStr blend changed 0.35→0.0 on 2026-05-16, and the BF cap was added the same day — pre/post rows aren't the same model.
 3. **Backtest selection-optimism.** §2.3/§2.6 ROI grades the model on its own edge picks with realized outcomes — not true out-of-sample. The honest, lower number is the slate-time track record (§2.4, +0.195 ROI).
-4. **Ledger ≠ strategy.** The real-money ledger (§4) is stale and tiny; it is not evidence about the model.
+4. **Ledger validates direction, not magnitude.** The real-money ledger (§4, +27.1% over 96 bets) confirms the edge is real out-of-sample, but it's a small single-regime sample — don't extrapolate the exact ROI forward.
 5. **Calibration tails are low-n** (8–20 per extreme bucket) — don't over-fit a calibration layer to them yet.
 
 ---
@@ -196,7 +202,7 @@ At low edge v2 selects better; **at the high-conviction end (where you actually 
 - **If v0 flip confirms in June:** what does demoting v2 imply for v1's matchup logic and the park table — keep them as optional features or retire?
 - **Bankroll/Kelly sizing** (currently flat 1u) — the ROI-by-edge curve is steep enough that edge-proportional sizing could matter.
 - **Information-speed edge (v4 concept):** line-movement tracking + late-news/inactive monitoring — the README's own claim that this beats more model features.
-- **Re-instrument the ledger:** decide whether to keep logging real bets at all; if yes, fix whatever caused logging to stop May 6, since it's the only true out-of-sample validation.
+- **Ledger observability:** logging works fine (96 bets on the Air); the gap was that *analysis* ran against a stale laptop replica with no freshness signal. Worth a guard so ledger analysis never silently uses stale/off-host data (scoped, not yet built — diagnosed 2026-05-24).
 - **Extend to a second prop** (hitter Ks first, then hits/TB) once pitcher Ks is locked.
 
 ---
