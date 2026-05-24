@@ -13,6 +13,7 @@ from statistics import mean
 from tabulate import tabulate
 
 from .config import OUTPUT_DIR
+from .model import prob_over_poisson
 
 
 def _f(value) -> float | None:
@@ -366,6 +367,143 @@ def promotion_verdict(rows: list[dict]) -> None:
         print("\n>>> HOLD — neither bar cleared. Keep ML as shadow.")
 
 
+def _v0_edge(r: dict) -> float | None:
+    """v0's edge against the same no-vig line v2/production was scored on.
+
+    The CSV stores production (v2) ``p_over`` and ``edge``; their difference
+    recovers the no-vig over prob. Recompute v0's over prob from ``proj_ks_v0``
+    via the production Poisson formula so the comparison is apples-to-apples.
+    """
+    line = _f(r.get("line"))
+    pov = _f(r.get("p_over"))
+    edge = _f(r.get("edge"))
+    v0 = _f(r.get("proj_ks_v0"))
+    if None in (line, pov, edge, v0):
+        return None
+    return prob_over_poisson(line, v0) - (pov - edge)  # v0_p_over − novig_over
+
+
+def _edge_roi(rows: list[dict], edge_fn, thresh: float) -> dict | None:
+    """Over-bet every row whose model edge exceeds ``thresh``; realized pnl
+    comes from the same ``over_pnl`` column regardless of which model selected
+    the bet, so this isolates *selection* quality."""
+    side = []
+    for r in rows:
+        e = edge_fn(r)
+        pnl = _f(r.get("over_pnl"))
+        if e is None or pnl is None or e <= thresh:
+            continue
+        side.append((pnl, _f(r.get("over_hit"))))
+    if not side:
+        return None
+    hits = [h for _, h in side if h is not None]
+    return {
+        "n": len(side),
+        "hit": mean(hits) if hits else 0.0,
+        "roi": mean(p for p, _ in side),
+    }
+
+
+def v0_shadow_report(rows: list[dict]) -> None:
+    """Standing v0-vs-v2 comparison + the pre-registered production-flip rule.
+
+    Context (2026-05-24 analysis): over the first 24 days / 641 starts the
+    simplest model (v0) beat production v2 on BOTH point accuracy (RMSE) and
+    high-edge betting ROI. The flip is deliberately gated to guard against
+    fitting to a single early-season regime — v2's SwStr-blend thesis is
+    weakest in April (thin Savant samples) and should strengthen as the
+    season matures. Flip v2→v0 only when ALL of:
+      (1) ≥40 distinct slate days logged,
+      (2) v0 RMSE < v2 RMSE (pooled),
+      (3) v0 ROI > v2 ROI at edge≥0.06 (pooled),
+      (4) v0 ROI ≥ v2 ROI in every month with ≥20 qualifying bets (regime
+          stability — the overfitting guard).
+    """
+    v2_fn = lambda r: _f(r.get("edge"))
+    usable = [
+        r
+        for r in rows
+        if _v0_edge(r) is not None and _f(r.get("over_pnl")) is not None
+    ]
+    if not usable:
+        print("\n=== v0 shadow ===\nNo rows with v0 edge + pnl yet.")
+        return
+
+    print(f"\n=== v0 shadow — bet-selection ROI head-to-head ({len(usable)} lines) ===")
+    table = []
+    for t in (0.00, 0.02, 0.04, 0.06, 0.10):
+        v2 = _edge_roi(usable, v2_fn, t)
+        v0 = _edge_roi(usable, _v0_edge, t)
+        table.append(
+            {
+                "min_edge": f"{t:+.2f}",
+                "v2_n": v2["n"] if v2 else 0,
+                "v2_roi": v2["roi"] if v2 else float("nan"),
+                "v0_n": v0["n"] if v0 else 0,
+                "v0_roi": v0["roi"] if v0 else float("nan"),
+            }
+        )
+    print(tabulate(table, headers="keys", floatfmt=".3f"))
+
+    # (4) regime split — ROI at edge≥0.06 per calendar month
+    months = sorted({r["date"][:7] for r in usable if r.get("date")})
+    msplit = []
+    for m in months:
+        mr = [r for r in usable if r.get("date", "").startswith(m)]
+        v2 = _edge_roi(mr, v2_fn, 0.06)
+        v0 = _edge_roi(mr, _v0_edge, 0.06)
+        msplit.append(
+            {
+                "month": m,
+                "v2_n": v2["n"] if v2 else 0,
+                "v2_roi": v2["roi"] if v2 else float("nan"),
+                "v0_n": v0["n"] if v0 else 0,
+                "v0_roi": v0["roi"] if v0 else float("nan"),
+                "v0_leads": "yes"
+                if (v0 and v2 and v0["roi"] > v2["roi"])
+                else "no",
+            }
+        )
+    print("\n  regime split — ROI at edge≥0.06 by month (overfitting guard)")
+    print(tabulate(msplit, headers="keys", floatfmt=".3f"))
+
+    # accuracy + Diebold-Mariano on squared errors (positive t → v0 better)
+    paired = [
+        r
+        for r in rows
+        if _f(r.get("error_v2")) is not None and _f(r.get("error_v0")) is not None
+    ]
+    v2_rmse = math.sqrt(mean(_f(r["error_v2"]) ** 2 for r in paired)) if paired else float("nan")
+    v0_rmse = math.sqrt(mean(_f(r["error_v0"]) ** 2 for r in paired)) if paired else float("nan")
+    diffs = [_f(r["error_v2"]) ** 2 - _f(r["error_v0"]) ** 2 for r in paired]
+    n = len(diffs)
+    mean_d = sum(diffs) / n if n else 0.0
+    var_d = sum((d - mean_d) ** 2 for d in diffs) / (n - 1) if n > 1 else 0.0
+    se_d = math.sqrt(var_d / n) if n > 1 and var_d > 0 else 0.0
+    t_stat = mean_d / se_d if se_d > 0 else 0.0
+
+    n_days = len({r["date"] for r in usable if r.get("date")})
+    pooled_v2 = _edge_roi(usable, v2_fn, 0.06)
+    pooled_v0 = _edge_roi(usable, _v0_edge, 0.06)
+    rmse_lead = v0_rmse < v2_rmse
+    roi_lead = bool(pooled_v0 and pooled_v2 and pooled_v0["roi"] > pooled_v2["roi"])
+    qual_months = [row for row in msplit if row["v0_n"] >= 20]
+    regime_ok = bool(qual_months) and all(row["v0_leads"] == "yes" for row in qual_months)
+
+    print(f"\n=== v0 flip verdict ===")
+    print(f"    v2 RMSE {v2_rmse:.3f} vs v0 RMSE {v0_rmse:.3f}  (DM t = {t_stat:+.2f}, + → v0 better)")
+    print(f"    (1) ≥40 slate days .......... {n_days}/40  {'PASS' if n_days >= 40 else 'pending'}")
+    print(f"    (2) v0 RMSE < v2 RMSE ....... {'PASS' if rmse_lead else 'FAIL'}")
+    print(f"    (3) v0 ROI > v2 ROI @0.06 ... {'PASS' if roi_lead else 'FAIL'}")
+    print(f"    (4) v0 leads every ≥20-bet month {'PASS' if regime_ok else 'FAIL/pending'}")
+    if n_days >= 40 and rmse_lead and roi_lead and regime_ok:
+        print("\n>>> FLIP production v2→v0. All four criteria cleared.")
+    elif n_days < 40:
+        print(f"\n>>> HOLD — {n_days}/40 days. Re-check after ~40 days span a regime split.")
+    else:
+        print("\n>>> HOLD — day count met but a criterion failed; v2 stays production.")
+
+
 def run() -> None:
     rows = load_all_settled()
     if not rows:
@@ -381,6 +519,7 @@ def run() -> None:
     edge_strategy(rows)
     slice_table(rows)
     promotion_verdict(rows)
+    v0_shadow_report(rows)
 
 
 if __name__ == "__main__":
