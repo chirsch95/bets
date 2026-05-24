@@ -1,4 +1,7 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
-2026-05-24,two_leg,1,2,Martín Pérez,527048,over,4.5,140.0,0.669,0.429,Andrew Painter,691725,under,3.5,255.0,0.544,0.425,,,,,,,,752,8.52,0.363936,0.182325,0.181611,2.100735,
-2026-05-24,two_leg,2,2,Foster Griffin,656492,over,4.5,107.0,0.623,0.466,Robbie Ray,592662,under,5.5,125.0,0.643,0.437,,,,,,,,366,4.6575,0.400589,0.203642,0.196947,0.865743,
-2026-05-24,three_leg,1,3,Martín Pérez,527048,over,4.5,140.0,0.669,0.429,Robbie Ray,592662,under,5.5,125.0,0.643,0.437,Andrew Painter,691725,under,3.5,255.0,0.544,0.425,1817,19.17,0.234011,0.079676,0.154335,3.485988,Martín Pérez
+2026-05-24,two_leg,1,2,Ryne Nelson,669194,under,4.5,265.0,0.603,0.414,Andrew Painter,691725,under,3.5,255.0,0.544,0.425,,,,,,,,1196,12.9575,0.328032,0.17595,0.152082,3.250475,
+2026-05-24,two_leg,2,2,Martín Pérez,527048,over,4.5,140.0,0.669,0.429,Michael King,650633,under,5.5,124.0,0.657,0.433,,,,,,,,438,5.376,0.439533,0.185757,0.253776,1.362929,
+2026-05-24,two_leg,3,2,Foster Griffin,656492,over,4.5,107.0,0.656,0.466,Robbie Ray,592662,under,5.5,125.0,0.639,0.437,,,,,,,,366,4.6575,0.419184,0.203642,0.215542,0.952349,
+2026-05-24,two_leg,4,2,Bryan Woo,693433,over,5.5,125.0,0.493,0.425,Noah Schultz,702273,over,4.5,100.0,0.696,0.494,,,,,,,,350,4.5,0.343128,0.20995,0.133178,0.544076,
+2026-05-24,three_leg,1,3,Martín Pérez,527048,over,4.5,140.0,0.669,0.429,Ryne Nelson,669194,under,4.5,265.0,0.603,0.414,Andrew Painter,691725,under,3.5,255.0,0.544,0.425,3010,31.098,0.219453,0.075483,0.143971,5.824562,Ryne Nelson
+2026-05-24,three_leg,2,3,Foster Griffin,656492,over,4.5,107.0,0.656,0.466,Michael King,650633,under,5.5,124.0,0.657,0.433,Robbie Ray,592662,under,5.5,125.0,0.639,0.437,943,10.4328,0.275404,0.088177,0.187227,1.873234,
