@@ -1,4 +1,4 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
-2026-05-24,two_leg,1,2,Martín Pérez,527048,over,4.5,140.0,0.669,0.417,Bryan Woo,693433,over,5.5,128.0,0.463,0.425,,,,,,,,447,5.472,0.309747,0.177225,0.132522,0.694936,
-2026-05-24,two_leg,2,2,Foster Griffin,656492,over,4.5,111.0,0.623,0.458,Drew Rasmussen,656876,over,5.5,116.0,0.435,0.437,,,,,,,,356,4.5576,0.271005,0.200146,0.070859,0.235132,
-2026-05-24,three_leg,1,3,Martín Pérez,527048,over,4.5,140.0,0.669,0.417,Bryan Woo,693433,over,5.5,128.0,0.463,0.425,Drew Rasmussen,656876,over,5.5,116.0,0.435,0.437,1082,11.81952,0.13474,0.077447,0.057293,0.592561,Martín Pérez
+2026-05-24,two_leg,1,2,Martín Pérez,527048,over,4.5,140.0,0.669,0.427,Robbie Ray,592662,under,5.5,126.0,0.643,0.431,,,,,,,,442,5.424,0.430167,0.184037,0.24613,1.333226,
+2026-05-24,two_leg,2,2,Foster Griffin,656492,over,4.5,107.0,0.623,0.455,Bryan Woo,693433,over,5.5,128.0,0.463,0.417,,,,,,,,372,4.7196,0.288449,0.189735,0.098714,0.361364,
+2026-05-24,three_leg,1,3,Martín Pérez,527048,over,4.5,140.0,0.669,0.427,Bryan Woo,693433,over,5.5,128.0,0.463,0.417,Robbie Ray,592662,under,5.5,126.0,0.643,0.431,1137,12.36672,0.199167,0.076743,0.122424,1.463046,Martín Pérez
