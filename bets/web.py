@@ -1582,20 +1582,6 @@ CSS = """
     flex-wrap: wrap;
   }
   .totals-card-secondary strong { color: var(--text); font-weight: 600; }
-  .site-pnl-cell {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 4px;
-    padding: 2px 8px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  .site-pnl-cell strong { color: var(--text); font-weight: 700; }
-  .site-pnl-cell strong.pos { color: var(--green); }
-  .site-pnl-cell strong.neg { color: var(--red); }
   /* Inline parlay status (in the row, no expand needed). */
   .parlay-inline-status {
     display: inline-flex;
@@ -2117,42 +2103,6 @@ CSS = """
   .ou-toggle button.active.over { background: var(--green); color: #001a00; }
   .ou-toggle button.active.under { background: var(--red); color: #2a0000; }
   .ou-toggle button:hover:not(.active) { color: var(--text); }
-  /* Site selector (PP / UD / DK) — same visual pattern as .ou-toggle. */
-  .site-toggle {
-    display: inline-flex;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    overflow: hidden;
-    width: 100%;
-  }
-  .site-toggle button {
-    flex: 1;
-    background: transparent;
-    color: var(--muted);
-    border: none;
-    padding: 7px 0;
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    letter-spacing: 0.04em;
-  }
-  .site-toggle button + button { border-left: 1px solid var(--border); }
-  .site-toggle button.active { background: var(--green); color: #001a00; }
-  .site-toggle button:hover:not(.active) { color: var(--text); }
-  .site-badge {
-    display: inline-block;
-    margin-left: 6px;
-    padding: 1px 6px;
-    border-radius: 3px;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    background: rgba(74, 222, 128, 0.18);
-    color: var(--green);
-    border: 1px solid rgba(74, 222, 128, 0.35);
-    vertical-align: middle;
-  }
   .bets-form-bottom {
     display: grid;
     grid-template-columns: 130px 100px 100px 1fr;
@@ -3538,7 +3488,7 @@ def _render_js() -> str:
   // attrs, and a custom hover popup is overkill for a local tool.
   function betBadgeTooltip(entry) {{
     const lines = [];
-    const head = `${{entry.label}} · ${{entry.legCount}}-leg parlay${{entry.site ? " · " + entry.site : ""}}`;
+    const head = `${{entry.label}} · ${{entry.legCount}}-leg parlay`;
     lines.push(head);
     const lineStr = (entry.line === null || entry.line === undefined || entry.line === "")
       ? "" : ` ${{entry.line}}`;
@@ -5093,11 +5043,13 @@ def _render_js() -> str:
   // sites pay 3× on 2-leg / 5–6× on 3-leg regardless of leg odds), not
   // the sportsbook combined odds. Sportsbook ROI is shown alongside as
   // the "what the model implied was a fair price" baseline.
+  // Underdog-only as of 2026-05-25 (bets consolidated to UD). PrizePicks
+  // (3×/5×) was removed; if you ever add another book back, restore its
+  // entry here and the payout selector reappears automatically.
   const DFS_PROFILES = {{
-    prizepicks: {{ label: "PrizePicks (3×/5×)", payouts: {{ 2: 3, 3: 5 }} }},
-    underdog:   {{ label: "Underdog (3×/6×)",  payouts: {{ 2: 3, 3: 6 }} }},
+    underdog: {{ label: "Underdog (3×/6×)", payouts: {{ 2: 3, 3: 6 }} }},
   }};
-  let _activeDFSProfile = "prizepicks";
+  let _activeDFSProfile = "underdog";
   try {{
     const saved = localStorage.getItem("parlay-dfs-profile");
     if (saved && DFS_PROFILES[saved]) _activeDFSProfile = saved;
@@ -5112,7 +5064,7 @@ def _render_js() -> str:
   }}
 
   function renderParlayTrackCards(all, profileKey) {{
-    const profile = DFS_PROFILES[profileKey] || DFS_PROFILES.prizepicks;
+    const profile = DFS_PROFILES[profileKey] || DFS_PROFILES.underdog;
     const summarize = (rows, label) => {{
       if (!rows.length) return null;
       const n = rows.length;
@@ -5191,14 +5143,18 @@ def _render_js() -> str:
         ${{actualBlock}}
       </section>`;
     }}
-    const profileSelect = `<label class="parlay-track-profile">
+    // With a single payout profile (Underdog-only), the picker is just
+    // dead chrome — only render it if there's actually a choice to make.
+    const profileSelect = Object.keys(DFS_PROFILES).length > 1
+      ? `<label class="parlay-track-profile">
       <span>Payouts</span>
       <select id="parlay-dfs-profile">
         ${{Object.entries(DFS_PROFILES).map(([k, p]) =>
           `<option value="${{k}}" ${{k === _activeDFSProfile ? "selected" : ""}}>${{p.label}}</option>`
         ).join("")}}
       </select>
-    </label>`;
+    </label>`
+      : "";
     return `<section class="results-section">
       <div class="parlay-track-header">
         <h2>Parlay Track Record — last ${{maxDays}} days</h2>
@@ -5500,40 +5456,13 @@ def _render_js() -> str:
         <span class="muted">(not counted toward staked; winnings flow into Net / ROI)</span>
       </div>`;
     }}
-    // Per-site breakdown row — only renders if at least one bet has a
-    // site tag. Each cell is count · WL record · net · ROI so you can
-    // see at a glance whether one site is actually paying off
-    // differently from the others.
-    let bySiteLine = "";
-    const sites = t.by_site || {{}};
-    const siteCodes = Object.keys(sites);
-    if (siteCodes.length) {{
-      const cells = siteCodes.map(code => {{
-        const s = sites[code];
-        const wlpBits = [];
-        if (s.wins) wlpBits.push(`${{s.wins}}W`);
-        if (s.losses) wlpBits.push(`${{s.losses}}L`);
-        if (s.pending) wlpBits.push(`${{s.pending}}P`);
-        const wlp = wlpBits.join("–") || "no settled";
-        const sNetCls = s.net > 0 ? "pos" : s.net < 0 ? "neg" : "";
-        const sRoi = s.roi !== null
-          ? `${{s.roi >= 0 ? "+" : ""}}${{(s.roi * 100).toFixed(1)}}%`
-          : "—";
-        return `<span class="site-pnl-cell">
-          <strong>${{escapeHTML(code)}}</strong> ${{s.count}} ticket${{s.count === 1 ? "" : "s"}} · ${{wlp}} · <strong class="${{sNetCls}}">${{fmtSignedMoney(s.net)}}</strong> · ${{sRoi}}
-        </span>`;
-      }}).join("");
-      bySiteLine = `<div class="totals-card-secondary site-pnl-row">
-        <strong>By site:</strong> ${{cells}}
-      </div>`;
-    }}
     return `<div class="bets-totals-card">
       <div class="report-stat"><div class="report-label">Bets</div><div class="report-val">${{t.count}}</div><div class="report-sub">${{settledLabel}}</div></div>
       <div class="report-stat"><div class="report-label">Staked</div><div class="report-val">${{fmtMoney(t.staked)}}</div>${{stakedSub}}</div>
       <div class="report-stat"><div class="report-label">Returned</div><div class="report-val">${{fmtMoney(t.returned)}}</div></div>
       <div class="report-stat"><div class="report-label">Net</div><div class="report-val ${{netCls === "flat" ? "" : netCls}}">${{fmtSignedMoney(t.net)}}</div><div class="report-sub">on settled</div></div>
       <div class="report-stat"><div class="report-label">ROI</div><div class="report-val">${{roiStr}}</div></div>
-    </div>${{bySiteLine}}${{freeLine}}`;
+    </div>${{freeLine}}`;
   }}
 
   // Daily $ P&L for the Bets tab heatmap. Mirrors the totals card's
@@ -5719,7 +5648,6 @@ def _render_js() -> str:
     const legCount = (b.legs || []).length;
     const legsLabel = `${{legCount}}-leg parlay`;
     const freeBadge = b.free_entry ? '<span class="free-badge" title="Free entry — not counted toward staked; winnings still flow into Net / ROI">FREE</span>' : "";
-    const siteBadge = b.site ? `<span class="site-badge" title="Placed on ${{escapeHTML(b.site)}}">${{escapeHTML(b.site)}}</span>` : "";
     const stakeDisplay = b.free_entry
       ? `<span class="muted" title="Free entry — not counted toward staked">${{fmtMoney(b.stake)}}</span>`
       : fmtMoney(b.stake);
@@ -5744,7 +5672,6 @@ def _render_js() -> str:
         <div class="bet-card-meta">
           <span class="bet-card-date">${{escapeHTML(fmtDate(b.date))}}</span>
           <span class="bet-card-legcount">${{legsLabel}}</span>
-          ${{siteBadge}}
           ${{freeBadge}}
           ${{boostBadge}}
         </div>
@@ -6020,14 +5947,6 @@ def _render_js() -> str:
         <div class="bets-combined-hint" id="bfc-hint">Pick pitchers + O/U on each leg to see live payout, hit %, edge, and EV.</div>
       </div>
       <div class="bets-form-bottom">
-        <div class="bets-field">
-          <label>Site</label>
-          <div class="site-toggle" id="bf-site">
-            <button type="button" data-site="PP" class="active">PP</button>
-            <button type="button" data-site="UD">UD</button>
-            <button type="button" data-site="DK">DK</button>
-          </div>
-        </div>
         <div class="bets-field"><label>Stake</label><input id="bf-stake" type="number" step="0.01" placeholder="10.00"></div>
         <div class="bets-field"><label>Odds</label><input id="bf-odds" type="number" step="0.01" placeholder="2.40"></div>
         <div class="bets-field">
@@ -6620,30 +6539,11 @@ def _render_js() -> str:
   // (loaded from a bet — PUT on save). editingBetId is the discriminant.
   let editingBetId = null;
 
-  // Site toggle (PP / UD / DK) — small button-group with one .active.
-  // Default to PP when nothing is set / value is unrecognized.
-  function readFormSite() {{
-    const grp = document.getElementById("bf-site");
-    if (!grp) return "PP";
-    const active = grp.querySelector("button.active");
-    return active ? (active.dataset.site || "PP") : "PP";
-  }}
-  function setFormSite(site) {{
-    const grp = document.getElementById("bf-site");
-    if (!grp) return;
-    const target = (site || "PP").toUpperCase();
-    const buttons = grp.querySelectorAll("button");
-    let matched = false;
-    buttons.forEach(b => {{
-      const m = b.dataset.site === target;
-      b.classList.toggle("active", m);
-      if (m) matched = true;
-    }});
-    if (!matched && buttons.length) {{
-      buttons.forEach(b => b.classList.remove("active"));
-      buttons[0].classList.add("active");
-    }}
-  }}
+  // Bets are Underdog-only as of 2026-05-25, so the site picker was
+  // removed. New bets default to "UD"; when editing an existing bet we
+  // carry its stored site through unchanged (incl. legacy PP/DK/"") so
+  // historical tags are never rewritten on a round-trip.
+  let _formSite = "UD";
 
   function readForm() {{
     const get = id => document.getElementById(id).value.trim();
@@ -6653,7 +6553,7 @@ def _render_js() -> str:
       stake: get("bf-stake"),
       odds: get("bf-odds"),
       boost: get("bf-boost"),
-      site: readFormSite(),
+      site: _formSite,
       free_entry: document.getElementById("bf-free-entry").checked,
       stake_reason: get("bf-reason"),
     }};
@@ -6802,7 +6702,7 @@ def _render_js() -> str:
     document.getElementById("bf-free-entry").checked = false;
     const reasonEl = document.getElementById("bf-reason");
     if (reasonEl) reasonEl.value = "default";
-    setFormSite("PP");
+    _formSite = "UD";
     document.getElementById("bf-legcount").value = "2";
     document.getElementById("bf-legs").innerHTML = renderLegInputs(2, []);
     setFormMode("add");
@@ -6823,7 +6723,7 @@ def _render_js() -> str:
         ? bet.stake_reason
         : "default";
     }}
-    setFormSite(bet.site || "PP");
+    _formSite = bet.site || "";
     const legCount = Math.max(2, Math.min(6, (bet.legs || []).length || 2));
     document.getElementById("bf-legcount").value = String(legCount);
     document.getElementById("bf-legs").innerHTML = renderLegInputs(legCount, bet.legs || []);
@@ -6969,17 +6869,6 @@ def _render_js() -> str:
       oddsEl.addEventListener("input", () => {{
         // Once the user types, stop auto-filling. Their value wins.
         delete oddsEl.dataset.autoFilled;
-      }});
-    }}
-
-    // Site toggle (PP / UD / DK): mark the clicked button .active.
-    const siteGrp = document.getElementById("bf-site");
-    if (siteGrp) {{
-      siteGrp.addEventListener("click", (e) => {{
-        const btn = e.target.closest("button[data-site]");
-        if (!btn) return;
-        siteGrp.querySelectorAll("button").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
       }});
     }}
 

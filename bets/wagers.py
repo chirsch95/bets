@@ -326,37 +326,10 @@ def totals(user_id: str, state: dict | None = None) -> dict:
     free_losses = sum(1 for b in free if b.get("result") == "L")
     free_pending = sum(1 for b in free if b.get("result") is None)
 
-    # Per-site breakdown — only the three known DFS sites; bets with no
-    # site tag are excluded so the row is comparing apples to apples.
-    # Same net/ROI rules as the global totals: free winnings flow into
-    # net, but free stakes never count toward the denominator.
-    by_site: dict[str, dict] = {}
-    for code in ("PP", "UD", "DK"):
-        site_bets = [b for b in bets if b.get("site") == code]
-        if not site_bets:
-            continue
-        s_paid = [b for b in site_bets if not b.get("free_entry")]
-        s_free = [b for b in site_bets if b.get("free_entry")]
-        s_settled_staked = sum(
-            b.get("stake") or 0.0 for b in s_paid if b.get("result") in ("W", "L")
-        )
-        s_paid_returned = sum(
-            b.get("payout") or 0.0 for b in s_paid if b.get("result") == "W"
-        )
-        s_free_winnings = sum(
-            b.get("payout") or 0.0 for b in s_free if b.get("result") == "W"
-        )
-        s_net = s_paid_returned + s_free_winnings - s_settled_staked
-        s_roi = (s_net / s_settled_staked) if s_settled_staked else None
-        by_site[code] = {
-            "count": len(site_bets),
-            "wins": sum(1 for b in site_bets if b.get("result") == "W"),
-            "losses": sum(1 for b in site_bets if b.get("result") == "L"),
-            "pending": sum(1 for b in site_bets if b.get("result") is None),
-            "staked": round(s_settled_staked, 2),
-            "net": round(s_net, 2),
-            "roi": round(s_roi, 4) if s_roi is not None else None,
-        }
+    # Per-site (PP/UD/DK) results breakdown retired 2026-05-25: bets are
+    # now Underdog-only going forward, so a by-provider split no longer
+    # informs any decision. The `site` tag is still stored per bet (so the
+    # historical PP/DK/UD evidence is preserved), it's just not aggregated.
 
     return {
         "count": len(bets),
@@ -374,5 +347,4 @@ def totals(user_id: str, state: dict | None = None) -> dict:
         "free_losses": free_losses,
         "free_pending": free_pending,
         "free_winnings": round(free_winnings, 2),
-        "by_site": by_site,
     }
