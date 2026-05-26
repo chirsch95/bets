@@ -1,0 +1,6 @@
+date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
+2026-05-26,two_leg,1,2,Joey Cantillo,676282,under,5.0,132.0,0.786,0.487,Jordan Wicks,696136,over,3.5,-115.0,0.793,0.538,,,,,,,,334,4.337391,0.623298,0.262006,0.361292,1.703487,
+2026-05-26,two_leg,2,2,Jason Alexander,669920,over,3.5,-118.0,0.74,0.51,Spencer Strider,675911,over,6.5,215.0,0.462,0.437,,,,,,,,482,5.819492,0.34188,0.22287,0.11901,0.989568,
+2026-05-26,two_leg,3,2,Kyle Harrison,690986,over,6.5,118.0,0.519,0.439,Luis Severino,622663,over,5.5,100.0,0.605,0.476,,,,,,,,336,4.36,0.313995,0.208964,0.105031,0.369018,
+2026-05-26,three_leg,1,3,Joey Cantillo,676282,under,5.0,132.0,0.786,0.487,Spencer Strider,675911,over,6.5,215.0,0.462,0.437,Jordan Wicks,696136,over,3.5,-115.0,0.793,0.538,1266,13.662783,0.287964,0.114497,0.173467,2.934385,Joey Cantillo
+2026-05-26,three_leg,2,3,Kyle Harrison,690986,over,6.5,118.0,0.519,0.439,Jason Alexander,669920,over,3.5,-118.0,0.74,0.51,Luis Severino,622663,over,5.5,100.0,0.605,0.476,705,8.054915,0.232356,0.106572,0.125785,0.87161,
