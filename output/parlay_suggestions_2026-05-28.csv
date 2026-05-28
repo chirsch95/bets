@@ -1,0 +1,2 @@
+date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
+2026-05-28,two_leg,1,2,Spencer Arrighetti,681293,over,5.5,130.0,0.508,0.423,Colin Rea,607067,over,4.5,112.0,0.58,0.446,,,,,,,,388,4.876,0.29464,0.188658,0.105982,0.436665,
