@@ -60,7 +60,20 @@ def main(argv):
         print(__doc__)
         return 1
 
+    # Merge into any existing closing board for the date: a slate's games are
+    # staggered (tonight 5:40–9:15 CT) and UD locks each pick at its own first
+    # pitch, so the most-mature pre-lock price is captured by shooting more
+    # than once through the evening. Each run upserts — the latest capture of a
+    # pitcher wins — so an early shot (full board) and a late shot (the late
+    # games near their own close) compose instead of clobbering.
+    out = DATA_DIR / f"ud_lines_close_{target.isoformat()}.json"
     board: dict[str, dict] = {}
+    if out.exists():
+        try:
+            board = {str(k): v for k, v in json.loads(out.read_text()).items()}
+            print(f"Merging into existing {out.name} ({len(board)} rows already captured).\n")
+        except (json.JSONDecodeError, OSError):
+            board = {}
     for p in paths:
         if not p.exists():
             print(f"  ! missing file: {p}")
@@ -69,10 +82,13 @@ def main(argv):
         print(f"Extracting {p.name} …")
         result = ud_vision.extract(p.read_bytes(), media, target)
         for m in result["matched"]:
-            board[str(m["pitcher_id"])] = {"line": m["line"], "hi": m["higher"], "lo": m["lower"]}
+            key = str(m["pitcher_id"])
+            updated = key in board
+            board[key] = {"line": m["line"], "hi": m["higher"], "lo": m["lower"]}
             mult = (f"  hi={m['higher']} lo={m['lower']}"
                     if (m["higher"] is not None or m["lower"] is not None) else "  (symmetric)")
-            print(f"   ✓ {m['slate_name']:<22} line {m['line']}{mult}")
+            print(f"   ✓ {m['slate_name']:<22} line {m['line']}{mult}"
+                  + ("  (updated)" if updated else ""))
         for u in result["unmatched"]:
             print(f"   ? UNMATCHED: {u['name']} line {u['line']} (skipped)")
 
@@ -80,7 +96,6 @@ def main(argv):
         print("No rows matched the slate — nothing written.")
         return 1
 
-    out = DATA_DIR / f"ud_lines_close_{target.isoformat()}.json"
     out.write_text(json.dumps(board, indent=2, sort_keys=True) + "\n")
     print(f"\nWrote {len(board)} closing rows → {out}")
     print("Now run:  .venv/bin/python grade_ud.py "
