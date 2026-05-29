@@ -2834,6 +2834,16 @@
     padding: 7px 14px; border-radius: 8px; font-weight: 600; font-size: 0.95em;
   }
   .udlab-upload:hover { border-color: var(--muted); }
+  /* Closing-capture schedule banner (CLV #4): when to screenshot the UD board. */
+  .udlab-capture {
+    margin: 0 0 12px; padding: 10px 12px; font-size: 0.9em; line-height: 1.5;
+    border: 1px solid var(--border); border-left: 3px solid var(--brand-blue);
+    border-radius: 8px; background: var(--panel); color: var(--text);
+  }
+  .udlab-cap-list { margin: 6px 0 0; padding-left: 22px; }
+  .udlab-cap-list li { margin: 2px 0; }
+  .udlab-cap-next { margin-top: 7px; color: var(--muted); }
+  .udlab-cap-next.due { color: var(--green); font-weight: 600; }
   /* Rows just filled from a screenshot — review before Save. */
   tr.udlab-imported > td { box-shadow: inset 3px 0 0 var(--brand-blue); }
   .udlab-table { width: 100%; border-collapse: collapse; font-size: 0.92em; }
@@ -4619,6 +4629,72 @@
     </div>`;
   }
 
+  // Closing-capture schedule for CLV (#4). UD locks each pick at its game's
+  // first pitch, and a slate's games are staggered — so one screenshot can't
+  // catch every pick near its own close. Greedy freshness cover: place a
+  // capture ~CAP_BUFFER before the earliest still-uncovered game; that shot is
+  // "fresh" for any game locking within CAP_STALENESS after it; repeat for the
+  // next game outside the window. Shot 1 = full board; later shots re-catch the
+  // still-open (late) games at a fresher price. Relievers/openers excluded —
+  // they're not bet, so their lock time shouldn't drive the schedule.
+  const CAP_STALENESS_MS = 120 * 60 * 1000;  // 2h freshness budget per capture
+  const CAP_BUFFER_MS = 10 * 60 * 1000;      // shoot ~10 min before first pitch
+  function udCaptureSchedule(rows) {
+    const games = [];
+    for (const r of rows) {
+      const t = Date.parse(r.game_datetime_utc || "");
+      if (isNaN(t)) continue;
+      const udLine = effUDLine(r);
+      if (udLine === null || udLine < MIN_LINE_FOR_FOCUS) continue;
+      games.push({ t, name: (r.pitcher || "").trim().split(/\s+/).slice(-1)[0] });
+    }
+    if (!games.length) return [];
+    games.sort((a, b) => a.t - b.t);
+    const shots = [];
+    let i = 0;
+    while (i < games.length) {
+      const shotT = games[i].t - CAP_BUFFER_MS;
+      const coverUntil = shotT + CAP_STALENESS_MS;
+      const stillOpen = games.filter(g => g.t >= shotT);  // on the board at shotT
+      shots.push({ t: shotT, openCount: stillOpen.length, names: stillOpen.map(g => g.name) });
+      while (i < games.length && games[i].t <= coverUntil) i++;  // covered fresh
+    }
+    return shots;
+  }
+
+  function fmtCT(ms) {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago", hour: "numeric", minute: "2-digit",
+    }).format(new Date(ms)) + " CT";
+  }
+
+  function udCaptureBanner(rows) {
+    const shots = udCaptureSchedule(rows);
+    if (!shots.length) return "";
+    let inner;
+    if (shots.length === 1) {
+      inner = `one screenshot at <strong>${fmtCT(shots[0].t)}</strong> covers the whole slate `
+            + `(${shots[0].openCount} starters, all within the freshness window).`;
+    } else {
+      const items = shots.map((s, idx) => {
+        if (idx === 0) return `<li><strong>${fmtCT(s.t)}</strong> — full board (${s.openCount} starters)</li>`;
+        const shown = s.names.slice(0, 8).join(", ") + (s.names.length > 8 ? `, +${s.names.length - 8} more` : "");
+        return `<li><strong>${fmtCT(s.t)}</strong> — still on the board: ${escapeHTML(shown)} (${s.openCount})</li>`;
+      }).join("");
+      inner = `games are staggered, so grab <strong>${shots.length}</strong> screenshots `
+            + `(UD locks each pick at its first pitch):<ol class="udlab-cap-list">${items}</ol>`;
+    }
+    const now = Date.now();
+    const next = shots.find(s => s.t > now);
+    const dueNow = shots.some(s => Math.abs(s.t - now) <= 5 * 60 * 1000);
+    const nextNote = dueNow
+      ? `<div class="udlab-cap-next due">⏰ Capture window is open now — screenshot the UD board.</div>`
+      : next
+        ? `<div class="udlab-cap-next">Next: <strong>${fmtCT(next.t)}</strong>.</div>`
+        : `<div class="udlab-cap-next">Today's capture windows have passed.</div>`;
+    return `<div class="udlab-capture">📸 <strong>Closing-capture schedule</strong> (for closing-line value) — ${inner}${nextNote}</div>`;
+  }
+
   function renderUDLabTab(rows, dateStr) {
     const calNote = CAL_V2
       ? `calibrated with the live v2 Platt scaler`
@@ -4642,6 +4718,7 @@
     });
     const body = sorted.map(udLabRow).join("");
     return `<section class="udlab">${intro}
+      ${udCaptureBanner(rows)}
       <div class="table-wrap">
       <table class="udlab-table">
         <thead><tr>
