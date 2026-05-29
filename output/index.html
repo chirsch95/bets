@@ -2915,7 +2915,7 @@
   // recompute calibrated P(over) at a hand-entered Underdog line, matching
   // the production cal_edge_v2. null → no calibration fit yet; fall back to
   // raw Poisson (same as calibration.apply()).
-  const CAL_V2 = { a: 0.2915885751759718, b: 0.0567590712967354 };
+  const CAL_V2 = { a: 0.23697783118055368, b: 0.07417472091685841 };
   // Underdog power-play base multipliers by leg count (all-must-hit).
   // Standard = symmetric picks (no per-pick multiplier shown).
   const UD_PAYOUTS = { 2: 3, 3: 6, 4: 10, 5: 20 };
@@ -4322,6 +4322,15 @@
   let _udImported = new Set(); // pids just filled from a screenshot — review state
   let _udSlateRows = [];      // last slate rows, kept so input edits can re-render
   let _udSlateDate = null;
+
+  // Typed line/multiplier edits auto-save on blur, but screenshot imports sit
+  // unsaved until "Save all". A page reload / re-fetch would discard those.
+  function udHasUnsaved() { return _udImported.size > 0; }
+  // Returns true = OK to proceed with a refresh; false = user wants to save first.
+  function udConfirmRefresh() {
+    if (!udHasUnsaved()) return true;
+    return confirm(_udImported.size + " imported UD line(s) aren't saved yet — refreshing discards them.\n\nOK = refresh anyway   ·   Cancel = go back and Save all");
+  }
 
   function fmtSignedPct(e) {
     if (e === null || e === undefined) return "—";
@@ -8679,7 +8688,7 @@
     document.querySelectorAll(".segmented button").forEach(b => {
       b.addEventListener("click", () => showTab(b.dataset.tab));
     });
-    const allowed = ["pitchers"];
+    const allowed = ["pitchers", "udlab"];
     if (SHOW_HITTERS) allowed.push("hitters");
     if (isBets()) allowed.push("bets");
     const initial = (location.hash || "#pitchers").slice(1);
@@ -8692,6 +8701,7 @@
         // API. The all_covered guard in bets.main skips the Odds API after
         // the morning run, so this costs 0 credits.
         btn.addEventListener("click", () => {
+          if (!udConfirmRefresh()) return;  // protect unsaved UD imports
           document.body.classList.add("loading");
           btn.disabled = true;
           const f = document.createElement("form");
@@ -8701,9 +8711,22 @@
           f.submit();
         });
       } else {
-        btn.addEventListener("click", loadAndRender);
+        btn.addEventListener("click", () => { if (udConfirmRefresh()) loadAndRender(); });
       }
     }
+
+    // Guard /refresh form submits (Force re-fetch, admin "Re-run pipeline")
+    // against discarding unsaved screenshot imports. Capture phase so it runs
+    // before each form's own inline onsubmit. Programmatic submit() (the green
+    // button above) doesn't fire this event — it's guarded inline instead.
+    document.addEventListener("submit", (ev) => {
+      const form = ev.target;
+      if (form && typeof form.action === "string"
+          && form.action.endsWith("/refresh") && !udConfirmRefresh()) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+      }
+    }, true);
 
     // Theme toggle. Head script already applied saved theme; this
     // syncs the button label + reacts to clicks. localStorage persists

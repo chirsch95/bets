@@ -4473,6 +4473,15 @@ def _render_js() -> str:
   let _udSlateRows = [];      // last slate rows, kept so input edits can re-render
   let _udSlateDate = null;
 
+  // Typed line/multiplier edits auto-save on blur, but screenshot imports sit
+  // unsaved until "Save all". A page reload / re-fetch would discard those.
+  function udHasUnsaved() {{ return _udImported.size > 0; }}
+  // Returns true = OK to proceed with a refresh; false = user wants to save first.
+  function udConfirmRefresh() {{
+    if (!udHasUnsaved()) return true;
+    return confirm(_udImported.size + " imported UD line(s) aren't saved yet — refreshing discards them.\\n\\nOK = refresh anyway   ·   Cancel = go back and Save all");
+  }}
+
   function fmtSignedPct(e) {{
     if (e === null || e === undefined) return "—";
     return (e >= 0 ? "+" : "") + (e * 100).toFixed(1) + "%";
@@ -8826,7 +8835,7 @@ def _render_js() -> str:
     document.querySelectorAll(".segmented button").forEach(b => {{
       b.addEventListener("click", () => showTab(b.dataset.tab));
     }});
-    const allowed = ["pitchers"];
+    const allowed = ["pitchers", "udlab"];
     if (SHOW_HITTERS) allowed.push("hitters");
     if (isBets()) allowed.push("bets");
     const initial = (location.hash || "#pitchers").slice(1);
@@ -8839,6 +8848,7 @@ def _render_js() -> str:
         // API. The all_covered guard in bets.main skips the Odds API after
         // the morning run, so this costs 0 credits.
         btn.addEventListener("click", () => {{
+          if (!udConfirmRefresh()) return;  // protect unsaved UD imports
           document.body.classList.add("loading");
           btn.disabled = true;
           const f = document.createElement("form");
@@ -8848,9 +8858,22 @@ def _render_js() -> str:
           f.submit();
         }});
       }} else {{
-        btn.addEventListener("click", loadAndRender);
+        btn.addEventListener("click", () => {{ if (udConfirmRefresh()) loadAndRender(); }});
       }}
     }}
+
+    // Guard /refresh form submits (Force re-fetch, admin "Re-run pipeline")
+    // against discarding unsaved screenshot imports. Capture phase so it runs
+    // before each form's own inline onsubmit. Programmatic submit() (the green
+    // button above) doesn't fire this event — it's guarded inline instead.
+    document.addEventListener("submit", (ev) => {{
+      const form = ev.target;
+      if (form && typeof form.action === "string"
+          && form.action.endsWith("/refresh") && !udConfirmRefresh()) {{
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+      }}
+    }}, true);
 
     // Theme toggle. Head script already applied saved theme; this
     // syncs the button label + reacts to clicks. localStorage persists
