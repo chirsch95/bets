@@ -3037,8 +3037,22 @@ def _render_js() -> str:
   // the production cal_edge_v2. null → no calibration fit yet; fall back to
   // raw Poisson (same as calibration.apply()).
   const CAL_V2 = {cal_v2_js};
-  // Underdog power-play payout multipliers by leg count (standard, all-must-hit).
+  // Underdog power-play base multipliers by leg count (all-must-hit).
+  // Standard = symmetric picks (no per-pick multiplier shown).
   const UD_PAYOUTS = {{ 2: 3, 3: 6, 4: 10, 5: 20 }};
+  // When picks carry Higher/Lower multipliers, the entry pays a *higher*
+  // base × the per-pick multipliers (the multipliers carry the vig). 2-leg
+  // base = 3.5 confirmed from real entries (3.5×1.04×0.86=3.13;
+  // 3.5×0.81×1.08=3.06). 3+ legs estimated by the same 3.5/3 ratio until a
+  // real multi-pick example confirms them — flagged in the UI.
+  const UD_PAYOUTS_BOOSTED = {{ 2: 3.5 }};
+  const UD_BOOSTED_CONFIRMED = {{ 2: true }};
+  function udEntryBase(k, anyPriced) {{
+    if (!anyPriced) return {{ base: UD_PAYOUTS[k], confirmed: true }};
+    if (UD_PAYOUTS_BOOSTED[k] != null)
+      return {{ base: UD_PAYOUTS_BOOSTED[k], confirmed: !!UD_BOOSTED_CONFIRMED[k] }};
+    return {{ base: UD_PAYOUTS[k] * (3.5 / 3), confirmed: false }};  // estimate
+  }}
 
   function baseUrl() {{
     const h = location.hostname;
@@ -4566,7 +4580,6 @@ def _render_js() -> str:
 
   function udParlaySection(legs, k) {{
     if (legs.length < k) return "";
-    const base = UD_PAYOUTS[k];
     const seenGames = (combo) => {{
       const s = new Set();
       for (const l of combo) {{
@@ -4579,11 +4592,14 @@ def _render_js() -> str:
     const ranked = combos(legs, k)
       .filter(seenGames)
       .map(combo => {{
-        const winP = combo.reduce((a, l) => a * l.prob, 1);
         // Entry payout = base power-play multiplier × the per-pick payout
-        // multipliers (interim assumption — confirm with a real UD entry).
-        const payMult = combo.reduce((a, l) => a * (l.mult || 1), base);
-        return {{ legs: combo, prob: winP, payMult, ev: winP * payMult - 1 }};
+        // multipliers. Base is the boosted table when any leg is priced
+        // (2-leg = 3.5 confirmed), else the standard power play.
+        const anyPriced = combo.some(l => l.priced);
+        const eb = udEntryBase(k, anyPriced);
+        const winP = combo.reduce((a, l) => a * l.prob, 1);
+        const payMult = combo.reduce((a, l) => a * (l.mult || 1), eb.base);
+        return {{ legs: combo, prob: winP, payMult, confirmed: eb.confirmed, ev: winP * payMult - 1 }};
       }})
       .filter(x => x.ev > 0)
       .sort((a, b) => b.ev - a.ev)
@@ -4594,11 +4610,11 @@ def _render_js() -> str:
         `<div class="udlab-pl-leg">${{l.soft ? "★ " : ""}}${{escapeHTML(l.pitcher)}} <strong>${{l.dir.toUpperCase()}} ${{l.udLine}}</strong>${{l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""}} · ${{pct1(l.prob)}}</div>`
       ).join("");
       return `<div class="udlab-pl-card">
-        <div class="udlab-pl-head">${{x.payMult.toFixed(2)}}× · win ${{pct1(x.prob)}} · <span class="${{x.ev > 0 ? "pos" : "neg"}}">EV ${{(x.ev >= 0 ? "+" : "")}}${{x.ev.toFixed(3)}}</span></div>
+        <div class="udlab-pl-head">${{x.confirmed ? "" : "~"}}${{x.payMult.toFixed(2)}}× · win ${{pct1(x.prob)}} · <span class="${{x.ev > 0 ? "pos" : "neg"}}">EV ${{(x.ev >= 0 ? "+" : "")}}${{x.ev.toFixed(3)}}</span></div>
         ${{legHtml}}
       </div>`;
     }}).join("");
-    return `<div class="udlab-pl-col-title">${{k}}-leg (base ${{base}}×)</div>${{cards}}`;
+    return `<div class="udlab-pl-col-title">${{k}}-leg</div>${{cards}}`;
   }}
 
   // Leg-set diff: which pitchers each approach would actually bet, so the
@@ -4649,7 +4665,7 @@ def _render_js() -> str:
       : `<p class="muted">No positive-EV UD parlays from the lines entered yet.</p>`;
     return `<div class="udlab-parlays">
       ${{diffSummary}}
-      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(value legs · one leg per game · ranked by EV per $1 · payout = base × pick multipliers, interim — confirm vs a real UD entry)</span></div>
+      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(value legs · one leg per game · ranked by EV per $1 · payout = base × pick multipliers; 2-leg base 3.5 confirmed · ~ marks an estimated 3+ base, pending a real entry)</span></div>
       ${{plBody}}
     </div>`;
   }}
