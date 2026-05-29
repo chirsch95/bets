@@ -10,11 +10,11 @@
 
 ### 1. 🟡 You model against one market but bet in a completely different one
 The entire edge calc is model-projection vs **sportsbook** no-vig (DK/FanDuel via The Odds API). But since 2026-05-25 all bets are on **Underdog** pick'em — fixed 3×/6× multipliers on *UD's* lines, which are set independently and are often softer/slower than the sharp consensus. Every validated edge number (`+0.43 ROI`, the v0 flip case, the 52–54% hit rate) is "model vs sportsbook." Whether that edge survives on UD's lines was, until this session, literally unmeasured.
-**Status:** UD Lab tab shipped (`39a3a81`) — captures UD lines and recomputes the model against them. Makes #1 *measurable*; the actual answer comes after a few weeks of captured lines + the first 5/29 read.
+**Status:** UD Lab tab shipped and substantially built out (`39a3a81`→`f4ff116`, live on Air). Captures UD's **line AND Higher/Lower payout multipliers**, de-vigs the multipliers into UD's *own* implied probability, and grades the model against the price actually paid — with the **confirmed UD payout formula** `base × ∏(side multipliers)`, boosted base = standard + 0.5 (2-leg 3.5, 3-leg 6.5). Symmetric (unpriced) picks fall back to the sharp-market reference (soft-line ★ targets). #1 is now *measurable end-to-end*; the actual answer comes after captured pricing accumulates + the first 5/29 read.
 
 ### 2. 🟡 Your honest hit rate is below the Underdog breakeven
 UD power-play breakevens: 2-leg @3× needs **57.7%** per leg, 3-leg @6× needs **55.0%**. Honest slate-time focus picks hit **52.3% overall, 54.3% on overs** (§2.4) — *below* breakeven for the format actually being played. The +64% at edge≥0.10 is single-leg sportsbook grading with selection-optimism, not the UD reality. The docs never put "52–54% honest hit rate" next to "need 55–58% to beat UD."
-**Status:** UD Lab verdicts now enforce this — a pick only reads "Bet" if its calibrated prob clears the UD break-even, so the gap is visible per-pitcher. Still need real-money confirmation.
+**Status:** UD Lab makes this explicit per-pitcher: the verdict reads "Bet/Lean" only when the model's edge over UD's *actual* price (its de-vigged implied prob when priced, else the sharp line) is positive — so a 52–54% pick against a richer UD price correctly reads "—". Still need real-money confirmation.
 
 ### 3. ⬜ Roughly half your real-money profit is free promo money
 §4 reports +27.1% ROI / +$161.83. But $81.45 of that was free-entry promos at $0 cost. Paid-only: $596.35 staked → $676.73 returned = **+13.5%**, not +27.1%. And +13.5% over 96 high-variance parlays at a 33% hit rate — is that statistically distinguishable from zero? The standard error likely swamps it. The doc calls the ledger "the single best evidence the edge is real," but the promo-stripped number is half as large and may be noise.
@@ -63,4 +63,7 @@ Path-C says "building primary, bets are integration tests, no volume target," ye
 ---
 
 ## Claude's priority read (at the time)
-Highest-value: **#1, #2, #4** — they could mean the headline profitability claim is measuring the wrong market with the wrong instrument. #1 and #2 are now partially addressed by the UD Lab tab; #4 is unblocked by it. **#11** is the meta-question that determines how much the rest matter.
+Highest-value: **#1, #2, #4** — they could mean the headline profitability claim is measuring the wrong market with the wrong instrument. #1 and #2 are now substantially addressed by the UD Lab tab (line + multiplier capture, de-vig to UD's own price, confirmed payout formula); #4 is unblocked by it. **#11** is the meta-question that determines how much the rest matter.
+
+## Update — 2026-05-28 session
+The UD Lab tab was built this session to attack #1/#2. Chad also surfaced a key piece Claude hadn't asked about: UD's **per-pick Higher/Lower payout multipliers** (e.g. 1.04 / 0.87), shown on some pitchers. These are UD pricing the pick — de-vigging them yields UD's own implied probability, the most direct read of the market actually bet. Capturing them turned #1 from "compare to a proxy (sportsbook)" into "compare to UD's literal price." The UD payout formula was reverse-engineered and confirmed from real entries: `base × ∏(chosen-side multipliers)`, boosted base = standard + 0.5 (2-leg 3.5, 3-leg 6.5). Next: the first post-settle read on 2026-05-29 (see NEXT_SESSION.md).
