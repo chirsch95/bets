@@ -680,6 +680,11 @@
   }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
+  /* An inactive tab panel must stay hidden even on is-bets hosts, where
+     `html.is-bets .bets-only { display: revert }` (higher specificity) would
+     otherwise force the bets-panel visible on every tab — leaking its
+     "Loading…" placeholder onto e.g. the UD Lab screen. */
+  .tab-panel:not(.active) { display: none !important; }
   .results-section { margin-top: 32px; }
   .results-section h2 {
     margin: 0 0 12px;
@@ -4469,8 +4474,10 @@
     return legs.sort((a, b) => b.edge - a.edge);
   }
 
-  function udParlaySection(legs, k) {
-    if (legs.length < k) return "";
+  // All positive-EV k-leg combos (one leg per game), ranked by EV. NOT
+  // deduped or sliced — udSelectParlays does the cross-section selection.
+  function udRankedCombos(legs, k) {
+    if (legs.length < k) return [];
     const seenGames = (combo) => {
       const s = new Set();
       for (const l of combo) {
@@ -4480,7 +4487,7 @@
       }
       return true;
     };
-    const ranked = combos(legs, k)
+    return combos(legs, k)
       .filter(seenGames)
       .map(combo => {
         // Entry payout = base power-play multiplier × the per-pick payout
@@ -4493,23 +4500,45 @@
         return { legs: combo, prob: winP, payMult, confirmed: eb.confirmed, ev: winP * payMult - 1 };
       })
       .filter(x => x.ev > 0)
-      .sort((a, b) => b.ev - a.ev)
-      .slice(0, 3);
-    if (!ranked.length) return "";
-    const cards = ranked.map(x => {
-      // Time-sensitive: a strong-EV parlay whose edge leans on soft (stale,
-      // symmetric) UD lines — lock it in before UD moves the line / adds a
-      // multiplier and the edge disappears.
-      const placeEarly = x.ev >= 0.10 && x.legs.some(l => l.soft);
-      const legHtml = x.legs.map(l =>
-        `<div class="udlab-pl-leg">${l.soft ? "★ " : ""}${escapeHTML(l.pitcher)} <strong>${l.dir.toUpperCase()} ${l.udLine}</strong>${l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""} · ${pct1(l.prob)}</div>`
-      ).join("");
-      return `<div class="udlab-pl-card${placeEarly ? " udlab-pl-early" : ""}">
-        <div class="udlab-pl-head">${placeEarly ? '<span class="udlab-early" title="Edge leans on soft UD line(s) that lag the sharp market — place it before UD moves the line or adds a multiplier and the edge is gone">⏰ place early</span> ' : ""}${x.confirmed ? "" : "~"}${x.payMult.toFixed(2)}× · win ${pct1(x.prob)} · <span class="${x.ev > 0 ? "pos" : "neg"}">EV ${(x.ev >= 0 ? "+" : "")}${x.ev.toFixed(3)}</span></div>
-        ${legHtml}
-      </div>`;
-    }).join("");
-    return `<div class="udlab-pl-col-title">${k}-leg</div>${cards}`;
+      .sort((a, b) => b.ev - a.ev);
+  }
+
+  // Pick suggested parlays with NO pitcher repeated across any card (mirrors
+  // the non-UD suggester's diversity rule). 2-leg gets first dibs on the
+  // pitcher pool (lower variance, the bread-and-butter), then 3-leg fills
+  // from whoever's left.
+  function udSelectParlays(legs) {
+    const used = new Set();
+    const pick = (k, cap) => {
+      const out = [];
+      for (const x of udRankedCombos(legs, k)) {
+        if (out.length >= cap) break;
+        if (x.legs.some(l => used.has(l.pitcher_id))) continue;
+        x.legs.forEach(l => used.add(l.pitcher_id));
+        out.push(x);
+      }
+      return out;
+    };
+    return { two: pick(2, 3), three: pick(3, 3) };
+  }
+
+  function udParlayCard(x) {
+    // Time-sensitive: a strong-EV parlay whose edge leans on soft (stale,
+    // symmetric) UD lines — lock it in before UD moves the line / adds a
+    // multiplier and the edge disappears.
+    const placeEarly = x.ev >= 0.10 && x.legs.some(l => l.soft);
+    const legHtml = x.legs.map(l =>
+      `<div class="udlab-pl-leg">${l.soft ? "★ " : ""}${escapeHTML(l.pitcher)} <strong>${l.dir.toUpperCase()} ${l.udLine}</strong>${l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""} · ${pct1(l.prob)}</div>`
+    ).join("");
+    return `<div class="udlab-pl-card${placeEarly ? " udlab-pl-early" : ""}">
+      <div class="udlab-pl-head">${placeEarly ? '<span class="udlab-early" title="Edge leans on soft UD line(s) that lag the sharp market — place it before UD moves the line or adds a multiplier and the edge is gone">⏰ place early</span> ' : ""}${x.confirmed ? "" : "~"}${x.payMult.toFixed(2)}× · win ${pct1(x.prob)} · <span class="${x.ev > 0 ? "pos" : "neg"}">EV ${(x.ev >= 0 ? "+" : "")}${x.ev.toFixed(3)}</span></div>
+      ${legHtml}
+    </div>`;
+  }
+
+  function udParlayColumn(picked, k) {
+    if (!picked.length) return "";
+    return `<div class="udlab-pl-col-title">${k}-leg</div>${picked.map(udParlayCard).join("")}`;
   }
 
   // Leg-set diff: which pitchers each approach would actually bet, so the
@@ -4539,8 +4568,9 @@
 
   function renderUDParlayCompare(rows) {
     const legs = udBuildLegs(rows);
-    const two = udParlaySection(legs, 2);
-    const three = udParlaySection(legs, 3);
+    const sel = udSelectParlays(legs);  // no pitcher repeats across cards
+    const two = udParlayColumn(sel.two, 2);
+    const three = udParlayColumn(sel.three, 3);
     const diff = udLegDiff(rows);
     const chip = (txt, cls) => `<span class="udlab-chip ${cls}">${escapeHTML(txt)}</span>`;
     const diffChips = [
