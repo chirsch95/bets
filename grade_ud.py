@@ -146,6 +146,30 @@ def is_bettable_focus(cal_edge_v2, s_line):
     return s_line is not None and s_line >= MIN_LINE_FOR_FOCUS
 
 
+def compute_calls(proj, s_line, novig, cal_edge_v2, ud_line, hi, lo, reliever, actual_ks):
+    """One projection-state → both calls (UD-aware + sportsbook), graded.
+
+    Used twice per pitcher: once on the frozen morning slate (pre-lineup,
+    team-avg opp K%) and once on the post-lineup pre-game projection. Grades
+    each call at its own line so the morning-vs-post-lineup comparison shows
+    whether the lineup post changed the call and whether it was right."""
+    c = ud_compare(proj, s_line, novig, ud_line, hi, lo)
+    if reliever:
+        ud_label, ud_bettable, ud_dir, ud_soft = ("RP — skip", False, None, False)
+    else:
+        ud_label, _, ud_soft, ud_bettable = ud_verdict(c)
+        ud_dir = c["dir"] if (c and ud_bettable) else None
+    sb_bettable = is_bettable_focus(cal_edge_v2, s_line)
+    sb_dir = ("over" if cal_edge_v2 >= 0 else "under") if (sb_bettable and cal_edge_v2 is not None) else None
+    return dict(
+        proj=proj, s_line=s_line, novig=novig, cal_edge_v2=cal_edge_v2, c=c,
+        ud_label=ud_label, ud_bettable=ud_bettable, ud_dir=ud_dir, ud_soft=ud_soft,
+        sb_bettable=sb_bettable, sb_dir=sb_dir,
+        ud_won=(graded_side_won(ud_dir, ud_line, actual_ks) if ud_bettable else None),
+        sb_won=(graded_side_won(sb_dir, s_line, actual_ks) if sb_bettable else None),
+        ud_edge=(c["edge"] if c else None))
+
+
 # ---------- data loading ----------------------------------------------------
 def _f(v):
     if v in ("", None):
@@ -180,6 +204,28 @@ def load_actuals(target: date) -> dict:
                 continue
             out[pid] = dict(actual_ks=_f(r.get("actual_ks")), actual_bf=_f(r.get("actual_bf")),
                             gs=r.get("gs", ""), over_hit=r.get("over_hit", ""))
+    return out
+
+
+def load_postlineup(target: date) -> dict:
+    """{pid: {proj_ks_v2, line, novig_over, cal_edge_v2}} from the settled
+    CSV's *unprefixed* (live) columns — the last pre-game pipeline run, i.e.
+    the post-lineup projection if the pipeline was re-run after lineups
+    posted. Empty if not settled. (The slate_* columns hold the morning
+    state but omit proj_ks_v2, so the morning view must come from the frozen
+    _slate.csv — that's why this is a separate source.)"""
+    p = OUTPUT_DIR / f"pitcher_ks_{target.isoformat()}_settled.csv"
+    if not p.exists():
+        return {}
+    out = {}
+    with p.open() as f:
+        for r in csv.DictReader(f):
+            pid = str(r.get("pitcher_id", "")).strip()
+            if not pid:
+                continue
+            out[pid] = dict(proj_ks_v2=_f(r.get("proj_ks_v2")), line=_f(r.get("line")),
+                            novig_over=_f(r.get("novig_over")), cal_edge_v2=_f(r.get("cal_edge_v2")),
+                            opp_k_source=r.get("opp_k_source", ""))
     return out
 
 
@@ -232,92 +278,112 @@ def main():
     slate = load_slate(target)
     ud = load_ud(DATA_DIR / f"ud_lines_{target.isoformat()}.json")
     actuals = load_actuals(target)
+    postlineup = load_postlineup(target)
     settled = bool(actuals)
+    have_post = bool(postlineup)
+    bet_view = "post" if have_post else "morn"  # what Chad actually bet (post-lineup if re-run)
 
     print(f"=== UD-aware grading — {target.isoformat()} ===")
     print(f"slate rows: {len(slate)}   UD-priced rows: {len(ud)}   "
-          f"settled: {'YES' if settled else 'NO (staged — re-run after games)'}\n")
+          f"settled: {'YES' if settled else 'NO (staged — re-run after games)'}")
+    if have_post:
+        lc = sum(1 for v in postlineup.values() if v.get("opp_k_source") == "lineup")
+        print(f"post-lineup projection: present ({lc}/{len(postlineup)} rows lineup-confirmed)")
+    else:
+        print("post-lineup projection: not available "
+              "(only after settle, and only if the pipeline was re-run post-lineup)")
+    print()
 
-    rows = []  # per-pitcher comparison
+    rows = []  # per-pitcher comparison, each with morning + post-lineup views
     for pid, e in ud.items():
         s = slate.get(pid)
         if not s:
             continue
-        proj = _f(s.get("proj_ks_v2"))
-        s_line = _f(s.get("line"))
-        novig = _f(s.get("novig_over"))
-        cal_edge_v2 = _f(s.get("cal_edge_v2"))
-        ud_line = e["line"] if e["line"] is not None else s_line
+        ud_line = e["line"] if e["line"] is not None else _f(s.get("line"))
         reliever = ud_line is not None and ud_line < MIN_LINE_FOR_FOCUS
-
-        # UD-aware call
-        c = ud_compare(proj, s_line, novig, ud_line, e["hi"], e["lo"])
-        if reliever:
-            ud_label, ud_bettable, ud_dir, ud_soft = ("RP — skip", False, None, False)
-        else:
-            ud_label, _, ud_soft, ud_bettable = ud_verdict(c)
-            ud_dir = c["dir"] if (c and ud_bettable) else None
-
-        # Sportsbook call
-        sb_bettable = is_bettable_focus(cal_edge_v2, s_line)
-        sb_dir = ("over" if cal_edge_v2 >= 0 else "under") if (sb_bettable and cal_edge_v2 is not None) else None
-
         try:
             gpk = int(s.get("game_pk")) if s.get("game_pk") not in (None, "") else None
         except (TypeError, ValueError):
             gpk = None
+        actual_ks = actuals.get(pid, {}).get("actual_ks")
 
-        act = actuals.get(pid, {})
-        actual_ks = act.get("actual_ks")
-        ud_won = graded_side_won(ud_dir, ud_line, actual_ks) if ud_bettable else None
-        sb_won = graded_side_won(sb_dir, s_line, actual_ks) if sb_bettable else None
+        # Morning view (frozen slate: pre-lineup, team-avg opp K%).
+        morn = compute_calls(_f(s.get("proj_ks_v2")), _f(s.get("line")), _f(s.get("novig_over")),
+                             _f(s.get("cal_edge_v2")), ud_line, e["hi"], e["lo"], reliever, actual_ks)
+        # Post-lineup view (last pre-game run), if available.
+        post = None
+        if have_post and pid in postlineup:
+            pl = postlineup[pid]
+            post = compute_calls(pl["proj_ks_v2"], pl["line"], pl["novig_over"], pl["cal_edge_v2"],
+                                 ud_line, e["hi"], e["lo"], reliever, actual_ks)
+            post["opp_k_source"] = pl.get("opp_k_source", "")
 
-        rows.append(dict(
-            pid=pid, name=s.get("pitcher", ""), proj=proj, s_line=s_line, ud_line=ud_line,
-            cal_edge_v2=cal_edge_v2, c=c, reliever=reliever, game_pk=gpk,
-            ud_label=ud_label, ud_bettable=ud_bettable, ud_dir=ud_dir, ud_soft=ud_soft,
-            sb_bettable=sb_bettable, sb_dir=sb_dir,
-            actual_ks=actual_ks, gs=act.get("gs", ""), actual_bf=act.get("actual_bf"),
-            ud_won=ud_won, sb_won=sb_won))
+        rows.append(dict(pid=pid, name=s.get("pitcher", ""), ud_line=ud_line, hi=e["hi"], lo=e["lo"],
+                         reliever=reliever, game_pk=gpk, actual_ks=actual_ks,
+                         gs=actuals.get(pid, {}).get("gs", ""), morn=morn, post=post))
 
-    # ---- Section A: per-pitcher table ----
-    print("--- Per-pitcher calls (UD-priced rows) ---")
-    hdr = f"{'pitcher':<20} {'sLn':>4} {'udLn':>4} {'calEdge':>7} {'udEdge':>7} {'SB':>10} {'UD':>14}"
+    def view(r):
+        return r[bet_view] or r["morn"]
+
+    # ---- Section A: per-pitcher table, morning vs post-lineup side by side ----
+    label_morn = "MORNING (pre-lineup)"
+    print(f"--- Per-pitcher calls: {label_morn}  |  POST-LINEUP (bet-time) ---")
+    hdr = (f"{'pitcher':<20} {'udLn':>4} | {'m·udE':>6} {'m·SB':>9} {'m·UD':>13}"
+           f" | {'p·udE':>6} {'p·SB':>9} {'p·UD':>13}")
     if settled:
-        hdr += f" {'K':>3} {'SB✓':>4} {'UD✓':>4}"
+        hdr += f" | {'K':>3} {'m✓':>4} {'p✓':>4}"
     print(hdr)
-    for r in sorted(rows, key=lambda x: -(x["c"]["edge"] if x["c"] and x["c"]["edge"] is not None else -9)):
-        ce = f"{r['cal_edge_v2']:+.3f}" if r['cal_edge_v2'] is not None else "  —  "
-        ue = f"{r['c']['edge']:+.3f}" if (r['c'] and r['c']['edge'] is not None) else "  —  "
-        sb = (f"Bet {r['sb_dir'].upper()}" if r['sb_bettable'] else "—")
-        line = (f"{r['name'][:20]:<20} {fmt(r['s_line']):>4} {fmt(r['ud_line']):>4} {ce:>7} {ue:>7} "
-                f"{sb:>10} {(('★ ' if r['ud_soft'] else '')+r['ud_label']):>14}")
+    for r in sorted(rows, key=lambda x: -(view(x)["ud_edge"] if view(x)["ud_edge"] is not None else -9)):
+        cells = f"{r['name'][:20]:<20} {fmt(r['ud_line']):>4} |"
+        cells += " " + viewcells(r["morn"])
+        cells += " | " + (viewcells(r["post"]) if r["post"] else f"{'—':>6} {'—':>9} {'—':>13}")
         if settled:
             k = f"{int(r['actual_ks'])}" if r['actual_ks'] is not None else "—"
-            line += f" {k:>3} {tick(r['sb_won']):>4} {tick(r['ud_won']):>4}"
-        print(line)
+            mp = r["morn"]; pp = r["post"]
+            cells += f" | {k:>3} {tick(combined_won(mp)):>4} {tick(combined_won(pp) if pp else None):>4}"
+        print(cells)
 
-    # ---- Section B: head-to-head + disagreements (only if settled) ----
+    # ---- Section B: head-to-head + how the lineup moved the call (settled) ----
     if settled:
-        graded_sb = [r for r in rows if r["sb_won"] is not None]
-        graded_ud = [r for r in rows if r["ud_won"] is not None]
         print("\n--- Head-to-head hit rate (this slate) ---")
-        rate("SPORTSBOOK focus picks", graded_sb, "sb_won")
-        rate("UD-aware picks        ", graded_ud, "ud_won")
+        for vname, vkey in (("MORNING (pre-lineup)", "morn"), ("POST-LINEUP (bet-time)", "post")):
+            if vkey == "post" and not have_post:
+                print(f"  {vname}: n/a (no post-lineup run captured)")
+                continue
+            sb = [r for r in rows if r[vkey] and r[vkey]["sb_won"] is not None]
+            udd = [r for r in rows if r[vkey] and r[vkey]["ud_won"] is not None]
+            print(f"  {vname}:")
+            rate("    sportsbook focus picks", sb, vkey, "sb_won")
+            rate("    UD-aware picks        ", udd, vkey, "ud_won")
+        if have_post:
+            print(f"\n  (bet-time = POST-LINEUP — what you'd actually have bet after re-running.)")
 
-        disagree = [r for r in rows if (r["sb_bettable"] or r["ud_bettable"]) and
-                    (r["sb_bettable"] != r["ud_bettable"] or r["sb_dir"] != r["ud_dir"])]
-        print(f"\n--- Disagreements: SB vs UD ({len(disagree)}) — who was right? ---")
+        # Where did the lineup post change the UD call?
+        if have_post:
+            moved = [r for r in rows if call_str(r["morn"]) != call_str(r["post"])]
+            print(f"\n--- Lineup post changed the UD call ({len(moved)}) ---")
+            for r in moved:
+                k = f"K={int(r['actual_ks'])}" if r['actual_ks'] is not None else "K=—"
+                print(f"  {r['name'][:20]:<20} morn {call_str(r['morn']):<14} → post {call_str(r['post']):<14}"
+                      f"  src={r['post'].get('opp_k_source','')}  {k}")
+            if not moved:
+                print("  (none — lineups didn't change any UD call)")
+
+        # SB vs UD disagreement on the bet-time view.
+        bt = bet_view
+        disagree = [r for r in rows if r[bt] and (r[bt]["sb_bettable"] or r[bt]["ud_bettable"]) and
+                    (r[bt]["sb_bettable"] != r[bt]["ud_bettable"] or r[bt]["sb_dir"] != r[bt]["ud_dir"])]
+        print(f"\n--- SB vs UD disagreements ({bet_view}) ({len(disagree)}) — who was right? ---")
         for r in disagree:
-            sb = f"SB:{('Bet '+r['sb_dir'].upper()) if r['sb_bettable'] else 'pass'}"
-            udd = f"UD:{(r['ud_label']) if r['ud_bettable'] else 'pass'}"
+            v = r[bt]
+            sb = f"SB:{('Bet '+v['sb_dir'].upper()) if v['sb_bettable'] else 'pass'}"
+            udd = f"UD:{(v['ud_label']) if v['ud_bettable'] else 'pass'}"
             k = f"K={int(r['actual_ks'])}" if r['actual_ks'] is not None else "K=—"
-            verdict = right_label(r)
-            print(f"  {r['name'][:20]:<20} {sb:<14} {udd:<16} {k:<7} → {verdict}")
+            print(f"  {r['name'][:20]:<20} {sb:<14} {udd:<16} {k:<7} → {right_label(v)}")
 
-    # ---- Section C: UD parlays ----
-    print("\n--- UD-suggested parlays ---")
-    legs = build_ud_legs(rows)
+    # ---- Section C: UD parlays (built from the bet-time view) ----
+    print(f"\n--- UD-suggested parlays ({bet_view}-view) ---")
+    legs = build_ud_legs(rows, bet_view)
     picks = ud_select_parlays(legs)
     for k, cards in (("2", picks["two"]), ("3", picks["three"])):
         for x in cards:
@@ -333,22 +399,23 @@ def main():
         print(f"  No closing board captured ({close_path.name} absent).")
         print("  Near first pitch, run:  python3 capture_ud_close.py <screenshot.png> ...")
     else:
-        report_clv(rows, slate, ud, ud_close)
+        report_clv(rows, slate, ud, ud_close, bet_view)
 
 
 # ---------- parlay logic (ports of web.py) ----------------------------------
-def build_ud_legs(rows):
+def build_ud_legs(rows, bet_view):
     legs = []
     for r in rows:
+        v = r.get(bet_view) or r["morn"]
         if r["reliever"] or r["ud_line"] is None or r["ud_line"] < MIN_LINE_FOR_FOCUS:
             continue
-        c = r["c"]
+        c = v["c"]
         if not c or c["pick_prob"] is None or not c["dir"] or c["edge"] is None or c["edge"] < 0.02:
             continue
         legs.append(dict(pitcher=r["name"], pid=r["pid"], dir=c["dir"], prob=c["pick_prob"],
                          ud_line=c["ud_line"], mult=c["side_mult"] or 1.0, edge=c["edge"],
-                         priced=c["priced"], soft=r["ud_soft"], game_pk=r.get("game_pk"),
-                         won=r["ud_won"]))
+                         priced=c["priced"], soft=v["ud_soft"], game_pk=r.get("game_pk"),
+                         won=v["ud_won"]))
     return sorted(legs, key=lambda l: -l["edge"])
 
 
@@ -439,27 +506,29 @@ def market_pick_prob(direction, proj, s_line, novig, ud_entry):
     return (over if direction == "over" else 1 - over), ud_line
 
 
-def report_clv(rows, slate, ud_entry_board, ud_close_board):
+def report_clv(rows, slate, ud_entry_board, ud_close_board, bet_view):
     """Per-pick CLV: did the market's implied prob of the model's side rise
-    from entry to close? Positive = you bought before the market moved your way."""
+    from entry to close? Positive = you bought before the market moved your way.
+    Picks taken from the bet-time view (post-lineup if available)."""
     clvs = []
     for r in rows:
-        if not r["ud_bettable"] or not r["ud_dir"]:
+        v = r.get(bet_view) or r["morn"]
+        if not v["ud_bettable"] or not v["ud_dir"]:
             continue
         s = slate.get(r["pid"], {})
-        proj, s_line, novig = r["proj"], r["s_line"], _f(s.get("novig_over"))
+        proj, s_line, novig = v["proj"], v["s_line"], _f(s.get("novig_over"))
         entry = ud_entry_board.get(r["pid"])
         close = ud_close_board.get(r["pid"])
         if not close:
             continue
-        p_entry, l_entry = market_pick_prob(r["ud_dir"], proj, s_line, novig, entry)
-        p_close, l_close = market_pick_prob(r["ud_dir"], proj, s_line, novig, close)
+        p_entry, l_entry = market_pick_prob(v["ud_dir"], proj, s_line, novig, entry)
+        p_close, l_close = market_pick_prob(v["ud_dir"], proj, s_line, novig, close)
         if p_entry is None or p_close is None:
             continue
         clv = p_close - p_entry
         clvs.append(clv)
         moved = "→ toward" if clv > 1e-4 else ("→ against" if clv < -1e-4 else "→ flat")
-        print(f"  {r['name'][:20]:<20} {r['ud_dir'].upper():<5} "
+        print(f"  {r['name'][:20]:<20} {v['ud_dir'].upper():<5} "
               f"entry {l_entry}/{p_entry*100:4.1f}%  close {l_close}/{p_close*100:4.1f}%  "
               f"CLV {clv*100:+5.1f}pp {moved}")
     if clvs:
@@ -479,29 +548,43 @@ def tick(won):
     return "—" if won is None else ("✓" if won else "✗")
 
 
-def rate(label, graded, key):
+def _wl(won):
+    return "push" if won is None else ("✓" if won else "✗")
+
+
+def viewcells(v):
+    """Format one view as 'udEdge  SB-call  UD-call' (matches Section A header)."""
+    ue = f"{v['ud_edge']:+.3f}" if v['ud_edge'] is not None else "—"
+    sb = (f"Bet {v['sb_dir'].upper()}" if v['sb_bettable'] else "—")
+    ud = (("★ " if v['ud_soft'] else "") + v['ud_label'])
+    return f"{ue:>6} {sb:>9} {ud:>13}"
+
+
+def combined_won(v):
+    """Per-pitcher ✓/✗ for the table: the UD-aware call's result (the focus)."""
+    return v["ud_won"] if v else None
+
+
+def call_str(v):
+    """Short UD-call string for the 'lineup changed the call' diff."""
+    if not v:
+        return "—"
+    return (("★ " if v['ud_soft'] and v['ud_bettable'] else "") + v['ud_label'])
+
+
+def rate(label, graded, vkey, key):
     n = len(graded)
     if not n:
         print(f"  {label}: no graded picks")
         return
-    w = sum(1 for r in graded if r[key])
+    w = sum(1 for r in graded if r[vkey][key])
     print(f"  {label}: {w}/{n} = {w/n:.1%}")
 
 
-def right_label(r):
-    if r["actual_ks"] is None:
-        return "ungraded"
-    parts = []
-    if r["sb_bettable"]:
-        parts.append("SB " + ("✓" if r["sb_won"] else "✗"))
-    else:
-        # would the SB-passed side have won had it bet the UD side's line?
-        parts.append("SB passed")
-    if r["ud_bettable"]:
-        parts.append("UD " + ("✓" if r["ud_won"] else "✗"))
-    else:
-        parts.append("UD passed")
-    return "  ".join(parts)
+def right_label(v):
+    sb = ("SB " + _wl(v["sb_won"])) if v["sb_bettable"] else "SB passed"
+    ud = ("UD " + _wl(v["ud_won"])) if v["ud_bettable"] else "UD passed"
+    return "  ".join([sb, ud])
 
 
 if __name__ == "__main__":
