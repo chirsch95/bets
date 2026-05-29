@@ -2900,6 +2900,15 @@ CSS = """
   .udlab-line-input.udlab-overridden {
     border-color: var(--yellow); background: var(--yellow-bg); font-weight: 600;
   }
+  .udlab .table-wrap { overflow-x: auto; }
+  .udlab-mult-cell { white-space: nowrap; }
+  .udlab-mult-input {
+    width: 3.5em; padding: 3px 4px; text-align: right;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: var(--bg); color: var(--text); font-size: 0.85em;
+  }
+  .udlab-mult-input + .udlab-mult-input { margin-left: 3px; }
+  .udlab-mult-input:focus { outline: 1px solid var(--green); outline-offset: 1px; }
 
   .udlab-parlays { margin-top: 18px; }
   .udlab-diff { margin: 10px 0 16px; }
@@ -3289,48 +3298,57 @@ def _render_js() -> str:
     return Math.pow(1 / m, 1 / legCount);
   }}
 
-  // Compute the full UD-vs-sportsbook comparison for one slate row given a
-  // hand-entered Underdog line. Returns null if the row can't be priced.
-  function udCompare(r, udLine) {{
+  // De-vig UD's Higher/Lower payout multipliers into UD's own implied
+  // P(over). When UD shows asymmetric multipliers it is pricing the pick;
+  // normalizing the inverse multipliers recovers its probability estimate.
+  // e.g. hi=1.04 (Higher), lo=0.87 (Lower) → implied over ≈ 0.456.
+  function udImpliedOver(hi, lo) {{
+    if (hi == null || lo == null || hi <= 0 || lo <= 0) return null;
+    const ih = 1 / hi, il = 1 / lo;
+    return ih / (ih + il);
+  }}
+
+  // Full UD comparison for one slate row at a hand-entered UD line and
+  // (optional) Higher/Lower multipliers. The "market" reference is UD's OWN
+  // implied prob when it prices the pick, else the sharp consensus at the UD
+  // line (a symmetric UD pick = lazy 50/50 = the soft-line hunting ground).
+  function udCompare(r, udLine, hi, lo) {{
     const proj = f(r.proj_ks_v2);
     const sLine = f(r.line);
     const novig = f(r.novig_over);
     if (proj === null || udLine === null) return null;
-    // Model's calibrated P(over) at the UD line (the number that actually
-    // governs a UD bet) and, for reference, at the sportsbook line.
-    const rawUdOver = poissonSfOver(udLine, proj);
-    const calUdOver = calV2(rawUdOver);
-    // Sharp market's implied P(over) at the UD line — the soft-line read.
+    // Model's calibrated P(over) at the UD line — governs a UD bet.
+    const calUdOver = calV2(poissonSfOver(udLine, proj));
+    // Sharp market's implied P(over) at the UD line (soft-line read).
     const lam = impliedSharpLambda(sLine, novig);
     const sharpUdOver = lam !== null ? poissonSfOver(udLine, lam) : null;
-    // Model edge vs the sharp market, both evaluated at the UD line.
-    const udEdgeOver = (calUdOver !== null && sharpUdOver !== null)
-      ? calUdOver - sharpUdOver : null;
-    // Direction follows the model's edge at the UD line; pick prob is the
-    // model's calibrated prob on the chosen side.
-    let dir = null, pickProb = null, udEdge = null;
-    if (udEdgeOver !== null) {{
-      dir = udEdgeOver >= 0 ? "over" : "under";
-      pickProb = dir === "over" ? calUdOver : 1 - calUdOver;
-      udEdge = Math.abs(udEdgeOver);
-    }} else if (calUdOver !== null) {{
-      dir = calUdOver >= 0.5 ? "over" : "under";
-      pickProb = dir === "over" ? calUdOver : 1 - calUdOver;
-    }}
-    // Line divergence in K: positive = UD's line sits below the sportsbook
-    // line (softer for an over, the classic stale-line edge).
+    // UD's own implied P(over) from its multipliers, if priced.
+    const priced = (hi != null && lo != null);
+    const udImpOver = priced ? udImpliedOver(hi, lo) : null;
+    // Price reference: UD's own when it prices the pick, else the sharp line.
+    const mktOver = priced ? udImpOver : sharpUdOver;
+    // Model edge over the reference, on the over side.
+    const edgeOver = (calUdOver !== null && mktOver !== null) ? calUdOver - mktOver : null;
+    // Direction follows the edge (fallback to model prob vs 0.5).
+    let dir;
+    if (edgeOver !== null) dir = edgeOver >= 0 ? "over" : "under";
+    else dir = (calUdOver !== null && calUdOver >= 0.5) ? "over" : "under";
+    const pickProb = calUdOver === null ? null : (dir === "over" ? calUdOver : 1 - calUdOver);
+    const mktProb = mktOver === null ? null : (dir === "over" ? mktOver : 1 - mktOver);
+    const edge = (pickProb !== null && mktProb !== null) ? pickProb - mktProb : null;
+    // Payout multiplier you'd collect on the chosen side (1 when symmetric).
+    const sideMult = priced ? (dir === "over" ? hi : lo) : 1;
+    // Line divergence + pure (model-independent) line softness vs the sharp.
     const lineDelta = sLine !== null ? sLine - udLine : null;
-    // Pure line-softness, model-independent: how much extra probability the
-    // UD line hands you vs the sharp market's OWN line, in the pick's
-    // direction. This is the stale-line edge isolated from any model view.
     let lineEdge = null;
-    if (sharpUdOver !== null && novig !== null && dir) {{
+    if (sharpUdOver !== null && novig !== null) {{
       lineEdge = dir === "over" ? (sharpUdOver - novig) : (novig - sharpUdOver);
     }}
     return {{
-      udLine, sLine, proj,
-      calUdOver, sharpUdOver, udEdgeOver,
-      dir, pickProb, udEdge, lineDelta, lineEdge,
+      udLine, sLine, proj, hi, lo, priced,
+      calUdOver, sharpUdOver, udImpOver, mktOver,
+      dir, pickProb, mktProb, edge, sideMult,
+      lineDelta, lineEdge,
     }};
   }}
 
@@ -4404,7 +4422,7 @@ def _render_js() -> str:
   // Non-binding: nothing here touches the live Pitcher/Bets tabs. The
   // point is to make blind-spot #1 visible — on how many picks does
   // betting UD's actual line change the call?
-  let _udLines = {{}};        // {{ pitcher_id_str: line }} — fetched + edited here
+  let _udBoard = {{}};        // {{ pid: {{line, hi, lo}} }} — UD pricing, fetched + edited
   let _udSlateRows = [];      // last slate rows, kept so input edits can re-render
   let _udSlateDate = null;
 
@@ -4426,33 +4444,50 @@ def _render_js() -> str:
     return {{ cls: "noise", label: "—" }};
   }}
 
-  // UD verdict from a udCompare result. Tiers on the geometric break-even
-  // each UD power-play size demands (2-leg 57.7%, 3-leg 55.0%).
+  // UD verdict from a udCompare result. Tiers on the model's EDGE over the
+  // price reference (UD's own implied prob when it prices the pick, else the
+  // sharp line). ★ marks a *soft* pick — UD left it symmetric AND the line
+  // lags the sharp market in the pick's direction: the prime stale-line buy.
   function udVerdict(c) {{
-    if (!c || c.pickProb === null || !c.dir) return {{ cls: "noise", label: "—", soft: false }};
-    const be2 = udBreakevenProb(2), be3 = udBreakevenProb(3);
+    if (!c || c.edge === null || !c.dir) return {{ cls: "noise", label: "—", soft: false }};
     const dirUp = c.dir.toUpperCase();
-    const soft = c.lineEdge !== null && c.lineEdge >= 0.02;
+    const soft = !c.priced && c.lineEdge !== null && c.lineEdge >= 0.02;
     const star = soft ? "★ " : "";
-    if (c.pickProb >= be2) return {{ cls: "focus dir-" + c.dir, label: star + "Bet " + dirUp, soft }};
-    if (c.pickProb >= be3) return {{ cls: "focus dir-" + c.dir, label: star + "3-leg " + dirUp, soft }};
-    return {{ cls: "noise", label: "pass " + dirUp, soft }};
+    if (c.edge >= 0.05) return {{ cls: "focus dir-" + c.dir, label: star + "Bet " + dirUp, soft }};
+    if (c.edge >= 0.02) return {{ cls: "focus dir-" + c.dir, label: star + "Lean " + dirUp, soft }};
+    return {{ cls: "noise", label: "—", soft }};
   }}
 
-  // Effective UD line for a row: the value the user explicitly entered if
-  // any, else the sportsbook line as a prefill (UD's board mostly matches
-  // the sharp line — Chad only edits the few that differ). null only if the
-  // row has no sportsbook line at all.
-  function effUDLine(r) {{
+  // The saved UD entry for a row, or null. Shape: {{line, hi, lo}}.
+  function udEntry(r) {{
     const pid = String(r.pitcher_id || "").trim();
-    if (pid && pid in _udLines) return _udLines[pid];
+    return (pid && _udBoard[pid]) ? _udBoard[pid] : null;
+  }}
+  // Effective UD line: the value the user explicitly entered if any, else
+  // the sportsbook line as a prefill (UD's board mostly matches the sharp
+  // line — Chad only edits the few that differ). null only if the row has
+  // no sportsbook line at all.
+  function effUDLine(r) {{
+    const e = udEntry(r);
+    if (e && e.line !== null && e.line !== undefined) return e.line;
     return f(r.line);
+  }}
+  // UD Higher/Lower payout multipliers for a row (null when symmetric).
+  function udMults(r) {{
+    const e = udEntry(r);
+    return {{ hi: e && e.hi != null ? e.hi : null, lo: e && e.lo != null ? e.lo : null }};
   }}
   // Has the user explicitly overridden this row's UD line away from the
   // sportsbook prefill?
   function udOverridden(r) {{
-    const pid = String(r.pitcher_id || "").trim();
-    return !!(pid && pid in _udLines && _udLines[pid] !== f(r.line));
+    const e = udEntry(r);
+    return !!(e && e.line != null && e.line !== f(r.line));
+  }}
+
+  function udTag(v) {{
+    const base = v.cls.split(" ")[0];
+    const dir = v.cls.indexOf("dir-") >= 0 ? "tag-" + v.cls.split(" ")[1] : "";
+    return `<span class="tag tag-${{base}} ${{dir}}">${{v.label}}</span>`;
   }}
 
   function udLabRow(r) {{
@@ -4460,34 +4495,46 @@ def _render_js() -> str:
     const proj = f(r.proj_ks_v2);
     const sLine = f(r.line);
     const live = liveVerdict(r);
-    const liveEdge = pickEdge(r);
     const udLine = effUDLine(r);
-    const c = udLine !== null ? udCompare(r, udLine) : null;
+    const m = udMults(r);
+    const c = udLine !== null ? udCompare(r, udLine, m.hi, m.lo) : null;
     const ud = udVerdict(c);
-    // Did the call change vs the live (sportsbook) view?
+    // Did the bet call change vs the live (sportsbook) view?
     let changed = false;
     if (c && c.dir) {{
+      const liveEdge = pickEdge(r);
       const liveDir = liveEdge === null ? null : (liveEdge > 0 ? "over" : "under");
       const liveBet = isBettableFocus(r);
-      const udBet = ud.label.indexOf("Bet") >= 0 || ud.label.indexOf("3-leg") >= 0;
+      const udBet = ud.label.indexOf("Bet") >= 0 || ud.label.indexOf("Lean") >= 0;
       changed = (liveBet !== udBet) || (liveBet && udBet && liveDir !== c.dir);
     }}
-    const lineDeltaStr = c && c.lineDelta !== null
-      ? (c.lineDelta > 0 ? "+" : "") + c.lineDelta.toFixed(1) : "—";
-    const softTitle = c && c.lineEdge !== null
-      ? `UD line gives ${{(c.lineEdge * 100).toFixed(1)}}pp vs the sharp market in this direction` : "";
-    return `<tr class="${{changed ? "udlab-changed" : ""}}">
+    const dirSuffix = c && c.dir ? " " + c.dir.charAt(0).toUpperCase() : "";
+    const lineTitle = c && c.lineDelta !== null && c.lineDelta !== 0
+      ? `UD line ${{(c.lineDelta > 0 ? "+" : "")}}${{c.lineDelta.toFixed(1)}}K vs sportsbook` : "";
+    const mktTitle = c
+      ? (c.priced
+          ? `UD's own implied prob, de-vigged from its ${{c.hi}}× / ${{c.lo}}× multipliers`
+          : "Sharp consensus prob at the UD line — UD left this pick symmetric (potentially soft)")
+      : "";
+    const liveTag = `<span class="tag tag-${{live.cls.split(" ")[0]}} ${{live.cls.indexOf("dir-")>=0 ? "tag-"+live.cls.split(" ")[1] : ""}}" title="sportsbook edge ${{fmtSignedPct(pickEdge(r))}}">${{live.label}}</span>`;
+    return `<tr class="${{changed ? "udlab-changed" : ""}}${{c && !c.priced ? " udlab-symmetric" : ""}}">
       <td class="player">${{escapeHTML(r.pitcher || "")}}</td>
       <td class="num">${{dash(proj === null ? "" : proj.toFixed(1))}}</td>
       <td class="num">${{dash(sLine === null ? "" : sLine)}}</td>
-      <td class="num">${{fmtSignedPct(liveEdge)}}</td>
-      <td><span class="tag tag-${{live.cls.split(" ")[0]}} ${{live.cls.indexOf("dir-")>=0 ? "tag-"+live.cls.split(" ")[1] : ""}}">${{live.label}}</span></td>
-      <td class="num"><input class="udlab-line-input${{udOverridden(r) ? " udlab-overridden" : ""}}" type="number" inputmode="decimal"
-        step="0.5" min="0" max="20" data-pid="${{pid}}"
+      <td>${{liveTag}}</td>
+      <td class="num" title="${{lineTitle}}"><input class="udlab-line-input${{udOverridden(r) ? " udlab-overridden" : ""}}" type="number" inputmode="decimal"
+        step="0.5" min="0" max="20" data-pid="${{pid}}" data-field="line"
         value="${{udLine !== null ? udLine : ""}}" placeholder="—" aria-label="Underdog line for ${{escapeHTML(r.pitcher || "")}}"></td>
-      <td class="num">${{c && c.pickProb !== null ? pct1(c.pickProb) + (c.dir ? " " + c.dir.charAt(0).toUpperCase() : "") : "—"}}</td>
-      <td class="num" title="${{softTitle}}">${{lineDeltaStr}}${{c && c.lineEdge !== null && c.lineEdge >= 0.02 ? " ⚠" : ""}}</td>
-      <td><span class="tag tag-${{ud.cls.split(" ")[0]}} ${{ud.cls.indexOf("dir-")>=0 ? "tag-"+ud.cls.split(" ")[1] : ""}}">${{ud.label}}</span></td>
+      <td class="udlab-mult-cell">
+        <input class="udlab-mult-input" type="number" inputmode="decimal" step="0.01" min="0.1" max="50"
+          data-pid="${{pid}}" data-field="hi" value="${{m.hi != null ? m.hi : ""}}" placeholder="Hi×" aria-label="Higher multiplier for ${{escapeHTML(r.pitcher || "")}}">
+        <input class="udlab-mult-input" type="number" inputmode="decimal" step="0.01" min="0.1" max="50"
+          data-pid="${{pid}}" data-field="lo" value="${{m.lo != null ? m.lo : ""}}" placeholder="Lo×" aria-label="Lower multiplier for ${{escapeHTML(r.pitcher || "")}}">
+      </td>
+      <td class="num">${{c && c.pickProb !== null ? pct1(c.pickProb) + dirSuffix : "—"}}</td>
+      <td class="num" title="${{mktTitle}}">${{c && c.mktProb !== null ? pct1(c.mktProb) : "—"}}</td>
+      <td class="num" title="Model P minus the price reference (UD-priced when multipliers shown, else sharp line)">${{c && c.edge !== null ? fmtSignedPct(c.edge) : "—"}}</td>
+      <td>${{udTag(ud)}}</td>
     </tr>`;
   }}
 
@@ -4495,28 +4542,31 @@ def _render_js() -> str:
   // pick-prob clears at least the 3-leg break-even. EV uses UD's fixed
   // multiplier, NOT sportsbook decimal odds.
   function udBuildLegs(rows) {{
-    const be3 = udBreakevenProb(3);
     const legs = [];
     for (const r of rows) {{
       const pid = String(r.pitcher_id || "").trim();
       if (!pid) continue;
       const udLine = effUDLine(r);
       if (udLine === null) continue;
-      const c = udCompare(r, udLine);
-      if (!c || c.pickProb === null || !c.dir || c.pickProb < be3) continue;
+      const m = udMults(r);
+      const c = udCompare(r, udLine, m.hi, m.lo);
+      // Only legs where the model has positive edge over UD's price.
+      if (!c || c.pickProb === null || !c.dir || c.edge === null || c.edge < 0.02) continue;
       const gpk = parseInt(r.game_pk, 10);
       legs.push({{
         pitcher: r.pitcher || "", pitcher_id: pid, dir: c.dir,
-        prob: c.pickProb, udLine: c.udLine, lineEdge: c.lineEdge,
+        prob: c.pickProb, udLine: c.udLine, mult: c.sideMult || 1,
+        edge: c.edge, priced: c.priced,
+        soft: (!c.priced && c.lineEdge !== null && c.lineEdge >= 0.02),
         game_pk: isNaN(gpk) ? null : gpk,
       }});
     }}
-    return legs.sort((a, b) => b.prob - a.prob);
+    return legs.sort((a, b) => b.edge - a.edge);
   }}
 
   function udParlaySection(legs, k) {{
     if (legs.length < k) return "";
-    const mult = UD_PAYOUTS[k];
+    const base = UD_PAYOUTS[k];
     const seenGames = (combo) => {{
       const s = new Set();
       for (const l of combo) {{
@@ -4529,8 +4579,11 @@ def _render_js() -> str:
     const ranked = combos(legs, k)
       .filter(seenGames)
       .map(combo => {{
-        const p = combo.reduce((a, l) => a * l.prob, 1);
-        return {{ legs: combo, prob: p, ev: mult * p - 1 }};
+        const winP = combo.reduce((a, l) => a * l.prob, 1);
+        // Entry payout = base power-play multiplier × the per-pick payout
+        // multipliers (interim assumption — confirm with a real UD entry).
+        const payMult = combo.reduce((a, l) => a * (l.mult || 1), base);
+        return {{ legs: combo, prob: winP, payMult, ev: winP * payMult - 1 }};
       }})
       .filter(x => x.ev > 0)
       .sort((a, b) => b.ev - a.ev)
@@ -4538,14 +4591,14 @@ def _render_js() -> str:
     if (!ranked.length) return "";
     const cards = ranked.map(x => {{
       const legHtml = x.legs.map(l =>
-        `<div class="udlab-pl-leg">${{escapeHTML(l.pitcher)}} <strong>${{l.dir.toUpperCase()}} ${{l.udLine}}</strong> · ${{pct1(l.prob)}}</div>`
+        `<div class="udlab-pl-leg">${{l.soft ? "★ " : ""}}${{escapeHTML(l.pitcher)}} <strong>${{l.dir.toUpperCase()}} ${{l.udLine}}</strong>${{l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""}} · ${{pct1(l.prob)}}</div>`
       ).join("");
       return `<div class="udlab-pl-card">
-        <div class="udlab-pl-head">${{mult}}× · win ${{pct1(x.prob)}} · <span class="${{x.ev > 0 ? "pos" : "neg"}}">EV ${{(x.ev >= 0 ? "+" : "")}}${{x.ev.toFixed(3)}}</span></div>
+        <div class="udlab-pl-head">${{x.payMult.toFixed(2)}}× · win ${{pct1(x.prob)}} · <span class="${{x.ev > 0 ? "pos" : "neg"}}">EV ${{(x.ev >= 0 ? "+" : "")}}${{x.ev.toFixed(3)}}</span></div>
         ${{legHtml}}
       </div>`;
     }}).join("");
-    return `<div class="udlab-pl-col-title">${{k}}-leg (${{mult}}×, need ${{pct1(udBreakevenProb(k))}}/leg)</div>${{cards}}`;
+    return `<div class="udlab-pl-col-title">${{k}}-leg (base ${{base}}×)</div>${{cards}}`;
   }}
 
   // Leg-set diff: which pitchers each approach would actually bet, so the
@@ -4558,9 +4611,8 @@ def _render_js() -> str:
       liveSet.set(String(r.pitcher_id || "").trim(), {{ dir: e > 0 ? "over" : "under", name: r.pitcher || "" }});
     }}
     const udSet = new Map();
-    const be2 = udBreakevenProb(2);
     for (const l of udBuildLegs(rows)) {{
-      if (l.prob >= be2) udSet.set(l.pitcher_id, {{ dir: l.dir, name: l.pitcher }});  // bettable in any size
+      if (l.edge >= 0.05) udSet.set(l.pitcher_id, {{ dir: l.dir, name: l.pitcher }});  // "Bet" tier
     }}
     const added = [], dropped = [], flipped = [], same = [];
     for (const [pid, v] of udSet) {{
@@ -4597,7 +4649,7 @@ def _render_js() -> str:
       : `<p class="muted">No positive-EV UD parlays from the lines entered yet.</p>`;
     return `<div class="udlab-parlays">
       ${{diffSummary}}
-      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(fixed multiplier · one leg per game · ranked by EV per $1)</span></div>
+      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(value legs · one leg per game · ranked by EV per $1 · payout = base × pick multipliers, interim — confirm vs a real UD entry)</span></div>
       ${{plBody}}
     </div>`;
   }}
@@ -4622,7 +4674,7 @@ def _render_js() -> str:
       : `<strong>raw Poisson</strong> (no calibration fit yet — numbers not yet apples-to-apples)`;
     const intro = `<div class="udlab-intro">
         <h3>UD Lab <span class="udlab-badge">shadow</span></h3>
-        <p class="muted">You bet <strong>Underdog</strong>, but the live tabs grade every edge against the <strong>sportsbook</strong> consensus line. Each UD line below is <strong>prefilled with the sportsbook line</strong> and sorted high→low like the UD board — adjust the few that differ on UD, then hit <em>Save all</em> to record the whole board. The model recomputes against the line you can really bet (${{calNote}}). Nothing here touches the live Pitcher or Bets tabs.</p>
+        <p class="muted">You bet <strong>Underdog</strong>, but the live tabs grade edge against the <strong>sportsbook</strong> line. Each UD line is <strong>prefilled with the sportsbook line</strong>, sorted high→low like the UD board — fix the few that differ. When UD shows <strong>Higher/Lower multipliers</strong>, enter them too: that's UD pricing the pick, and we de-vig it into UD's own implied probability (the <em>Mkt P</em> column). A pick UD leaves <strong>symmetric (no multiplier)</strong> is a lazy 50/50 — those are your soft-line targets (★). <em>Edge</em> = model's P minus the price you're actually getting; ${{calNote}}. Hit <em>Save all</em> to record the board. Nothing here touches the live tabs.</p>
       </div>
       ${{udLabControls(dateStr)}}`;
     if (!rows || !rows.length) {{
@@ -4642,9 +4694,13 @@ def _render_js() -> str:
       <div class="table-wrap">
       <table class="udlab-table">
         <thead><tr>
-          <th>Pitcher</th><th class="num">Proj</th>
-          <th class="num">Bk ln</th><th class="num">Live edge</th><th>Live verdict</th>
-          <th class="num">UD ln</th><th class="num">UD P(pick)</th><th class="num" title="UD line minus sportsbook line, in Ks. ⚠ = the line itself is soft (≥2pp) in the pick's direction.">Δ ln</th><th>UD verdict</th>
+          <th>Pitcher</th><th class="num">Proj</th><th class="num">Bk ln</th>
+          <th>Live</th>
+          <th class="num">UD ln</th>
+          <th class="num" title="UD Higher / Lower payout multipliers. Leave blank when UD shows none (a symmetric 50/50 pick).">UD mult</th>
+          <th class="num">Model P</th>
+          <th class="num" title="Price reference: UD's own implied prob (de-vigged from its multipliers) when priced, else the sharp consensus at the UD line.">Mkt P</th>
+          <th class="num">Edge</th><th>UD verdict</th>
         </tr></thead>
         <tbody>${{body}}</tbody>
       </table>
@@ -4671,18 +4727,21 @@ def _render_js() -> str:
     const text = await fetchCSV(baseUrl() + `pitcher_ks_${{dateStr}}.csv`);
     _udSlateRows = text ? parseCSV(text) : [];
     _udSlateDate = dateStr;
-    _udLines = await fetchUDLines(dateStr);
+    _udBoard = await fetchUDBoard(dateStr);
     repaintUDLab();
   }}
 
   // Persist every row's effective UD line (sportsbook prefill included) so
   // the #1 audit has a real UD number on record for every pitcher.
   async function saveAllUDLines() {{
-    const lines = {{}};
+    const board = {{}};
     for (const r of _udSlateRows) {{
       const pid = String(r.pitcher_id || "").trim();
-      const v = effUDLine(r);
-      if (pid && v !== null) lines[pid] = v;
+      if (!pid) continue;
+      const line = effUDLine(r);
+      const m = udMults(r);
+      if (line === null && m.hi == null && m.lo == null) continue;
+      board[pid] = {{ line: line, hi: m.hi, lo: m.lo }};
     }}
     let st = document.querySelector("#udlab-panel .udlab-save-status");
     if (st) st.textContent = "Saving…";
@@ -4691,41 +4750,45 @@ def _render_js() -> str:
       const r = await fetch(url, {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
-        body: JSON.stringify({{ lines }}),
+        body: JSON.stringify({{ board: board }}),
       }});
       if (!r.ok) throw new Error("save failed");
       const d = await r.json();
-      _udLines = d.lines || _udLines;
+      _udBoard = d.board || _udBoard;
       repaintUDLab();
       st = document.querySelector("#udlab-panel .udlab-save-status");
-      if (st) st.textContent = `Saved ${{Object.keys(d.lines || {{}}).length}} lines ✓`;
+      if (st) st.textContent = `Saved ${{Object.keys(d.board || {{}}).length}} pitchers ✓`;
     }} catch (e) {{
       st = document.querySelector("#udlab-panel .udlab-save-status");
       if (st) st.textContent = "Save failed — is the local/Air server running?";
     }}
   }}
 
-  async function fetchUDLines(dateStr) {{
+  async function fetchUDBoard(dateStr) {{
     try {{
-      const url = (dateStr ? `/api/ud-lines?date=${{dateStr}}` : `/api/ud-lines`);
-      const r = await fetch(url + "?_t=" + Date.now(), {{ cache: "no-store" }});
+      const base = (dateStr ? `/api/ud-lines?date=${{dateStr}}` : `/api/ud-lines`);
+      const sep = base.includes("?") ? "&" : "?";
+      const r = await fetch(base + sep + "_t=" + Date.now(), {{ cache: "no-store" }});
       if (!r.ok) return {{}};
       const d = await r.json();
-      return d.lines || {{}};
+      return d.board || {{}};
     }} catch (e) {{ return {{}}; }}
   }}
 
-  async function saveUDLine(pid, line, dateStr) {{
+  // Persist one field (line | hi | lo) for a pitcher. "" clears it.
+  async function saveUDField(pid, field, val, dateStr) {{
     try {{
       const url = (dateStr ? `/api/ud-line?date=${{dateStr}}` : `/api/ud-line`);
+      const body = {{ pitcher_id: pid }};
+      body[field] = (val === "" ? null : val);
       const r = await fetch(url, {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
-        body: JSON.stringify({{ pitcher_id: pid, line: (line === "" ? null : line) }}),
+        body: JSON.stringify(body),
       }});
       if (!r.ok) return false;
       const d = await r.json();
-      _udLines = d.lines || _udLines;
+      _udBoard = d.board || _udBoard;
       return true;
     }} catch (e) {{ return false; }}
   }}
@@ -4738,14 +4801,20 @@ def _render_js() -> str:
     panel.dataset.wired = "1";
     panel.addEventListener("change", async (ev) => {{
       const inp = ev.target;
-      if (!inp.classList || !inp.classList.contains("udlab-line-input")) return;
+      if (!inp.classList) return;
+      const isLine = inp.classList.contains("udlab-line-input");
+      const isMult = inp.classList.contains("udlab-mult-input");
+      if (!isLine && !isMult) return;
       const pid = inp.dataset.pid;
+      const field = inp.dataset.field;  // line | hi | lo
       const val = inp.value.trim();
       // Optimistic local update so the recompute is instant, then persist.
-      if (val === "") delete _udLines[pid];
-      else _udLines[pid] = parseFloat(val);
+      const entry = _udBoard[pid] || {{ line: null, hi: null, lo: null }};
+      entry[field] = (val === "" ? null : parseFloat(val));
+      if (entry.line == null && entry.hi == null && entry.lo == null) delete _udBoard[pid];
+      else _udBoard[pid] = entry;
       repaintUDLab();
-      await saveUDLine(pid, val === "" ? "" : parseFloat(val), _udSlateDate);
+      await saveUDField(pid, field, val === "" ? "" : parseFloat(val), _udSlateDate);
     }});
     panel.addEventListener("click", (ev) => {{
       const t = ev.target;
@@ -7916,7 +7985,7 @@ def _render_js() -> str:
       // raw URL) so the tab still recomputes on hand-typed lines there.
       _udSlateRows = pSlate.rows || [];
       _udSlateDate = pSlate.date;
-      _udLines = await fetchUDLines(pSlate.date);
+      _udBoard = await fetchUDBoard(pSlate.date);
       const udPanel = document.getElementById("udlab-panel");
       if (udPanel) udPanel.innerHTML = renderUDLabTab(_udSlateRows, _udSlateDate);
       wireUDLabInputs();

@@ -486,21 +486,48 @@ def _ud_target() -> date | tuple:
         return (jsonify({"error": f"bad date: {target_str}"}), 400)
 
 
+# Field bounds for UD pricing inputs. line = strikeout number; hi/lo =
+# Underdog Higher/Lower payout multipliers (e.g. 1.04 / 0.87).
+_UD_BOUNDS = {"line": (0.0, 20.0), "hi": (0.1, 50.0), "lo": (0.1, 50.0)}
+
+
+def _clean_ud_fields(payload: dict):
+    """Pull {line, hi, lo} from a payload, validating bounds. Only keys
+    present are returned (PATCH semantics). Returns (fields, error_or_None)."""
+    fields: dict = {}
+    for k, (lo, hi) in _UD_BOUNDS.items():
+        if k not in payload:
+            continue
+        raw = payload.get(k)
+        if raw in (None, ""):
+            fields[k] = None  # explicit clear
+            continue
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            return None, f"bad {k}: {raw}"
+        if v < lo or v > hi:
+            return None, f"{k} out of range"
+        fields[k] = v
+    return fields, None
+
+
 @app.get("/api/ud-lines")
 def api_ud_lines():
-    """Return manually-entered Underdog lines for the slate, keyed by
-    pitcher_id (string). Slate-level + ungated, matching /api/slate-pitchers
-    — UD's line is the same for everyone on the tailnet."""
+    """Return manually-entered Underdog pricing for the slate, keyed by
+    pitcher_id (string): {pid: {line, hi, lo}}. Slate-level + ungated,
+    matching /api/slate-pitchers — UD's board is the same for everyone."""
     target = _ud_target()
     if isinstance(target, tuple):
         return target
-    return jsonify({"date": target.isoformat(), "lines": ud_lines.load(target)})
+    return jsonify({"date": target.isoformat(), "board": ud_lines.load(target)})
 
 
 @app.post("/api/ud-line")
 def api_ud_line():
-    """Upsert one pitcher's Underdog line. Body: {pitcher_id, line}. A
-    null/empty line clears the entry. Returns the full updated map."""
+    """Upsert one pitcher's UD pricing. Body: {pitcher_id, line?, hi?, lo?}.
+    Only fields present are applied; a null/empty value clears that field.
+    Returns the full updated board."""
     target = _ud_target()
     if isinstance(target, tuple):
         return target
@@ -508,36 +535,30 @@ def api_ud_line():
     pid = payload.get("pitcher_id")
     if pid in (None, ""):
         return jsonify({"error": "pitcher_id required"}), 400
-    raw_line = payload.get("line")
-    line = None
-    if raw_line not in (None, ""):
-        try:
-            line = float(raw_line)
-        except (TypeError, ValueError):
-            return jsonify({"error": f"bad line: {raw_line}"}), 400
-        if line <= 0 or line > 20:
-            return jsonify({"error": "line out of range"}), 400
+    fields, err = _clean_ud_fields(payload)
+    if err:
+        return jsonify({"error": err}), 400
     try:
-        lines = ud_lines.save_one(target, pid, line)
+        board = ud_lines.save_one(target, pid, fields)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    return jsonify({"date": target.isoformat(), "lines": lines})
+    return jsonify({"date": target.isoformat(), "board": board})
 
 
 @app.post("/api/ud-lines")
 def api_ud_lines_bulk():
-    """Bulk upsert. Body: {lines: {pitcher_id: line}}. Powers the UD Lab
+    """Bulk upsert. Body: {board: {pid: {line, hi, lo}}}. Powers the UD Lab
     'Save all' button so prefilled (sportsbook-matching) lines get recorded
-    too. Returns the full updated map."""
+    too. Returns the full updated board."""
     target = _ud_target()
     if isinstance(target, tuple):
         return target
     payload = request.get_json(silent=True) or {}
-    incoming = payload.get("lines")
+    incoming = payload.get("board")
     if not isinstance(incoming, dict):
-        return jsonify({"error": "lines object required"}), 400
-    lines = ud_lines.save_many(target, incoming)
-    return jsonify({"date": target.isoformat(), "lines": lines})
+        return jsonify({"error": "board object required"}), 400
+    board = ud_lines.save_many(target, incoming)
+    return jsonify({"date": target.isoformat(), "board": board})
 
 
 @app.get("/api/health")
