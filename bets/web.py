@@ -2950,6 +2950,12 @@ CSS = """
      clears the early green glow. */
   .udlab-pl-card.lineup-ready { border-color: var(--green); }
   .udlab-pl-card.lineup-blocked { border-color: var(--red); box-shadow: none; opacity: 0.85; }
+  /* Per-row lineup-posted dot in the UD Lab pitcher table — same red/green
+     language as the parlay cards. */
+  .udlab-lineup-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    margin-right: 6px; vertical-align: middle; flex: none; }
+  .udlab-lineup-dot.in { background: var(--green); }
+  .udlab-lineup-dot.tbd { background: var(--red); }
   .udlab-early {
     font-size: 0.82em; font-weight: 700; color: #001a00; background: var(--green);
     border-radius: 4px; padding: 1px 6px; margin-right: 4px;
@@ -4605,8 +4611,13 @@ def _render_js() -> str:
           : "Sharp consensus prob at the UD line — UD left this pick symmetric (potentially soft)")
       : "";
     const liveTag = `<span class="tag tag-${{live.cls.split(" ")[0]}} ${{live.cls.indexOf("dir-")>=0 ? "tag-"+live.cls.split(" ")[1] : ""}}" title="sportsbook edge ${{fmtSignedPct(pickEdge(r))}}">${{live.label}}</span>`;
+    // Lineup-posted dot (same red/green language as the parlay cards): green
+    // once the opp lineup is confirmed, red while it's TBD — so the table
+    // shows lineup status at a glance without checking the Pitchers tab.
+    const luPending = lineupPending(r);
+    const luDot = `<span class="udlab-lineup-dot ${{luPending ? "tbd" : "in"}}" title="${{luPending ? "Opponent lineup TBD — model on team-average opp K%" : "Opponent lineup posted"}}"></span>`;
     return `<tr class="${{changed ? "udlab-changed" : ""}}${{reliever ? " udlab-reliever" : ""}}${{_udImported.has(pid) ? " udlab-imported" : ""}}">
-      <td class="player">${{escapeHTML(r.pitcher || "")}}${{reliever ? ' <span class="udlab-rp">RP?</span>' : ""}}</td>
+      <td class="player">${{luDot}}${{escapeHTML(r.pitcher || "")}}${{reliever ? ' <span class="udlab-rp">RP?</span>' : ""}}</td>
       <td class="num">${{dash(proj === null ? "" : proj.toFixed(1))}}</td>
       <td class="num">${{dash(sLine === null ? "" : sLine)}}</td>
       <td>${{liveTag}}</td>
