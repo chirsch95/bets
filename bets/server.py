@@ -35,7 +35,7 @@ from flask import (
     send_from_directory,
 )
 
-from . import auth, bankroll, health, live, notify, wagers
+from . import auth, bankroll, health, live, notify, ud_lines, wagers
 from .config import OUTPUT_DIR, PROJECT_ROOT
 from .settle import settle_date, settle_hitters_date
 
@@ -472,6 +472,72 @@ def api_slate_pitchers():
     else:
         target = _today()
     return jsonify({"date": target.isoformat(), "pitchers": live.slate_pitchers(target)})
+
+
+def _ud_target() -> date | tuple:
+    """Resolve ?date= for the UD-lines endpoints. Returns a date, or a
+    (body, status) error tuple the caller short-circuits on."""
+    target_str = request.args.get("date", "").strip()
+    if not target_str:
+        return _today()
+    try:
+        return datetime.strptime(target_str, "%Y-%m-%d").date()
+    except ValueError:
+        return (jsonify({"error": f"bad date: {target_str}"}), 400)
+
+
+@app.get("/api/ud-lines")
+def api_ud_lines():
+    """Return manually-entered Underdog lines for the slate, keyed by
+    pitcher_id (string). Slate-level + ungated, matching /api/slate-pitchers
+    — UD's line is the same for everyone on the tailnet."""
+    target = _ud_target()
+    if isinstance(target, tuple):
+        return target
+    return jsonify({"date": target.isoformat(), "lines": ud_lines.load(target)})
+
+
+@app.post("/api/ud-line")
+def api_ud_line():
+    """Upsert one pitcher's Underdog line. Body: {pitcher_id, line}. A
+    null/empty line clears the entry. Returns the full updated map."""
+    target = _ud_target()
+    if isinstance(target, tuple):
+        return target
+    payload = request.get_json(silent=True) or {}
+    pid = payload.get("pitcher_id")
+    if pid in (None, ""):
+        return jsonify({"error": "pitcher_id required"}), 400
+    raw_line = payload.get("line")
+    line = None
+    if raw_line not in (None, ""):
+        try:
+            line = float(raw_line)
+        except (TypeError, ValueError):
+            return jsonify({"error": f"bad line: {raw_line}"}), 400
+        if line <= 0 or line > 20:
+            return jsonify({"error": "line out of range"}), 400
+    try:
+        lines = ud_lines.save_one(target, pid, line)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"date": target.isoformat(), "lines": lines})
+
+
+@app.post("/api/ud-lines")
+def api_ud_lines_bulk():
+    """Bulk upsert. Body: {lines: {pitcher_id: line}}. Powers the UD Lab
+    'Save all' button so prefilled (sportsbook-matching) lines get recorded
+    too. Returns the full updated map."""
+    target = _ud_target()
+    if isinstance(target, tuple):
+        return target
+    payload = request.get_json(silent=True) or {}
+    incoming = payload.get("lines")
+    if not isinstance(incoming, dict):
+        return jsonify({"error": "lines object required"}), 400
+    lines = ud_lines.save_many(target, incoming)
+    return jsonify({"date": target.isoformat(), "lines": lines})
 
 
 @app.get("/api/health")
