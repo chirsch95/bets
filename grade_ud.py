@@ -399,7 +399,15 @@ def main():
         print(f"  No closing board captured ({close_path.name} absent).")
         print("  Near first pitch, run:  python3 capture_ud_close.py <screenshot.png> ...")
     else:
-        report_clv(rows, slate, ud, ud_close, bet_view)
+        # bet-time → close: the value you personally captured (live entry board).
+        report_clv(rows, slate, ud, ud_close, bet_view, "bet-time → close (captured)")
+        # morning → close: did UD move toward the side the model flagged at open?
+        # A model-detection signal independent of when you bet. Only if the
+        # morning baseline was preserved AND differs from the bet-time board.
+        ud_morning = load_ud(DATA_DIR / f"ud_lines_{target.isoformat()}_morning.json")
+        if ud_morning and ud_morning != ud:
+            print()
+            report_clv(rows, slate, ud_morning, ud_close, bet_view, "morning → close (model detection)")
 
 
 # ---------- parlay logic (ports of web.py) ----------------------------------
@@ -506,10 +514,13 @@ def market_pick_prob(direction, proj, s_line, novig, ud_entry):
     return (over if direction == "over" else 1 - over), ud_line
 
 
-def report_clv(rows, slate, ud_entry_board, ud_close_board, bet_view):
+def report_clv(rows, slate, ud_entry_board, ud_close_board, bet_view, label):
     """Per-pick CLV: did the market's implied prob of the model's side rise
-    from entry to close? Positive = you bought before the market moved your way.
-    Picks taken from the bet-time view (post-lineup if available)."""
+    from `entry` to close? Positive = the market moved toward your side after
+    you got in. Picks taken from the bet-time view (post-lineup if available).
+    `label` distinguishes morning→close (model detection) from bet-time→close
+    (the value you personally captured)."""
+    print(f"  [{label}]")
     clvs = []
     for r in rows:
         v = r.get(bet_view) or r["morn"]

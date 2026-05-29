@@ -38,6 +38,15 @@ def _path(target: date) -> Path:
     return DATA_DIR / f"ud_lines_{target.isoformat()}.json"
 
 
+def _morning_path(target: date) -> Path:
+    """The immutable morning baseline — UD's opening prices as first captured
+    for the slate. Frozen automatically on the first non-empty save of the day
+    (see _write) and never overwritten, so intraday line updates don't destroy
+    the model's opening read. Used for closing-line value (morning → close):
+    did UD move toward the side the model flagged at open?"""
+    return DATA_DIR / f"ud_lines_{target.isoformat()}_morning.json"
+
+
 def _coerce(v):
     if v in (None, ""):
         return None
@@ -80,7 +89,15 @@ def load(target: date) -> dict[str, dict]:
 def _write(target: date, board: dict[str, dict]) -> None:
     path = _path(target)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(board, indent=2, sort_keys=True) + "\n")
+    text = json.dumps(board, indent=2, sort_keys=True) + "\n"
+    path.write_text(text)
+    # Freeze the morning baseline once per slate: the first non-empty save
+    # becomes the immutable "opening read" for CLV. Idempotent — once the
+    # file exists, later intraday saves rewrite only `path`, never this. No
+    # manual snapshot step, nothing to remember.
+    morning = _morning_path(target)
+    if board and not morning.exists():
+        morning.write_text(text)
 
 
 def save_one(target: date, pitcher_id, fields: dict) -> dict[str, dict]:
