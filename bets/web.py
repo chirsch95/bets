@@ -3045,17 +3045,19 @@ def _render_js() -> str:
   // Standard = symmetric picks (no per-pick multiplier shown).
   const UD_PAYOUTS = {{ 2: 3, 3: 6, 4: 10, 5: 20 }};
   // When picks carry Higher/Lower multipliers, the entry pays a *higher*
-  // base × the per-pick multipliers (the multipliers carry the vig). 2-leg
-  // base = 3.5 confirmed from real entries (3.5×1.04×0.86=3.13;
-  // 3.5×0.81×1.08=3.06). 3+ legs estimated by the same 3.5/3 ratio until a
-  // real multi-pick example confirms them — flagged in the UI.
-  const UD_PAYOUTS_BOOSTED = {{ 2: 3.5 }};
-  const UD_BOOSTED_CONFIRMED = {{ 2: true }};
+  // base × the per-pick multipliers (the multipliers carry the vig). Both
+  // confirmed from real entries — boosted base = standard + 0.5:
+  //   2-leg 3.5: 3.5×1.04×0.86=3.13 ; 3.5×0.81×1.08=3.06
+  //   3-leg 6.5: 6.5×1.04×0.81×1.05=5.74 ; 6.5×1.04×1.06×0.79=5.66
+  // The suggester only builds 2- and 3-leg parlays, so both used bases are
+  // confirmed. 4/5-leg (unused) estimated as standard + 0.5.
+  const UD_PAYOUTS_BOOSTED = {{ 2: 3.5, 3: 6.5 }};
+  const UD_BOOSTED_CONFIRMED = {{ 2: true, 3: true }};
   function udEntryBase(k, anyPriced) {{
     if (!anyPriced) return {{ base: UD_PAYOUTS[k], confirmed: true }};
     if (UD_PAYOUTS_BOOSTED[k] != null)
       return {{ base: UD_PAYOUTS_BOOSTED[k], confirmed: !!UD_BOOSTED_CONFIRMED[k] }};
-    return {{ base: UD_PAYOUTS[k] * (3.5 / 3), confirmed: false }};  // estimate
+    return {{ base: UD_PAYOUTS[k] + 0.5, confirmed: false }};  // estimate: boosted ≈ standard + 0.5
   }}
 
   function baseUrl() {{
@@ -4676,7 +4678,7 @@ def _render_js() -> str:
       : `<p class="muted">No positive-EV UD parlays from the lines entered yet.</p>`;
     return `<div class="udlab-parlays">
       ${{diffSummary}}
-      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(value legs · one leg per game · ranked by EV per $1 · payout = base × pick multipliers; 2-leg base 3.5 confirmed · ~ marks an estimated 3+ base, pending a real entry)</span></div>
+      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(value legs · one leg per game · ranked by EV per $1 · payout = base × pick multipliers; boosted base 3.5 (2-leg) / 6.5 (3-leg), both confirmed)</span></div>
       ${{plBody}}
     </div>`;
   }}
