@@ -4923,8 +4923,10 @@ def _render_js() -> str:
       const inp = ev.target;
       if (!inp.classList) return;
       if (inp.classList.contains("udlab-upload-input")) {{
-        const files = inp.files;
-        inp.value = "";  // allow re-selecting the same file
+        // Copy File objects OUT before clearing — inp.files is a live list,
+        // so resetting value first would empty it before the upload reads it.
+        const files = Array.from(inp.files || []);
+        inp.value = "";  // allow re-selecting the same file next time
         importUDScreenshots(files);
         return;
       }}
