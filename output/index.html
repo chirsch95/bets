@@ -2823,6 +2823,14 @@
   }
   .udlab-saveall:hover { filter: brightness(1.08); }
   .udlab-save-status { font-size: 0.85em; color: var(--muted); }
+  .udlab-upload {
+    display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    padding: 7px 14px; border-radius: 8px; font-weight: 600; font-size: 0.95em;
+  }
+  .udlab-upload:hover { border-color: var(--muted); }
+  /* Rows just filled from a screenshot — review before Save. */
+  tr.udlab-imported > td { box-shadow: inset 3px 0 0 var(--brand-blue); }
   .udlab-table { width: 100%; border-collapse: collapse; font-size: 0.92em; }
   .udlab-table th, .udlab-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
   .udlab-table th { text-align: left; color: var(--muted); font-weight: 600; }
@@ -2902,7 +2910,7 @@
   // recompute calibrated P(over) at a hand-entered Underdog line, matching
   // the production cal_edge_v2. null → no calibration fit yet; fall back to
   // raw Poisson (same as calibration.apply()).
-  const CAL_V2 = { a: 0.2915885751759718, b: 0.0567590712967354 };
+  const CAL_V2 = { a: 0.23697783118055368, b: 0.07417472091685841 };
   // Underdog power-play base multipliers by leg count (all-must-hit).
   // Standard = symmetric picks (no per-pick multiplier shown).
   const UD_PAYOUTS = { 2: 3, 3: 6, 4: 10, 5: 20 };
@@ -4306,6 +4314,7 @@
   // point is to make blind-spot #1 visible — on how many picks does
   // betting UD's actual line change the call?
   let _udBoard = {};        // { pid: {line, hi, lo} } — UD pricing, fetched + edited
+  let _udImported = new Set(); // pids just filled from a screenshot — review state
   let _udSlateRows = [];      // last slate rows, kept so input edits can re-render
   let _udSlateDate = null;
 
@@ -4411,7 +4420,7 @@
           : "Sharp consensus prob at the UD line — UD left this pick symmetric (potentially soft)")
       : "";
     const liveTag = `<span class="tag tag-${live.cls.split(" ")[0]} ${live.cls.indexOf("dir-")>=0 ? "tag-"+live.cls.split(" ")[1] : ""}" title="sportsbook edge ${fmtSignedPct(pickEdge(r))}">${live.label}</span>`;
-    return `<tr class="${changed ? "udlab-changed" : ""}${reliever ? " udlab-reliever" : ""}">
+    return `<tr class="${changed ? "udlab-changed" : ""}${reliever ? " udlab-reliever" : ""}${_udImported.has(pid) ? " udlab-imported" : ""}">
       <td class="player">${escapeHTML(r.pitcher || "")}${reliever ? ' <span class="udlab-rp">RP?</span>' : ""}</td>
       <td class="num">${dash(proj === null ? "" : proj.toFixed(1))}</td>
       <td class="num">${dash(sLine === null ? "" : sLine)}</td>
@@ -4564,6 +4573,7 @@
     return `<div class="udlab-controls">
       <div class="udlab-dates">${btn("Today", today)}${btn("Tomorrow", tomorrow)}</div>
       <div class="udlab-savewrap">
+        <label class="udlab-upload">📷 Import screenshot<input type="file" class="udlab-upload-input" accept="image/*" multiple hidden></label>
         <button type="button" class="udlab-saveall">Save all UD lines</button>
         <span class="udlab-save-status" aria-live="polite"></span>
       </div>
@@ -4629,6 +4639,7 @@
     const text = await fetchCSV(baseUrl() + `pitcher_ks_${dateStr}.csv`);
     _udSlateRows = text ? parseCSV(text) : [];
     _udSlateDate = dateStr;
+    _udImported.clear();  // imports are date-specific
     _udBoard = await fetchUDBoard(dateStr);
     repaintUDLab();
   }
@@ -4658,6 +4669,7 @@
       if (!r.ok) throw new Error("save failed");
       const d = await r.json();
       _udBoard = d.board || _udBoard;
+      _udImported.clear();  // review state resolved — drop the import highlight
       repaintUDLab();
       st = document.querySelector("#udlab-panel .udlab-save-status");
       if (st) st.textContent = `Saved ${Object.keys(d.board || {}).length} pitchers ✓`;
@@ -4665,6 +4677,61 @@
       st = document.querySelector("#udlab-panel .udlab-save-status");
       if (st) st.textContent = "Save failed — is the local/Air server running?";
     }
+  }
+
+  function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+  }
+
+  // Send each UD screenshot to the vision endpoint, merge extracted pricing
+  // into the board as a *review* state (highlighted rows), and report
+  // matched / unmatched / failures. Never auto-saves — Chad reviews + Save all.
+  async function importUDScreenshots(files) {
+    if (!files || !files.length) return;
+    const setStatus = (msg) => {
+      const s = document.querySelector("#udlab-panel .udlab-save-status");
+      if (s) s.textContent = msg;
+    };
+    setStatus(`Reading ${files.length} screenshot${files.length > 1 ? "s" : ""}…`);
+    let imported = 0, failed = 0;
+    const unmatched = [];
+    for (const file of files) {
+      let dataUrl;
+      try { dataUrl = await readFileAsDataURL(file); } catch (e) { failed++; continue; }
+      try {
+        const url = (_udSlateDate ? `/api/ud-screenshot?date=${_udSlateDate}` : `/api/ud-screenshot`);
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: dataUrl }),
+        });
+        if (!r.ok) {
+          if (r.status === 503) {
+            setStatus("Screenshot import needs ANTHROPIC_API_KEY on the server — not configured yet.");
+            return;
+          }
+          failed++; continue;
+        }
+        const d = await r.json();
+        for (const row of (d.matched || [])) {
+          const pid = String(row.pitcher_id);
+          _udBoard[pid] = { line: row.line, hi: row.higher, lo: row.lower };
+          _udImported.add(pid);
+          imported++;
+        }
+        for (const u of (d.unmatched || [])) unmatched.push(u.name || "?");
+      } catch (e) { failed++; }
+    }
+    repaintUDLab();
+    let msg = `Imported ${imported} pitcher${imported === 1 ? "" : "s"} — review the highlighted rows, then Save all.`;
+    if (unmatched.length) msg += ` Unmatched (enter manually): ${unmatched.join(", ")}.`;
+    if (failed) msg += ` ${failed} image(s) couldn't be read.`;
+    setStatus(msg);
   }
 
   async function fetchUDBoard(dateStr) {
@@ -4705,6 +4772,12 @@
     panel.addEventListener("change", async (ev) => {
       const inp = ev.target;
       if (!inp.classList) return;
+      if (inp.classList.contains("udlab-upload-input")) {
+        const files = inp.files;
+        inp.value = "";  // allow re-selecting the same file
+        importUDScreenshots(files);
+        return;
+      }
       const isLine = inp.classList.contains("udlab-line-input");
       const isMult = inp.classList.contains("udlab-mult-input");
       if (!isLine && !isMult) return;

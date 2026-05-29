@@ -15,6 +15,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import base64
 import os
 import subprocess
 import sys
@@ -35,7 +36,7 @@ from flask import (
     send_from_directory,
 )
 
-from . import auth, bankroll, health, live, notify, ud_lines, wagers
+from . import auth, bankroll, health, live, notify, ud_lines, ud_vision, wagers
 from .config import OUTPUT_DIR, PROJECT_ROOT
 from .settle import settle_date, settle_hitters_date
 
@@ -559,6 +560,40 @@ def api_ud_lines_bulk():
         return jsonify({"error": "board object required"}), 400
     board = ud_lines.save_many(target, incoming)
     return jsonify({"date": target.isoformat(), "board": board})
+
+
+@app.post("/api/ud-screenshot")
+def api_ud_screenshot():
+    """Extract UD lines + Higher/Lower multipliers from an uploaded UD board
+    screenshot via Claude vision, matched to the slate's pitcher_ids. Body:
+    {image: <data-URL or base64 png/jpeg>}. Returns {matched, unmatched} for
+    the UD Lab to drop into a review state. Does NOT save — the user confirms
+    then hits Save all."""
+    target = _ud_target()
+    if isinstance(target, tuple):
+        return target
+    payload = request.get_json(silent=True) or {}
+    img = payload.get("image") or ""
+    if not img:
+        return jsonify({"error": "image required"}), 400
+    media_type = "image/png"
+    if img.startswith("data:"):
+        head, _, b64 = img.partition(",")
+        m = re.match(r"data:([^;]+)", head)
+        if m:
+            media_type = m.group(1)
+        img = b64
+    try:
+        raw = base64.b64decode(img)
+    except Exception:  # noqa: BLE001
+        return jsonify({"error": "bad image data"}), 400
+    try:
+        result = ud_vision.extract(raw, media_type, target)
+    except RuntimeError as e:  # missing API key
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:  # noqa: BLE001 — API/network/parse failure
+        return jsonify({"error": f"extraction failed: {e}"}), 502
+    return jsonify({"date": target.isoformat(), **result})
 
 
 @app.get("/api/health")
