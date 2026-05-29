@@ -2841,12 +2841,16 @@
   .udlab .table-wrap { overflow-x: auto; }
   .udlab-mult-cell { white-space: nowrap; }
   .udlab-mult-input {
-    width: 3.5em; padding: 3px 4px; text-align: right;
-    border: 1px solid var(--border); border-radius: 5px;
-    background: var(--bg); color: var(--text); font-size: 0.85em;
+    width: 5.5em; padding: 5px 6px; text-align: right;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--text); font-size: 1em;
   }
-  .udlab-mult-input + .udlab-mult-input { margin-left: 3px; }
-  .udlab-mult-input:focus { outline: 1px solid var(--green); outline-offset: 1px; }
+  .udlab-mult-input + .udlab-mult-input { margin-left: 4px; }
+  .udlab-mult-input:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+  /* A multiplier the user moved off the default 1.00 (UD has priced it). */
+  .udlab-mult-input.udlab-priced {
+    border-color: var(--yellow); background: var(--yellow-bg); font-weight: 600;
+  }
 
   .udlab-parlays { margin-top: 18px; }
   .udlab-diff { margin: 10px 0 16px; }
@@ -3186,8 +3190,9 @@
     // Sharp market's implied P(over) at the UD line (soft-line read).
     const lam = impliedSharpLambda(sLine, novig);
     const sharpUdOver = lam !== null ? poissonSfOver(udLine, lam) : null;
-    // UD's own implied P(over) from its multipliers, if priced.
-    const priced = (hi != null && lo != null);
+    // UD's own implied P(over) from its multipliers, if priced. 1/1 (the
+    // prefill default) counts as symmetric → fall back to the sharp line.
+    const priced = multPriced(hi, lo);
     const udImpOver = priced ? udImpliedOver(hi, lo) : null;
     // Price reference: UD's own when it prices the pick, else the sharp line.
     const mktOver = priced ? udImpOver : sharpUdOver;
@@ -4336,10 +4341,16 @@
     if (e && e.line !== null && e.line !== undefined) return e.line;
     return f(r.line);
   }
-  // UD Higher/Lower payout multipliers for a row (null when symmetric).
+  // UD Higher/Lower payout multipliers for a row. Default to 1.00 (a
+  // symmetric pick) so the inputs prefill with 1 and Chad can increment /
+  // decrement from there. udCompare treats 1/1 as symmetric (no UD pricing).
   function udMults(r) {
     const e = udEntry(r);
-    return { hi: e && e.hi != null ? e.hi : null, lo: e && e.lo != null ? e.lo : null };
+    return { hi: e && e.hi != null ? e.hi : 1, lo: e && e.lo != null ? e.lo : 1 };
+  }
+  // Has the user moved either multiplier off the default 1.00? (UD priced it.)
+  function multPriced(hi, lo) {
+    return !(Math.abs((hi == null ? 1 : hi) - 1) < 1e-9 && Math.abs((lo == null ? 1 : lo) - 1) < 1e-9);
   }
   // Has the user explicitly overridden this row's UD line away from the
   // sportsbook prefill?
@@ -4390,10 +4401,10 @@
         step="0.5" min="0" max="20" data-pid="${pid}" data-field="line"
         value="${udLine !== null ? udLine : ""}" placeholder="—" aria-label="Underdog line for ${escapeHTML(r.pitcher || "")}"></td>
       <td class="udlab-mult-cell">
-        <input class="udlab-mult-input" type="number" inputmode="decimal" step="0.01" min="0.1" max="50"
-          data-pid="${pid}" data-field="hi" value="${m.hi != null ? m.hi : ""}" placeholder="Hi×" aria-label="Higher multiplier for ${escapeHTML(r.pitcher || "")}">
-        <input class="udlab-mult-input" type="number" inputmode="decimal" step="0.01" min="0.1" max="50"
-          data-pid="${pid}" data-field="lo" value="${m.lo != null ? m.lo : ""}" placeholder="Lo×" aria-label="Lower multiplier for ${escapeHTML(r.pitcher || "")}">
+        <input class="udlab-mult-input${Math.abs(m.hi - 1) > 1e-9 ? " udlab-priced" : ""}" type="number" inputmode="decimal" step="0.01" min="0.1" max="50"
+          data-pid="${pid}" data-field="hi" value="${m.hi}" aria-label="Higher multiplier for ${escapeHTML(r.pitcher || "")}">
+        <input class="udlab-mult-input${Math.abs(m.lo - 1) > 1e-9 ? " udlab-priced" : ""}" type="number" inputmode="decimal" step="0.01" min="0.1" max="50"
+          data-pid="${pid}" data-field="lo" value="${m.lo}" aria-label="Lower multiplier for ${escapeHTML(r.pitcher || "")}">
       </td>
       <td class="num">${c && c.pickProb !== null ? pct1(c.pickProb) + dirSuffix : "—"}</td>
       <td class="num" title="${mktTitle}">${c && c.mktProb !== null ? pct1(c.mktProb) : "—"}</td>
@@ -4606,7 +4617,8 @@
       if (!pid) continue;
       const line = effUDLine(r);
       const m = udMults(r);
-      if (line === null && m.hi == null && m.lo == null) continue;
+      // Skip rows with nothing meaningful (no line and untouched 1/1 mults).
+      if (line === null && !multPriced(m.hi, m.lo)) continue;
       board[pid] = { line: line, hi: m.hi, lo: m.lo };
     }
     let st = document.querySelector("#udlab-panel .udlab-save-status");
