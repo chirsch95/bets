@@ -2851,6 +2851,18 @@
   .udlab-mult-input.udlab-priced {
     border-color: var(--yellow); background: var(--yellow-bg); font-weight: 600;
   }
+  /* Reliever/opener rows — sub-floor line, model over-projects. De-emphasized. */
+  tr.udlab-reliever { opacity: 0.5; }
+  .udlab-rp {
+    font-size: 0.7em; font-weight: 700; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-left: 4px;
+  }
+  /* Time-sensitive parlay — edge leans on soft UD lines that will move. */
+  .udlab-pl-card.udlab-pl-early { border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
+  .udlab-early {
+    font-size: 0.82em; font-weight: 700; color: #001a00; background: var(--green);
+    border-radius: 4px; padding: 1px 6px; margin-right: 4px;
+  }
 
   .udlab-parlays { margin-top: 18px; }
   .udlab-diff { margin: 10px 0 16px; }
@@ -2890,7 +2902,7 @@
   // recompute calibrated P(over) at a hand-entered Underdog line, matching
   // the production cal_edge_v2. null → no calibration fit yet; fall back to
   // raw Poisson (same as calibration.apply()).
-  const CAL_V2 = { a: 0.2915885751759718, b: 0.0567590712967354 };
+  const CAL_V2 = { a: 0.23697783118055368, b: 0.07417472091685841 };
   // Underdog power-play base multipliers by leg count (all-must-hit).
   // Standard = symmetric picks (no per-pick multiplier shown).
   const UD_PAYOUTS = { 2: 3, 3: 6, 4: 10, 5: 20 };
@@ -4375,10 +4387,15 @@
     const udLine = effUDLine(r);
     const m = udMults(r);
     const c = udLine !== null ? udCompare(r, udLine, m.hi, m.lo) : null;
-    const ud = udVerdict(c);
+    // Reliever / opener gate: a line below the focus floor means the book is
+    // treating this arm as <2 innings, but our model projects a full start —
+    // a phantom edge. Mirror the live MIN_LINE_FOR_FOCUS gate so these never
+    // become a UD verdict or parlay leg.
+    const reliever = udLine !== null && udLine < MIN_LINE_FOR_FOCUS;
+    const ud = reliever ? { cls: "noise", label: "RP — skip" } : udVerdict(c);
     // Did the bet call change vs the live (sportsbook) view?
     let changed = false;
-    if (c && c.dir) {
+    if (c && c.dir && !reliever) {
       const liveEdge = pickEdge(r);
       const liveDir = liveEdge === null ? null : (liveEdge > 0 ? "over" : "under");
       const liveBet = isBettableFocus(r);
@@ -4394,8 +4411,8 @@
           : "Sharp consensus prob at the UD line — UD left this pick symmetric (potentially soft)")
       : "";
     const liveTag = `<span class="tag tag-${live.cls.split(" ")[0]} ${live.cls.indexOf("dir-")>=0 ? "tag-"+live.cls.split(" ")[1] : ""}" title="sportsbook edge ${fmtSignedPct(pickEdge(r))}">${live.label}</span>`;
-    return `<tr class="${changed ? "udlab-changed" : ""}${c && !c.priced ? " udlab-symmetric" : ""}">
-      <td class="player">${escapeHTML(r.pitcher || "")}</td>
+    return `<tr class="${changed ? "udlab-changed" : ""}${reliever ? " udlab-reliever" : ""}">
+      <td class="player">${escapeHTML(r.pitcher || "")}${reliever ? ' <span class="udlab-rp">RP?</span>' : ""}</td>
       <td class="num">${dash(proj === null ? "" : proj.toFixed(1))}</td>
       <td class="num">${dash(sLine === null ? "" : sLine)}</td>
       <td>${liveTag}</td>
@@ -4425,6 +4442,8 @@
       if (!pid) continue;
       const udLine = effUDLine(r);
       if (udLine === null) continue;
+      // Reliever/opener gate — model over-projects sub-floor lines as full starts.
+      if (udLine < MIN_LINE_FOR_FOCUS) continue;
       const m = udMults(r);
       const c = udCompare(r, udLine, m.hi, m.lo);
       // Only legs where the model has positive edge over UD's price.
@@ -4469,11 +4488,15 @@
       .slice(0, 3);
     if (!ranked.length) return "";
     const cards = ranked.map(x => {
+      // Time-sensitive: a strong-EV parlay whose edge leans on soft (stale,
+      // symmetric) UD lines — lock it in before UD moves the line / adds a
+      // multiplier and the edge disappears.
+      const placeEarly = x.ev >= 0.10 && x.legs.some(l => l.soft);
       const legHtml = x.legs.map(l =>
         `<div class="udlab-pl-leg">${l.soft ? "★ " : ""}${escapeHTML(l.pitcher)} <strong>${l.dir.toUpperCase()} ${l.udLine}</strong>${l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""} · ${pct1(l.prob)}</div>`
       ).join("");
-      return `<div class="udlab-pl-card">
-        <div class="udlab-pl-head">${x.confirmed ? "" : "~"}${x.payMult.toFixed(2)}× · win ${pct1(x.prob)} · <span class="${x.ev > 0 ? "pos" : "neg"}">EV ${(x.ev >= 0 ? "+" : "")}${x.ev.toFixed(3)}</span></div>
+      return `<div class="udlab-pl-card${placeEarly ? " udlab-pl-early" : ""}">
+        <div class="udlab-pl-head">${placeEarly ? '<span class="udlab-early" title="Edge leans on soft UD line(s) that lag the sharp market — place it before UD moves the line or adds a multiplier and the edge is gone">⏰ place early</span> ' : ""}${x.confirmed ? "" : "~"}${x.payMult.toFixed(2)}× · win ${pct1(x.prob)} · <span class="${x.ev > 0 ? "pos" : "neg"}">EV ${(x.ev >= 0 ? "+" : "")}${x.ev.toFixed(3)}</span></div>
         ${legHtml}
       </div>`;
     }).join("");
@@ -4528,7 +4551,7 @@
       : `<p class="muted">No positive-EV UD parlays from the lines entered yet.</p>`;
     return `<div class="udlab-parlays">
       ${diffSummary}
-      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(value legs · one leg per game · ranked by EV per $1 · payout = base × pick multipliers; boosted base 3.5 (2-leg) / 6.5 (3-leg), both confirmed)</span></div>
+      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(value legs · one leg per game · ranked by EV per $1 · payout = base × pick multipliers; boosted base 3.5 (2-leg) / 6.5 (3-leg) · <strong>⏰ place early</strong> = edge leans on soft UD lines that will move)</span></div>
       ${plBody}
     </div>`;
   }
@@ -4553,7 +4576,7 @@
       : `<strong>raw Poisson</strong> (no calibration fit yet — numbers not yet apples-to-apples)`;
     const intro = `<div class="udlab-intro">
         <h3>UD Lab <span class="udlab-badge">shadow</span></h3>
-        <p class="muted">You bet <strong>Underdog</strong>, but the live tabs grade edge against the <strong>sportsbook</strong> line. Each UD line is <strong>prefilled with the sportsbook line</strong>, sorted high→low like the UD board — fix the few that differ. When UD shows <strong>Higher/Lower multipliers</strong>, enter them too: that's UD pricing the pick, and we de-vig it into UD's own implied probability (the <em>Mkt P</em> column). A pick UD leaves <strong>symmetric (no multiplier)</strong> is a lazy 50/50 — those are your soft-line targets (★). <em>Edge</em> = model's P minus the price you're actually getting; ${calNote}. Hit <em>Save all</em> to record the board. Nothing here touches the live tabs.</p>
+        <p class="muted">You bet <strong>Underdog</strong>, but the live tabs grade edge against the <strong>sportsbook</strong> line. Each UD line is <strong>prefilled with the sportsbook line</strong>, sorted high→low like the UD board — fix the few that differ. When UD shows <strong>Higher/Lower multipliers</strong>, enter them too: that's UD pricing the pick, and we de-vig it into UD's own implied probability (the <em>Mkt P</em> column). A pick UD leaves <strong>symmetric (no multiplier)</strong> is a lazy 50/50 — those are your soft-line targets (★). <em>Edge</em> = model's P minus the price you're actually getting; ${calNote}. Relievers/openers (line under ${MIN_LINE_FOR_FOCUS}) are greyed and skipped — the model over-projects them as full starts. Hit <em>Save all</em> to record the board. Nothing here touches the live tabs.</p>
       </div>
       ${udLabControls(dateStr)}`;
     if (!rows || !rows.length) {
