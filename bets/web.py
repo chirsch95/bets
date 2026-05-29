@@ -2944,6 +2944,12 @@ CSS = """
   }
   /* Time-sensitive parlay — edge leans on soft UD lines that will move. */
   .udlab-pl-card.udlab-pl-early { border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
+  /* Lineup-posted border on UD parlay cards (Chad's request): red while any
+     leg's opp lineup is TBD, green once all are confirmed. Placed after the
+     place-early rule so lineup status drives the border; lineup-blocked also
+     clears the early green glow. */
+  .udlab-pl-card.lineup-ready { border-color: var(--green); }
+  .udlab-pl-card.lineup-blocked { border-color: var(--red); box-shadow: none; opacity: 0.85; }
   .udlab-early {
     font-size: 0.82em; font-weight: 700; color: #001a00; background: var(--green);
     border-radius: 4px; padding: 1px 6px; margin-right: 4px;
@@ -3972,10 +3978,15 @@ def _render_js() -> str:
   // pre-first-pitch). Pre-lineup projections fall back to season-avg opp K%,
   // so edge can shift meaningfully once the card lands — see Blind Spot #4
   // analysis: mean |edge drift| 0.085 in empty→filled vs 0.027 baseline.
-  function lineupPendingChip(r) {{
+  // True when the opposing lineup hasn't posted yet for this row (model is
+  // still on team-average opp K%, not the confirmed card). Single source of
+  // truth for the "Lineup TBD" chip and the UD parlay border.
+  function lineupPending(r) {{
     const lj = r.opp_lineup_json;
-    if (lj && lj !== "[]" && lj !== "") return "";
-    return `<span class="lineup-pending">Lineup TBD</span>`;
+    return !(lj && lj !== "[]" && lj !== "");
+  }}
+  function lineupPendingChip(r) {{
+    return lineupPending(r) ? `<span class="lineup-pending">Lineup TBD</span>` : "";
   }}
 
   function pitcherRow(r) {{
@@ -4637,6 +4648,7 @@ def _render_js() -> str:
         prob: c.pickProb, udLine: c.udLine, mult: c.sideMult || 1,
         edge: c.edge, priced: c.priced,
         soft: (!c.priced && c.lineEdge !== null && c.lineEdge >= 0.02),
+        lineupPending: lineupPending(r),
         game_pk: isNaN(gpk) ? null : gpk,
       }});
     }}
@@ -4696,10 +4708,19 @@ def _render_js() -> str:
     // symmetric) UD lines — lock it in before UD moves the line / adds a
     // multiplier and the edge disappears.
     const placeEarly = x.ev >= 0.10 && x.legs.some(l => l.soft);
+    // Lineup gating (mirrors the sportsbook suggester's renderParlayCard):
+    // pre-lineup edges drift once cards post, so paint the border red when
+    // ANY leg's opponent lineup is still TBD, green when every leg has a
+    // confirmed lineup. Saves toggling to the Pitchers tab to check.
+    const pendingLegs = x.legs.filter(l => l.lineupPending);
+    const lineupCls = pendingLegs.length ? "lineup-blocked" : "lineup-ready";
+    const lineupTip = pendingLegs.length
+      ? "Waiting on lineups: " + pendingLegs.map(l => l.pitcher).join(", ")
+      : "All lineups posted";
     const legHtml = x.legs.map(l =>
-      `<div class="udlab-pl-leg">${{l.soft ? "★ " : ""}}${{escapeHTML(l.pitcher)}} <strong>${{l.dir.toUpperCase()}} ${{l.udLine}}</strong>${{l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""}} · ${{pct1(l.prob)}}</div>`
+      `<div class="udlab-pl-leg">${{l.soft ? "★ " : ""}}${{escapeHTML(l.pitcher)}}${{l.lineupPending ? ' <span class="lineup-pending">TBD</span>' : ""}} <strong>${{l.dir.toUpperCase()}} ${{l.udLine}}</strong>${{l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""}} · ${{pct1(l.prob)}}</div>`
     ).join("");
-    return `<div class="udlab-pl-card${{placeEarly ? " udlab-pl-early" : ""}}">
+    return `<div class="udlab-pl-card ${{lineupCls}}${{placeEarly ? " udlab-pl-early" : ""}}" title="${{escapeHTML(lineupTip)}}">
       <div class="udlab-pl-head">${{placeEarly ? '<span class="udlab-early" title="Edge leans on soft UD line(s) that lag the sharp market — place it before UD moves the line or adds a multiplier and the edge is gone">⏰ place early</span> ' : ""}}${{x.confirmed ? "" : "~"}}${{x.payMult.toFixed(2)}}× · win ${{pct1(x.prob)}} · <span class="${{x.ev > 0 ? "pos" : "neg"}}">EV ${{(x.ev >= 0 ? "+" : "")}}${{x.ev.toFixed(3)}}</span></div>
       ${{legHtml}}
     </div>`;
