@@ -36,7 +36,7 @@ from flask import (
     send_from_directory,
 )
 
-from . import auth, bankroll, health, live, notify, ud_lines, ud_vision, wagers
+from . import auth, bankroll, bet_record, health, live, notify, ud_lines, ud_vision, wagers
 from .config import OUTPUT_DIR, PROJECT_ROOT
 from .settle import settle_date, settle_hitters_date
 
@@ -349,6 +349,15 @@ def api_list_bets():
     uid = auth.current_user_id()
     state = wagers.load_bets(uid)
     return jsonify({"bets": state["bets"], "totals": wagers.totals(uid, state)})
+
+
+@app.get("/api/bet-record")
+@auth.login_required
+def api_bet_record():
+    """Betting-record + edge-band tuning report for the logged-in user.
+    Backs the UD Lab 'My record' panel. Per-user (own ledger only)."""
+    uid = auth.current_user_id()
+    return jsonify(bet_record.compute(uid))
 
 
 @app.post("/api/bets")
