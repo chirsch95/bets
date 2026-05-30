@@ -2,9 +2,10 @@
 
 A data pipeline and modeling system for identifying +EV prop bets on daily fantasy sites (PrizePicks, Underdog). Currently active: **MLB pitcher strikeouts**. The hitter strikeouts pipeline exists but is paused while the pitcher model accumulates calibration data — see [Re-enabling hitters](#re-enabling-hitters).
 
-The dashboard has two main surfaces:
+The dashboard has three main surfaces:
 - **Pitcher Ks tab** — Today's slate (with first-pitch time in Central), "Today's Picks" hero cards for actionable focus picks, Parlay Suggestions ranked by EV per $1 (with one-click handoff to the Bets tab), Yesterday's Results report card, and a 14-day Track Record (sparkline + trend arrows + OVER/UNDER split).
 - **Bets tab** — personal parlay ledger with live K tracking from MLB Stats API. Picker-driven entry from today's slate, live Combined stats panel (Payout / Hit % / Edge / EV / Profit-if-hit) that recomputes on every leg change, mid-game lock-in for HIT/MISS, auto-settle on definitive verdicts, free-entry exclusion from totals.
+- **UD Lab tab** — recomputes the model against **Underdog's** actual line + Higher/Lower multipliers (we bet UD, but the pipeline's edge is vs the sportsbook line), with lineup-posted indicators, suggested UD parlays, and a "My record" betting-performance + bet-bar-tuning panel. Full reference: **[UD_LAB.md](UD_LAB.md)**.
 
 Both surfaces live on the same Flask app served from an **M1 MacBook Air over Tailscale** — see [Deployment](#deployment-self-hosted-on-m1-air). Multi-user accounts gate the Bets tab per-person; the dashboard view is shared.
 
