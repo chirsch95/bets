@@ -1,4 +1,4 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
-2026-06-01,two_leg,1,2,Luinder Avila,679883,over,3.5,113.0,0.869,0.457,Shane Drohan,675660,over,3.5,130.0,0.764,0.434,,,,,,,,390,4.899,0.663916,0.198338,0.465578,2.252524,
+2026-06-01,two_leg,1,2,Luinder Avila,679883,over,3.5,110.0,0.869,0.457,Shane Drohan,675660,over,3.5,130.0,0.764,0.434,,,,,,,,383,4.83,0.663916,0.198338,0.465578,2.206714,
 2026-06-01,two_leg,2,2,Griffin Jax,643377,under,4.5,114.0,0.637,0.456,Chase Burns,695505,under,6.5,126.0,0.538,0.429,,,,,,,,384,4.8364,0.342706,0.195624,0.147082,0.657463,
-2026-06-01,three_leg,1,3,Luinder Avila,679883,over,3.5,113.0,0.869,0.457,Shane Drohan,675660,over,3.5,130.0,0.764,0.434,Griffin Jax,643377,under,4.5,114.0,0.637,0.456,948,10.48386,0.422914,0.090442,0.332472,3.433776,Luinder Avila
+2026-06-01,three_leg,1,3,Luinder Avila,679883,over,3.5,110.0,0.869,0.457,Shane Drohan,675660,over,3.5,130.0,0.764,0.434,Griffin Jax,643377,under,4.5,114.0,0.637,0.456,934,10.3362,0.422914,0.090442,0.332472,3.371329,Luinder Avila
