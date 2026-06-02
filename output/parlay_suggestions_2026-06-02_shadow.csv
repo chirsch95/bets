@@ -1,4 +1,4 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
 2026-06-02,two_leg,1,2,Davis Martin,663436,over,5.5,120.0,0.725,0.433,Grayson Rodriguez,680570,under,5.5,130.0,0.62,0.425,,,,,,,,406,5.06,0.4495,0.184025,0.265475,1.27447,
-2026-06-02,two_leg,2,2,Noah Cameron,702070,over,5.5,120.0,0.621,0.428,Miles Mikolas,571945,over,3.5,128.0,0.592,0.425,,,,,,,,402,5.016,0.367632,0.1819,0.185732,0.844042,
+2026-06-02,two_leg,2,2,Noah Cameron,702070,over,5.5,120.0,0.621,0.428,Joey Cantillo,676282,under,4.5,-110.0,0.71,0.491,,,,,,,,320,4.2,0.44091,0.210148,0.230762,0.851822,
 2026-06-02,three_leg,1,3,Davis Martin,663436,over,5.5,120.0,0.725,0.433,Noah Cameron,702070,over,5.5,120.0,0.621,0.428,Grayson Rodriguez,680570,under,5.5,130.0,0.62,0.425,1013,11.132,0.279139,0.078763,0.200377,2.107381,Davis Martin
