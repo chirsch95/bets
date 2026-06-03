@@ -4666,6 +4666,7 @@ def _render_js() -> str:
         soft: (!c.priced && c.lineEdge !== null && c.lineEdge >= 0.02),
         lineupPending: lineupPending(r),
         game_pk: isNaN(gpk) ? null : gpk,
+        gameTimeISO: r.game_datetime_utc || "",
       }});
     }}
     return legs.sort((a, b) => b.edge - a.edge);
@@ -4684,8 +4685,25 @@ def _render_js() -> str:
       }}
       return true;
     }};
+    // Games within a 3-hr window (mirrors the sportsbook suggester): a wider
+    // gap means the later game's lineup won't post until after the first has
+    // started, so you'd lock a leg without the input that drives its edge.
+    const MAX_GAP_MS = 3 * 3600 * 1000;
+    const withinWindow = (combo) => {{
+      let lo = Infinity, hi = -Infinity;
+      for (const l of combo) {{
+        if (!l.gameTimeISO) continue;
+        const t = Date.parse(l.gameTimeISO);
+        if (isNaN(t)) continue;
+        if (t < lo) lo = t;
+        if (t > hi) hi = t;
+      }}
+      if (lo === Infinity || hi === -Infinity) return true;
+      return hi - lo <= MAX_GAP_MS;
+    }};
     return combos(legs, k)
       .filter(seenGames)
+      .filter(withinWindow)
       .map(combo => {{
         // Entry payout = base power-play multiplier × the per-pick payout
         // multipliers. Base is the boosted table when any leg is priced
@@ -4700,13 +4718,15 @@ def _render_js() -> str:
       .sort((a, b) => b.ev - a.ev);
   }}
 
-  // Pick suggested parlays with NO pitcher repeated across any card (mirrors
-  // the non-UD suggester's diversity rule). 2-leg gets first dibs on the
-  // pitcher pool (lower variance, the bread-and-butter), then 3-leg fills
-  // from whoever's left.
+  // Pick suggested parlays. Per-section pitcher cap (mirrors the sportsbook
+  // suggester's selectDiverse, MAX_APPEARANCES = 1): no pitcher repeats
+  // *within* a section, but a pitcher MAY appear in both a 2-leg and a 3-leg
+  // card. Cross-section overlap is surfaced with a ⚠ badge (see udParlayCard)
+  // rather than suppressed — the same visibility-over-silence call the
+  // sportsbook suggester made on 2026-05-16 (project_path_c / overlap badge).
   function udSelectParlays(legs) {{
-    const used = new Set();
     const pick = (k, cap) => {{
+      const used = new Set();
       const out = [];
       for (const x of udRankedCombos(legs, k)) {{
         if (out.length >= cap) break;
@@ -4716,7 +4736,22 @@ def _render_js() -> str:
       }}
       return out;
     }};
-    return {{ two: pick(2, 3), three: pick(3, 3) }};
+    const two = pick(2, 3);
+    const three = pick(3, 3);
+    // Tag each 3-leg card that shares a pitcher with the TOP 2-leg ticket.
+    const topPids = new Set();
+    const topByPid = {{}};
+    if (two.length) {{
+      for (const l of two[0].legs) {{
+        topPids.add(l.pitcher_id);
+        topByPid[l.pitcher_id] = l.pitcher;
+      }}
+    }}
+    for (const card of three) {{
+      const shared = card.legs.find(l => topPids.has(l.pitcher_id));
+      card.overlapsTop2Leg = shared ? (topByPid[shared.pitcher_id] || shared.pitcher || "shared pitcher") : "";
+    }}
+    return {{ two, three }};
   }}
 
   function udParlayCard(x) {{
@@ -4736,7 +4771,13 @@ def _render_js() -> str:
     const legHtml = x.legs.map(l =>
       `<div class="udlab-pl-leg">${{l.soft ? "★ " : ""}}${{escapeHTML(l.pitcher)}}${{l.lineupPending ? ' <span class="lineup-pending">TBD</span>' : ""}} <strong>${{l.dir.toUpperCase()}} ${{l.udLine}}</strong>${{l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""}} · ${{pct1(l.prob)}}</div>`
     ).join("");
+    // 3-leg cards that share a pitcher with the top 2-leg ticket get a ⚠
+    // badge (mirrors the sportsbook suggester) — visibility, not suppression.
+    const overlapBadge = x.overlapsTop2Leg
+      ? `<div class="parlay-overlap-badge" title="Shares ${{escapeHTML(x.overlapsTop2Leg)}} with the top 2-leg ticket. 2026-05-15 audit: overlapping 3-leg picks went -78% ROI vs disjoint +22% (small sample) — bet consciously.">⚠ overlap</div>`
+      : "";
     return `<div class="udlab-pl-card ${{lineupCls}}${{placeEarly ? " udlab-pl-early" : ""}}" title="${{escapeHTML(lineupTip)}}">
+      ${{overlapBadge}}
       <div class="udlab-pl-head">${{placeEarly ? '<span class="udlab-early" title="Edge leans on soft UD line(s) that lag the sharp market — place it before UD moves the line or adds a multiplier and the edge is gone">⏰ place early</span> ' : ""}}${{x.confirmed ? "" : "~"}}${{x.payMult.toFixed(2)}}× · win ${{pct1(x.prob)}} · <span class="${{x.ev > 0 ? "pos" : "neg"}}">EV ${{(x.ev >= 0 ? "+" : "")}}${{x.ev.toFixed(3)}}</span></div>
       ${{legHtml}}
     </div>`;
@@ -4796,7 +4837,7 @@ def _render_js() -> str:
       : `<p class="muted">No positive-EV UD parlays from the lines entered yet.</p>`;
     return `<div class="udlab-parlays">
       ${{diffSummary}}
-      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(value legs · one leg per game · ranked by EV per $1 · payout = base × pick multipliers; boosted base 3.5 (2-leg) / 6.5 (3-leg) · <strong>⏰ place early</strong> = edge leans on soft UD lines that will move)</span></div>
+      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(Positive-EV combos · one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1 · 3-legs marked ⚠ if they overlap the top 2-leg · payout = base × pick multipliers, boosted base 3.5 (2-leg) / 6.5 (3-leg) · <strong>⏰ place early</strong> = edge leans on soft UD lines that will move)</span></div>
       ${{plBody}}
     </div>`;
   }}
