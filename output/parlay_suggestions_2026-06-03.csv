@@ -1,0 +1,6 @@
+date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
+2026-06-03,two_leg,1,2,Patrick Corbin,571578,under,3.5,120.0,0.607,0.439,Paul Skenes,694973,under,7.0,120.0,0.705,0.486,,,,,,,,384,4.84,0.427935,0.213354,0.214581,1.071205,
+2026-06-03,two_leg,2,2,Troy Melton,675512,under,3.5,-125.0,0.91,0.52,Erick Fedde,607200,over,3.5,115.0,0.588,0.444,,,,,,,,287,3.87,0.53508,0.23088,0.3042,1.07076,
+2026-06-03,two_leg,3,2,Payton Tolle,801139,over,6.5,122.0,0.474,0.431,Chase Burns,695505,under,6.5,120.0,0.564,0.443,,,,,,,,388,4.884,0.267336,0.190933,0.076403,0.305669,
+2026-06-03,three_leg,1,3,Patrick Corbin,571578,under,3.5,120.0,0.607,0.439,Paul Skenes,694973,under,7.0,120.0,0.705,0.486,Chase Burns,695505,under,6.5,120.0,0.564,0.443,965,10.648,0.241355,0.094516,0.14684,1.569952,Patrick Corbin
+2026-06-03,three_leg,2,3,Troy Melton,675512,under,3.5,-125.0,0.91,0.52,Erick Fedde,607200,over,3.5,115.0,0.588,0.444,Max Meyer,676974,over,5.5,116.0,0.571,0.444,736,8.3592,0.305531,0.102511,0.20302,1.553992,
