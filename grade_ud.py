@@ -33,141 +33,25 @@ from __future__ import annotations
 
 import csv
 import json
-import math
 import sys
 from datetime import date
-from itertools import combinations
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bets import calibration
 from bets.config import DATA_DIR, OUTPUT_DIR
 from bets.model import prob_over_poisson
 
-# Constants mirrored from bets/live.py + web.py (kept in sync there).
-FOCUS_EDGE_MIN, FOCUS_EDGE_MAX, INVESTIGATE_EDGE = 0.065, 0.15, 0.20
-MIN_LINE_FOR_FOCUS = 3.0
-UD_PAYOUTS = {2: 3, 3: 6, 4: 10, 5: 20}
-UD_PAYOUTS_BOOSTED = {2: 3.5, 3: 6.5}
-UD_BOOSTED_CONFIRMED = {2: True, 3: True}
-
-
-# ---------- model helpers (Python ports of the UD-Lab JS) -------------------
-def cal_v2(raw_p):
-    return calibration.apply(raw_p, "v2") if raw_p is not None else None
-
-
-def implied_sharp_lambda(sportsbook_line, novig_over):
-    """Invert the sharp no-vig P(over) at its own line → the Poisson mean it
-    implies, so we can price the over at UD's line. Bisection, matches JS."""
-    if sportsbook_line is None or novig_over is None:
-        return None
-    if not (0 < novig_over < 1):
-        return None
-    lo, hi = 0.01, 30.0
-    for _ in range(60):
-        mid = (lo + hi) / 2
-        p = prob_over_poisson(sportsbook_line, mid)
-        if p < novig_over:
-            lo = mid
-        else:
-            hi = mid
-    return (lo + hi) / 2
-
-
-def ud_implied_over(hi, lo):
-    if hi is None or lo is None or hi <= 0 or lo <= 0:
-        return None
-    ih, il = 1 / hi, 1 / lo
-    return ih / (ih + il)
-
-
-def mult_priced(hi, lo):
-    h = 1.0 if hi is None else hi
-    l = 1.0 if lo is None else lo
-    return not (abs(h - 1) < 1e-9 and abs(l - 1) < 1e-9)
-
-
-def ud_compare(proj, s_line, novig, ud_line, hi, lo):
-    """Port of web.py udCompare. Returns dict or None."""
-    if proj is None or ud_line is None:
-        return None
-    cal_ud_over = cal_v2(prob_over_poisson(ud_line, proj))
-    lam = implied_sharp_lambda(s_line, novig)
-    sharp_ud_over = prob_over_poisson(ud_line, lam) if lam is not None else None
-    priced = mult_priced(hi, lo)
-    ud_imp_over = ud_implied_over(hi, lo) if priced else None
-    mkt_over = ud_imp_over if priced else sharp_ud_over
-    edge_over = (cal_ud_over - mkt_over) if (cal_ud_over is not None and mkt_over is not None) else None
-    if edge_over is not None:
-        direction = "over" if edge_over >= 0 else "under"
-    else:
-        direction = "over" if (cal_ud_over is not None and cal_ud_over >= 0.5) else "under"
-    pick_prob = None if cal_ud_over is None else (cal_ud_over if direction == "over" else 1 - cal_ud_over)
-    mkt_prob = None if mkt_over is None else (mkt_over if direction == "over" else 1 - mkt_over)
-    edge = (pick_prob - mkt_prob) if (pick_prob is not None and mkt_prob is not None) else None
-    side_mult = (hi if direction == "over" else lo) if priced else 1.0
-    line_edge = None
-    if sharp_ud_over is not None and novig is not None:
-        line_edge = (sharp_ud_over - novig) if direction == "over" else (novig - sharp_ud_over)
-    return dict(ud_line=ud_line, s_line=s_line, proj=proj, hi=hi, lo=lo, priced=priced,
-                cal_ud_over=cal_ud_over, sharp_ud_over=sharp_ud_over, ud_imp_over=ud_imp_over,
-                mkt_over=mkt_over, dir=direction, pick_prob=pick_prob, mkt_prob=mkt_prob,
-                edge=edge, side_mult=side_mult or 1.0, line_edge=line_edge)
-
-
-def ud_verdict(c):
-    """Port of web.py udVerdict → (label, cls, soft, bettable)."""
-    if not c or c.get("edge") is None or not c.get("dir"):
-        return ("—", "noise", False, False)
-    soft = (not c["priced"]) and c["line_edge"] is not None and c["line_edge"] >= 0.02
-    if c["edge"] >= 0.05:
-        return (f"Bet {c['dir'].upper()}", "focus", soft, True)
-    if c["edge"] >= 0.02:
-        return (f"Lean {c['dir'].upper()}", "focus", soft, True)
-    return ("—", "noise", soft, False)
-
-
-def classify(edge):
-    if edge is None:
-        return "noline"
-    a = abs(edge)
-    if a >= INVESTIGATE_EDGE:
-        return "investigate"
-    if FOCUS_EDGE_MIN <= a <= FOCUS_EDGE_MAX:
-        return "focus"
-    return "noise"
-
-
-def is_bettable_focus(cal_edge_v2, s_line):
-    """Port of web.py isBettableFocus (uses cal_edge_v2 as pickEdge)."""
-    if cal_edge_v2 is None or classify(cal_edge_v2) != "focus":
-        return False
-    return s_line is not None and s_line >= MIN_LINE_FOR_FOCUS
-
-
-def compute_calls(proj, s_line, novig, cal_edge_v2, ud_line, hi, lo, reliever, actual_ks):
-    """One projection-state → both calls (UD-aware + sportsbook), graded.
-
-    Used twice per pitcher: once on the frozen morning slate (pre-lineup,
-    team-avg opp K%) and once on the post-lineup pre-game projection. Grades
-    each call at its own line so the morning-vs-post-lineup comparison shows
-    whether the lineup post changed the call and whether it was right."""
-    c = ud_compare(proj, s_line, novig, ud_line, hi, lo)
-    if reliever:
-        ud_label, ud_bettable, ud_dir, ud_soft = ("RP — skip", False, None, False)
-    else:
-        ud_label, _, ud_soft, ud_bettable = ud_verdict(c)
-        ud_dir = c["dir"] if (c and ud_bettable) else None
-    sb_bettable = is_bettable_focus(cal_edge_v2, s_line)
-    sb_dir = ("over" if cal_edge_v2 >= 0 else "under") if (sb_bettable and cal_edge_v2 is not None) else None
-    return dict(
-        proj=proj, s_line=s_line, novig=novig, cal_edge_v2=cal_edge_v2, c=c,
-        ud_label=ud_label, ud_bettable=ud_bettable, ud_dir=ud_dir, ud_soft=ud_soft,
-        sb_bettable=sb_bettable, sb_dir=sb_dir,
-        ud_won=(graded_side_won(ud_dir, ud_line, actual_ks) if ud_bettable else None),
-        sb_won=(graded_side_won(sb_dir, s_line, actual_ks) if sb_bettable else None),
-        ud_edge=(c["edge"] if c else None))
+# The suggester logic + JS ports live in bets/ud_parlay.py (shared with the
+# server's snapshot writer) — this CLI is a consumer, not a second copy.
+from bets.ud_parlay import (  # noqa: F401  (re-exported for analysis scripts)
+    FOCUS_EDGE_MIN, FOCUS_EDGE_MAX, INVESTIGATE_EDGE, MIN_LINE_FOR_FOCUS,
+    UD_PAYOUTS, UD_PAYOUTS_BOOSTED, UD_BOOSTED_CONFIRMED,
+    cal_v2, implied_sharp_lambda, ud_implied_over, mult_priced,
+    ud_compare, ud_verdict, classify, is_bettable_focus,
+    compute_calls, graded_side_won,
+    ud_entry_base, ud_ranked_combos, ud_select_parlays,
+    _parse_iso_epoch,
+)
 
 
 # ---------- data loading ----------------------------------------------------
@@ -245,16 +129,6 @@ def load_ud(path: Path) -> dict:
     return out
 
 
-def graded_side_won(direction, line, actual_ks):
-    """True/False/None(push or no actual) — did `direction` hit at `line`?"""
-    if actual_ks is None or line is None:
-        return None
-    if abs(actual_ks - line) < 1e-9:
-        return None  # push (integer lines only)
-    over = actual_ks > line
-    return over if direction == "over" else (not over)
-
-
 # ---------- the run ---------------------------------------------------------
 def pick_date(arg: str | None) -> date | None:
     if arg:
@@ -320,6 +194,7 @@ def main():
 
         rows.append(dict(pid=pid, name=s.get("pitcher", ""), ud_line=ud_line, hi=e["hi"], lo=e["lo"],
                          reliever=reliever, game_pk=gpk, actual_ks=actual_ks,
+                         game_time=_parse_iso_epoch(s.get("game_datetime_utc")),
                          gs=actuals.get(pid, {}).get("gs", ""), morn=morn, post=post))
 
     def view(r):
@@ -410,7 +285,7 @@ def main():
             report_clv(rows, slate, ud_morning, ud_close, bet_view, "morning → close (model detection)")
 
 
-# ---------- parlay logic (ports of web.py) ----------------------------------
+# ---------- parlay grading (selection logic imported from bets.ud_parlay) ---
 def build_ud_legs(rows, bet_view):
     legs = []
     for r in rows:
@@ -423,61 +298,16 @@ def build_ud_legs(rows, bet_view):
         legs.append(dict(pitcher=r["name"], pid=r["pid"], dir=c["dir"], prob=c["pick_prob"],
                          ud_line=c["ud_line"], mult=c["side_mult"] or 1.0, edge=c["edge"],
                          priced=c["priced"], soft=v["ud_soft"], game_pk=r.get("game_pk"),
-                         won=v["ud_won"]))
+                         game_time=r.get("game_time"), won=v["ud_won"]))
     return sorted(legs, key=lambda l: -l["edge"])
 
 
-def ud_entry_base(k, any_priced):
-    if not any_priced:
-        return UD_PAYOUTS[k], True
-    if k in UD_PAYOUTS_BOOSTED:
-        return UD_PAYOUTS_BOOSTED[k], UD_BOOSTED_CONFIRMED.get(k, False)
-    return UD_PAYOUTS[k] + 0.5, False
-
-
-def ud_ranked_combos(legs, k):
-    if len(legs) < k:
-        return []
-    out = []
-    for combo in combinations(legs, k):
-        games = [l["game_pk"] for l in combo if l["game_pk"] is not None]
-        if len(games) != len(set(games)):
-            continue
-        any_priced = any(l["priced"] for l in combo)
-        base, confirmed = ud_entry_base(k, any_priced)
-        win_p = 1.0
-        pay = base
-        for l in combo:
-            win_p *= l["prob"]
-            pay *= (l["mult"] or 1.0)
-        ev = win_p * pay - 1
-        if ev <= 0:
-            continue
-        out.append(dict(legs=combo, prob=win_p, pay_mult=pay, confirmed=confirmed, ev=ev))
-    return sorted(out, key=lambda x: -x["ev"])
-
-
-def ud_select_parlays(legs):
-    used = set()
-
-    def pick(k, cap):
-        out = []
-        for x in ud_ranked_combos(legs, k):
-            if len(out) >= cap:
-                break
-            if any(l["pid"] in used for l in x["legs"]):
-                continue
-            for l in x["legs"]:
-                used.add(l["pid"])
-            out.append(x)
-        return out
-
-    return dict(two=pick(2, 3), three=pick(3, 3))
-
-
 def grade_parlay_card(x, k, settled):
-    early = x["ev"] >= 0.10 and any(l["soft"] for l in x["legs"])
-    tag = "⏰" if early else "  "
+    # △ caution (replaced ⏰ place-early 2026-06-04): unpriced legs' edge
+    # rests only on model-vs-sportsbook disagreement — early tracking shows
+    # they underperform UD-priced legs.
+    unpriced = sum(1 for l in x["legs"] if not l["priced"])
+    tag = "△ " if unpriced else "  "
     conf = "" if x["confirmed"] else "~"
     legdesc = ", ".join(f"{l['pitcher'].split()[-1]} {l['dir'].upper()} {l['ud_line']}"
                         + (f"@{l['mult']}" if l["mult"] != 1 else "") for l in x["legs"])

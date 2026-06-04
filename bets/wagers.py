@@ -22,7 +22,17 @@ Schema for one bet (one row in the spreadsheet ≈ one parlay ticket):
                                             # toward returned even if free
       "stake_reason":      "default"|"focus"|"boost"|"free_entry"|"other",
       "bankroll_at_time":  300.0 | null,   # bankroll when bet was placed
+      "source":            "ud_lab"|"pitchers"|"manual"|null,  # which suggester
+                                            # produced the ticket; null = bet
+                                            # predates tagging (2026-06-04)
+      "suggested_card":    {...} | null,    # the tapped parlay card as displayed
+                                            # (EV, win prob, payout, leg mults);
+                                            # edited:true if legs changed before save
     }
+
+Each leg may also carry two bet-time stamps (idempotent, never re-derived):
+  slate_* fields — the sportsbook slate row at placement (_capture_leg_slate)
+  ud_*_at_bet    — the saved Underdog board entry at placement (_capture_leg_ud)
 
 Legacy schema (pre-Phase-1 of structured parlays) had freeform `players`
 and `ou` strings. Those are converted on read by `_migrate_legacy()`.
@@ -92,6 +102,20 @@ _SLATE_CAPTURE_FIELDS = (
     "slate_captured_at",
 )
 
+# Bet-time Underdog board capture (2026-06-04). The slate_* fields above
+# record the SPORTSBOOK state at placement; these record the UD price —
+# the market actually bet. The board file (data/ud_lines_<date>.json) is
+# last-save-wins, so without this stamp the bet-time multipliers are lost
+# the moment the board is updated after betting. hi/lo are stored as 1.0
+# when UD shows no multiplier (symmetric pick), matching the UD Lab UI.
+# Preserved by presence (not truthiness) so a null line survives updates.
+_UD_CAPTURE_FIELDS = (
+    "ud_line_at_bet",
+    "ud_hi_at_bet",
+    "ud_lo_at_bet",
+    "ud_captured_at",
+)
+
 
 def _normalize_leg(leg: dict) -> dict:
     """Coerce one leg dict into the canonical shape."""
@@ -116,6 +140,11 @@ def _normalize_leg(leg: dict) -> dict:
     # on subsequent updates.
     for k in _SLATE_CAPTURE_FIELDS:
         if k in leg and leg[k] not in ("", None):
+            out[k] = leg[k]
+    # Preserve bet-time UD board capture by key presence: ud_line_at_bet
+    # can legitimately be None (mults entered, no line) and must survive.
+    for k in _UD_CAPTURE_FIELDS:
+        if k in leg:
             out[k] = leg[k]
     return out
 
@@ -187,6 +216,21 @@ def _normalize(bet: dict) -> dict:
         # A free entry should always tag as such; otherwise the analysis
         # buckets get muddled. Trust the free_entry flag over a stale reason.
         reason = "free_entry"
+    # Which suggester (if any) produced this ticket (2026-06-04). The JS
+    # form always sends a value for NEW bets ("ud_lab" / "pitchers" via the
+    # parlay-card handoff, else "manual"), so None means the bet predates
+    # the feature — unknown provenance, kept distinct from "manual" so the
+    # by-source analysis never miscounts history.
+    source = (bet.get("source") or "").strip().lower()
+    if source not in ("ud_lab", "pitchers", "manual"):
+        source = None if "source" not in bet else "manual"
+    # The suggested card as displayed at tap time (EV, win prob, payout,
+    # per-leg multipliers). Free-form dict — captured verbatim, never
+    # recomputed. The JS marks it edited:true when the saved legs no
+    # longer exactly match the tapped card.
+    card = bet.get("suggested_card")
+    if not isinstance(card, dict) or not card:
+        card = None
     return {
         "id": bet.get("id") or _new_id(),
         "date": (bet.get("date") or "").strip(),
@@ -200,6 +244,8 @@ def _normalize(bet: dict) -> dict:
         "payout": _coerce_float(bet.get("payout"), None),
         "stake_reason": reason,
         "bankroll_at_time": _coerce_float(bet.get("bankroll_at_time"), None),
+        "source": source,
+        "suggested_card": card,
     }
 
 
@@ -234,6 +280,33 @@ def _capture_leg_slate(leg: dict, slate_by_pid: dict) -> None:
     leg["slate_captured_at"] = datetime.now(timezone.utc).isoformat()
 
 
+def _capture_leg_ud(leg: dict, board: dict) -> None:
+    """Stamp the leg with the saved Underdog board entry for its pitcher
+    (line + Higher/Lower multipliers as last saved in the UD Lab).
+    Idempotent like _capture_leg_slate: once stamped, later updates leave
+    the placement state alone. A leg whose pitcher has no board entry is
+    left unstamped — "no UD data captured" stays distinguishable from
+    "UD showed a symmetric pick" (hi/lo stamped as 1.0).
+
+    Caveat: the board is last-save-wins, so this records what was last
+    SAVED in the Lab, which can lag UD's app if the user didn't re-save
+    before betting. The suggested_card snapshot (tap-time, client-side)
+    covers that gap for suggester-driven bets."""
+    if leg.get("ud_captured_at"):
+        return
+    pid = leg.get("pitcher_id")
+    if pid is None:
+        return
+    e = board.get(str(pid))
+    if not e:
+        return
+    leg["ud_line_at_bet"] = e.get("line")
+    leg["ud_hi_at_bet"] = e.get("hi") if e.get("hi") is not None else 1.0
+    leg["ud_lo_at_bet"] = e.get("lo") if e.get("lo") is not None else 1.0
+    from datetime import datetime, timezone
+    leg["ud_captured_at"] = datetime.now(timezone.utc).isoformat()
+
+
 def add_bet(user_id: str, bet: dict) -> dict:
     state = load_bets(user_id)
     normalized = _normalize(bet)
@@ -260,6 +333,19 @@ def add_bet(user_id: str, bet: dict) -> dict:
             _capture_leg_slate(leg, by_pid)
     except Exception as e:  # noqa: BLE001
         print(f"bet-time slate capture failed: {e}")
+    # Stamp each leg with the saved Underdog board (line + multipliers) so
+    # the price actually bet survives later board updates. Non-fatal, same
+    # contract as the slate capture above.
+    try:
+        from datetime import date as _date
+        from . import ud_lines as _ud
+        target_iso = normalized.get("date") or _date.today().isoformat()
+        board = _ud.load(_date.fromisoformat(target_iso))
+        if board:
+            for leg in normalized["legs"]:
+                _capture_leg_ud(leg, board)
+    except Exception as e:  # noqa: BLE001
+        print(f"bet-time UD board capture failed: {e}")
     state["bets"].append(normalized)
     save_bets(user_id, state)
     return normalized

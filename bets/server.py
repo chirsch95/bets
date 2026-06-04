@@ -179,6 +179,14 @@ def refresh():
         if proc.returncode != 0:
             body = (proc.stderr or proc.stdout or "pipeline exited non-zero").strip()
             return f"<pre>refresh failed:\n{body}</pre>", 500
+        # Journal the UD Lab's suggested parlays under the fresh projections
+        # (post-lineup re-runs are the bet-relevant state). Non-fatal; no-op
+        # until a UD board has been saved for the day.
+        try:
+            from . import ud_parlay
+            ud_parlay.snapshot(_today(), "refresh")
+        except Exception as e:  # noqa: BLE001
+            print(f"ud parlay snapshot failed: {e}")
         # On the prod host (Air), commit+push under the same lock so the
         # 60s gitpull cron never observes a dirty working tree mid-refresh.
         # Laptop dev runs leave BETS_AUTO_PUSH unset, so manual /push (or
@@ -568,6 +576,15 @@ def api_ud_lines_bulk():
     if not isinstance(incoming, dict):
         return jsonify({"error": "board object required"}), 400
     board = ud_lines.save_many(target, incoming)
+    # Journal the suggested parlays at this board state ("Save all" is the
+    # moment Chad's workflow re-prices the board, so this is the suggester
+    # state he acts on). Single-cell edits (POST /api/ud-line) deliberately
+    # don't snapshot — a board mid-edit isn't a decision state.
+    try:
+        from . import ud_parlay
+        ud_parlay.snapshot(target, "board-save")
+    except Exception as e:  # noqa: BLE001
+        print(f"ud parlay snapshot failed: {e}")
     return jsonify({"date": target.isoformat(), "board": board})
 
 

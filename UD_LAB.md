@@ -45,8 +45,11 @@ The morning import is the only manual capture, and it's part of the normal flow.
 ## The UD Lab tab (`bets/web.py`)
 
 - **Comparison table**, sorted by sportsbook line high→low (mirrors the UD
-  board). Columns: Proj, Bk ln, Live (sportsbook verdict), **UD ln** (editable),
-  **UD mult** (Hi/Lo inputs), Model P, **Mkt P**, **Edge**, **UD verdict**.
+  board). Columns: **Opp** (vs/@ + abbreviated team), **Time** (first pitch CT
+  + countdown → live inning/K → Final; same cell as the Pitchers tab, ticks
+  every minute, row dims once first pitch passes), Proj, Bk ln, Live
+  (sportsbook verdict), **UD ln** (editable), **UD mult** (Hi/Lo inputs),
+  Model P, **Mkt P**, **Edge**, **UD verdict**.
   Each UD line prefills with the sportsbook line; edit the few that differ.
 - **De-vig:** `udImpliedOver(hi, lo) = (1/hi) / (1/hi + 1/lo)` → UD's own implied
   P(over) when it prices the pick. Symmetric (1.00/1.00) → fall back to the
@@ -58,12 +61,45 @@ The morning import is the only manual capture, and it's part of the normal flow.
 - **Lineup indicators:** per-row green/red dot + parlay-card border, driven by
   `lineupPending(r)` (opp_lineup_json presence). Mirrors the sportsbook
   suggester's gating so you don't toggle to the Pitchers tab.
-- **Suggested parlays:** 2- & 3-leg, EV-ranked, deduped (no pitcher twice; one
-  leg per game). Payout = base × ∏(chosen-side multipliers); **boosted base =
-  standard + 0.5** (2-leg 3.5, 3-leg 6.5 — confirmed from real entries).
-  ⏰ **place-early** badge when EV ≥ 0.10 *and* the edge leans on a soft
-  (symmetric, stale) UD line.
+- **Suggested parlays:** 2- & 3-leg, EV-ranked, per-section pitcher cap (one
+  leg per game, games within 3 hrs). Payout = base × ∏(chosen-side
+  multipliers); **boosted base = standard + 0.5** (2-leg 3.5, 3-leg 6.5 —
+  confirmed from real entries).
+  **△ unpriced caution** (replaced ⏰ place-early 2026-06-04): flags cards
+  with legs UD hasn't priced (symmetric) — the edge rests on the model alone
+  and early tracking has those legs underperforming priced ones (3/14 vs
+  22/33, tiny n). The old ⏰ badge never fired: its premise (symmetric UD
+  lines lagging the sharp consensus) occurs ~never — UD attached multipliers
+  46/48 times its line diverged across 364 captured board rows.
+- **Tap a parlay card** (lineups green) → pre-fills the Bets form AND carries
+  a **tap-time card snapshot** (EV, win prob, payout, per-leg multipliers)
+  into the saved bet — see Bet provenance below.
 - **📊 My record** button → loads `GET /api/bet-record` into a panel.
+
+## Bet provenance + bet-time capture (2026-06-04)
+
+Every NEW bet records where it came from and the prices on screen when placed:
+
+- **`source`** on the bet: `"ud_lab"` / `"pitchers"` (tapped that suggester's
+  card) / `"manual"` (hand-entered). `null` = bet predates the feature.
+  If a tapped card's legs are tweaked before saving, the source sticks and
+  the snapshot gains `edited: true`; if the legs are fully replaced, the bet
+  saves as `manual` and the stale snapshot is dropped.
+- **`suggested_card`** on the bet: the tapped card exactly as displayed —
+  the claim the suggester made at tap time, immune to later churn.
+- **Per-leg UD board stamp** (`ud_line_at_bet`, `ud_hi_at_bet`,
+  `ud_lo_at_bet`, `ud_captured_at`): the saved board entry at save time,
+  stamped server-side in `wagers.add_bet` (mirrors the `slate_*` sportsbook
+  stamp; idempotent, survives edits). hi/lo = 1.0 means symmetric. Legs with
+  no board entry stay unstamped ("no UD data" ≠ "symmetric"). Caveat: this
+  is the last-SAVED board — Chad's flow (re-import board → save → bet)
+  keeps it honest; the tap-time card snapshot covers any residual gap.
+- **Suggested-parlay journal** (`bets/ud_parlay.py`): the suggester's cards
+  are appended to `data/ud_parlay_snaps_<date>.jsonl` (`{ts, trigger, two,
+  three}`) on every pipeline **refresh** and every board **Save all** — NOT
+  on single-cell edits. Kills the "suggestions churned, what did I actually
+  see?" reconstruction problem; `grade_ud.py`-style analysis can grade the
+  exact decision states.
 
 ## Storage (`data/`, gitignored, Air-canonical)
 
@@ -72,6 +108,7 @@ The morning import is the only manual capture, and it's part of the normal flow.
 | `ud_lines_<date>.json` | Live entry / bet-time board. `{pid: {line, hi, lo}}`. |
 | `ud_lines_<date>_morning.json` | Auto-frozen morning baseline (first save; never overwritten). |
 | `ud_lines_close_<date>.json` | Closing board — **optional/deprecated** (closing-capture workflow dropped). |
+| `ud_parlay_snaps_<date>.jsonl` | Append-only journal of the suggested parlays (one line per refresh / Save all). |
 
 These are hand-entered; the pipeline never overwrites them, and they don't pass
 through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
@@ -90,11 +127,18 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 
 - **`ud_lines.py`** — the slate-level pricing store + the **morning auto-freeze**
   (in `_write`: first non-empty save of the day copies to the `_morning` file).
+- **`ud_parlay.py`** — the ONE Python source of the UD suggester logic
+  (udCompare/udVerdict/combos/selection ports) + the suggested-parlay
+  journal writer. `grade_ud.py` imports from here. Same dual-implementation
+  caveat as `parlay_suggest.py`: the JS in `web.py` implements the same
+  logic — change both when tuning either.
 - **`ud_vision.py`** — Claude vision (`claude-sonnet-4-6`, raw `requests`)
   extracts line + Hi/Lo per pitcher and matches names → slate `pitcher_id`.
   Requires `ANTHROPIC_API_KEY` (Air `.env`). Never auto-saves — review first.
 - **`bet_record.py`** — computes the betting record + edge-band report; shared
-  by the CLI and the endpoint so they never disagree.
+  by the CLI and the endpoint so they never disagree. (By-source and
+  by-priced-status splits become meaningful once tagged bets accumulate —
+  add them here when there's data to show.)
 
 ## CLI tools (repo root; run with the Air's `.venv/bin/python`)
 
@@ -125,6 +169,17 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
   staggered locks, live-line poisoning). Burden not worth it. Replaced by the
   per-leg-hit-rate-by-edge-band signal (`grade_my_bets`) + the daily calibration
   check — both automatic, lower-variance than parlay ROI.
+- **⏰ place-early → △ unpriced caution (2026-06-04).** The place-early badge
+  never fired (0 qualifying legs in 364 board rows) because UD prices its
+  divergent lines ~always; meanwhile unpriced legs were the worst performers.
+  Chad picked "repurpose as caution" over "remove" — the by-priced-status
+  tracking will confirm or kill the pattern.
+- **Bet placement flow (2026-06-04):** wait for lineups (green) → **full
+  board screenshot re-import** (not selective leg edits — mixing fresh and
+  stale prices makes the suggester chase staleness) → Save all → take the
+  top suggestion or pass, ONCE → place immediately (UD locks the multiplier
+  at entry; later moves can't hurt a placed ticket). Pitcher-tab ideas get
+  verified on the UD Lab before placing — never bet a price you didn't check.
 - **Bet after lineups + a re-run** — not off the morning board.
 - **Morning baseline auto-frozen** so intraday updates can't destroy it.
 - **Outcome ROI can't confirm an edge** (#3): over ~95 parlays the CI spans
@@ -147,8 +202,11 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 - **Tune the bet bar** from the edge bands as samples grow (monthly, per Path C).
   Candidate: raise the floor from 0.065 toward 0.10.
 - **4/5-leg boosted bases** unconfirmed (suggester only builds 2/3-leg).
-- **Per-leg UD price not stored** in the ledger (only parlay odds) — add it if
-  UD-vs-UD CLV is ever wanted.
+- ~~Per-leg UD price not stored in the ledger~~ — **done 2026-06-04** (the
+  `ud_*_at_bet` leg stamps; see Bet provenance above).
+- **By-source / by-priced-status splits in `bet_record.py`** once tagged bets
+  accumulate (~2 weeks) — the direct answer to "are UD Lab suggestions worse
+  than Pitcher-tab ones?" and "are unpriced legs really worse?".
 - **Phase 2** (prior handoff): switch the live suggester to a UD objective,
   Flex-vs-Power analysis, leg-correlation adjustment (same-game / umpire /
   weather).
