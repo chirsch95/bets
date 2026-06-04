@@ -1,0 +1,2 @@
+date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
+2026-06-04,two_leg,1,2,Lucas Giolito,608337,under,3.5,120.0,0.86,0.464,Coleman Crow,689441,under,3.5,108.0,0.755,0.457,,,,,,,,358,4.576,0.6493,0.212048,0.437252,1.971197,
