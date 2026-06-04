@@ -2955,6 +2955,15 @@ CSS = """
      clears the early green glow. */
   .udlab-pl-card.lineup-ready { border-color: var(--green); }
   .udlab-pl-card.lineup-blocked { border-color: var(--red); box-shadow: none; opacity: 0.85; }
+  /* On the Bets URL the whole UD parlay card is the "add to bets" affordance
+     (mirrors .parlay-card[data-legs]); lineup-blocked cards have no data-legs
+     so they keep the default cursor and get an explicit not-allowed hint. */
+  html.is-bets .udlab-pl-card[data-legs] {
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  html.is-bets .udlab-pl-card[data-legs]:hover { background: var(--hover-overlay); }
+  html.is-bets .udlab-pl-card.lineup-blocked { cursor: not-allowed; }
   /* Per-row lineup-posted dot in the UD Lab pitcher table — same red/green
      language as the parlay cards. */
   .udlab-lineup-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
@@ -4767,7 +4776,20 @@ def _render_js() -> str:
     const lineupCls = pendingLegs.length ? "lineup-blocked" : "lineup-ready";
     const lineupTip = pendingLegs.length
       ? "Waiting on lineups: " + pendingLegs.map(l => l.pitcher).join(", ")
-      : "All lineups posted";
+      : "All lineups posted — tap to add this parlay to your bets";
+    // Cross-tab handoff (mirrors the sportsbook suggester's renderParlayCard):
+    // compact JSON legs for the Bets-form pre-populator. Line = the UD line —
+    // that's the number actually on the ticket — so the form's yellow
+    // "overridden" border correctly flags any divergence from the sportsbook
+    // slate line. Same lineup gating: data-legs is omitted while any leg's
+    // lineup is TBD, so the card stays un-clickable until everything posts.
+    const formLegs = x.legs.map(l => ({{
+      pitcher: l.pitcher,
+      pitcher_id: l.pitcher_id,
+      line: l.udLine,
+      ou: l.dir === "over" ? "O" : "U",
+    }}));
+    const dataAttr = pendingLegs.length ? "" : ` data-legs='${{escapeHTML(JSON.stringify(formLegs))}}'`;
     const legHtml = x.legs.map(l =>
       `<div class="udlab-pl-leg">${{l.soft ? "★ " : ""}}${{escapeHTML(l.pitcher)}}${{l.lineupPending ? ' <span class="lineup-pending">TBD</span>' : ""}} <strong>${{l.dir.toUpperCase()}} ${{l.udLine}}</strong>${{l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""}} · ${{pct1(l.prob)}}</div>`
     ).join("");
@@ -4776,7 +4798,7 @@ def _render_js() -> str:
     const overlapBadge = x.overlapsTop2Leg
       ? `<div class="parlay-overlap-badge" title="Shares ${{escapeHTML(x.overlapsTop2Leg)}} with the top 2-leg ticket. 2026-05-15 audit: overlapping 3-leg picks went -78% ROI vs disjoint +22% (small sample) — bet consciously.">⚠ overlap</div>`
       : "";
-    return `<div class="udlab-pl-card ${{lineupCls}}${{placeEarly ? " udlab-pl-early" : ""}}" title="${{escapeHTML(lineupTip)}}">
+    return `<div class="udlab-pl-card ${{lineupCls}}${{placeEarly ? " udlab-pl-early" : ""}}"${{dataAttr}} title="${{escapeHTML(lineupTip)}}">
       ${{overlapBadge}}
       <div class="udlab-pl-head">${{placeEarly ? '<span class="udlab-early" title="Edge leans on soft UD line(s) that lag the sharp market — place it before UD moves the line or adds a multiplier and the edge is gone">⏰ place early</span> ' : ""}}${{x.confirmed ? "" : "~"}}${{x.payMult.toFixed(2)}}× · win ${{pct1(x.prob)}} · <span class="${{x.ev > 0 ? "pos" : "neg"}}">EV ${{(x.ev >= 0 ? "+" : "")}}${{x.ev.toFixed(3)}}</span></div>
       ${{legHtml}}
@@ -8958,12 +8980,13 @@ def _render_js() -> str:
     updateHeaderDate();
     applyNoisePreference();
 
-    // Single delegated handler for tapping a parlay-suggester card.
+    // Single delegated handler for tapping a parlay-suggester card —
+    // both the Pitchers-tab sportsbook cards and the UD Lab parlay cards.
     // The whole card is the click target — gated to the Bets URL so
     // the form handoff doesn't run on public, where there's nowhere to
     // hand off to. Document-level delegation survives every re-render.
     document.addEventListener("click", (e) => {{
-      const card = e.target.closest(".parlay-card[data-legs]");
+      const card = e.target.closest(".parlay-card[data-legs], .udlab-pl-card[data-legs]");
       if (!card || !isBets()) return;
       handleAddParlayToBets(card.dataset.legs || "[]");
     }});
