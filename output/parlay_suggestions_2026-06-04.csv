@@ -1,1 +1,2 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
+2026-06-04,two_leg,1,2,Coleman Crow,689441,under,3.5,120.0,0.755,0.435,Carlos Rodón,607074,over,5.5,121.0,0.588,0.442,,,,,,,,386,4.862,0.44394,0.19227,0.25167,1.158436,
