@@ -1,2 +1,2 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
-2026-06-04,two_leg,1,2,Lucas Giolito,608337,under,3.5,117.0,0.86,0.459,Coleman Crow,689441,under,3.5,110.0,0.755,0.463,,,,,,,,356,4.557,0.6493,0.212517,0.436783,1.95886,
+2026-06-04,two_leg,1,2,Lucas Giolito,608337,under,3.5,117.0,0.87,0.459,Coleman Crow,689441,under,3.5,110.0,0.755,0.463,,,,,,,,356,4.557,0.65685,0.212517,0.444333,1.993265,
