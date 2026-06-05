@@ -185,7 +185,7 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 - **Outcome ROI can't confirm an edge** (#3): over ~95 parlays the CI spans
   zero. Don't let win/loss results trigger scaling — use per-leg + calibration.
 
-## Findings to date (2026-05-29 → 30; small samples — DO NOT act yet)
+## Findings to date (small samples — DO NOT act yet)
 
 - **5/29 (first real read):** model's UD-aware picks went **9/19 (47%)** on the
   post-lineup lines — below UD breakeven. One slate.
@@ -194,6 +194,17 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 - **Edge-band signal:** legs at **0.10–0.15 hit 67%** (n=52) but **0.065–0.10
   hit 47%** (n=30) → the bet bar's low end may be too low. Watch as samples grow;
   bring to the monthly bar review.
+- **Multiplier-side analysis (2026-06-04, slates 5/29–6/03):** 77% of
+  UD-suggested legs take the >1-multiplier side — and those hit **22/33 = 67%**
+  (above their multiplier-lowered breakeven). The drag is **unpriced
+  (symmetric) legs: 3/14 = 21%** combined — origin of the △ caution flag.
+  Model Brier 0.253 vs UD's implied 0.275 on priced legs (model closer 65%).
+  Reconstructed suggested cards went 5–14 but **+0.22u** (avg pay ~3.9×,
+  realized ≈ modeled win prob); Chad's actual tickets same span went 3–21,
+  −$39.10 — the gap between those two is what the provenance capture
+  (source / suggested_card / ud_*_at_bet) now measures directly.
+- **Model-side context:** the v0 flip case collapsed as the season matured —
+  see `MODEL_CHECK_2026-06-04.md` (expected June 7 verdict: HOLD, v2 stays).
 
 ## Open items / future refinement
 
