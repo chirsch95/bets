@@ -62,7 +62,7 @@ SHOW_HITTERS = False
 # Edge bands. Mirror values used by the JS classifier — keep in sync with
 # live.py + parlay_suggest.py. Applied against CALIBRATED edge (cal_edge_v2)
 # under Path C — see pickEdge() helper in the JS below and project_path_c memory.
-FOCUS_EDGE_MIN = 0.065
+FOCUS_EDGE_MIN = 0.10  # raised from 0.065 on 2026-06-06 — see live.py comment
 FOCUS_EDGE_MAX = 0.15
 INVESTIGATE_EDGE = 0.20
 # Minimum line to consider a pitcher as a focus pick. Real starters are
@@ -4568,8 +4568,10 @@ def _render_js() -> str:
     // when the model disagrees with the market this hard, the market usually
     // knows something the model doesn't (scratch risk, bullpen game, news).
     if (c.edge > FOCUS_MAX) return {{ cls: "investigate", label: "⚠ Investigate", soft }};
-    if (c.edge >= 0.05) return {{ cls: "focus dir-" + c.dir, label: star + "Bet " + dirUp, soft }};
-    if (c.edge >= 0.02) return {{ cls: "focus dir-" + c.dir, label: star + "Lean " + dirUp, soft }};
+    // Floor raised to the focus band's 0.10 (2026-06-06): the old Bet ≥0.05 /
+    // Lean ≥0.02 tiers sat below the bet bar — sub-0.10 legs hit 36–44%
+    // all-time vs 62% for 0.10–0.15. Below the band: no bettable verdict.
+    if (c.edge >= FOCUS_MIN) return {{ cls: "focus dir-" + c.dir, label: star + "Bet " + dirUp, soft }};
     return {{ cls: "noise", label: "—", soft }};
   }}
 
@@ -4631,7 +4633,7 @@ def _render_js() -> str:
       const liveEdge = pickEdge(r);
       const liveDir = liveEdge === null ? null : (liveEdge > 0 ? "over" : "under");
       const liveBet = isBettableFocus(r);
-      const udBet = ud.label.indexOf("Bet") >= 0 || ud.label.indexOf("Lean") >= 0;
+      const udBet = ud.label.indexOf("Bet") >= 0;
       changed = (liveBet !== udBet) || (liveBet && udBet && liveDir !== c.dir);
     }}
     const dirSuffix = c && c.dir ? " " + c.dir.charAt(0).toUpperCase() : "";
@@ -4698,9 +4700,10 @@ def _render_js() -> str:
       if (udLine < MIN_LINE_FOR_FOCUS) continue;
       const m = udMults(r);
       const c = udCompare(r, udLine, m.hi, m.lo);
-      // Only legs where the model has positive edge over UD's price — capped
-      // at the focus band's 0.15 ceiling (phantom-edge cap, see udVerdict).
-      if (!c || c.pickProb === null || !c.dir || c.edge === null || c.edge < 0.02 || c.edge > FOCUS_MAX) continue;
+      // Only legs inside the focus band [0.10, 0.15] vs UD's price — the
+      // 0.15 phantom-edge cap (see udVerdict) plus the 0.10 floor
+      // (2026-06-06: sub-0.10 legs hit below UD breakeven all-time).
+      if (!c || c.pickProb === null || !c.dir || c.edge === null || c.edge < FOCUS_MIN || c.edge > FOCUS_MAX) continue;
       const gpk = parseInt(r.game_pk, 10);
       legs.push({{
         pitcher: r.pitcher || "", pitcher_id: pid, dir: c.dir,

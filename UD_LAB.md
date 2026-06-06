@@ -29,9 +29,10 @@ so the integrity of these measurements matters.
    the Air). Lineups are "the biggest single accuracy bump" — a re-run flips
    each pitcher's `opp_k_source` from team-average to the real lineup and
    re-derives the edge — and it confirms the starter isn't scratched.
-3. **Re-check on the UD Lab:** the per-pitcher verdict (Bet/Lean OVER/UNDER) is
+3. **Re-check on the UD Lab:** the per-pitcher verdict (Bet OVER/UNDER) is
    computed against UD's *actual* price. If UD's numbers moved during the day,
-   update them; if the verdict still reads Bet/Lean, the edge survived the move.
+   update them; if the verdict still reads Bet, the edge survived the move.
+   (The Lean tier was removed 2026-06-06 — it sat below the bet bar.)
    - Green/red **lineup dot** per row (green = opp lineup posted).
    - Suggested **parlay cards** get a green border when every leg's lineup is
      posted, red while any is still TBD (TBD chip on the pending leg).
@@ -156,17 +157,35 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 
 ## Key constants / formulas
 
-- Focus edge band **[0.065, 0.15]**; investigate ≥ 0.20; `MIN_LINE_FOR_FOCUS` 3.0.
-- Bet criterion (Path C): per-leg calibrated edge in [0.065, 0.15], ≥ 2 legs.
-- **UD verdict tiers:** edge ≥ 0.05 → Bet; ≥ 0.02 → Lean; **> 0.15 → ⚠ Investigate
-  (NOT bettable, excluded from the parlay leg pool)** — the phantom-edge cap,
-  added 2026-06-06 (see Decisions).
+- Focus edge band **[0.10, 0.15]** (floor raised from 0.065 on 2026-06-06);
+  investigate ≥ 0.20; `MIN_LINE_FOR_FOCUS` 3.0.
+- Bet criterion (Path C): per-leg calibrated edge in [0.10, 0.15], ≥ 2 legs
+  (was [0.065, 0.15] until 2026-06-06).
+- **UD verdict tiers:** edge in **[0.10, 0.15] → Bet**; **> 0.15 → ⚠ Investigate
+  (NOT bettable, excluded from the parlay leg pool)** — the phantom-edge cap;
+  below 0.10 → "—". The old Bet ≥ 0.05 / Lean ≥ 0.02 tiers were removed
+  2026-06-06 (see Decisions).
+- Shadow suggester floor stays **0.065** (`SHADOW_EDGE_MIN`) so the dropped
+  0.065–0.10 band keeps accumulating graded evidence.
 - UD payouts `{2:3, 3:6, 4:10, 5:20}`; boosted `{2:3.5, 3:6.5}` (4/5-leg boosted
   estimated as standard + 0.5, **unconfirmed** — verify if ever built).
 - **Breakeven:** 2-leg @3× = **57.7%**/leg; 3-leg @6× = **55.0%**/leg.
 
 ## Decisions (and why)
 
+- **Bet-bar floor raised 0.065 → 0.10; UD Lean tier removed (2026-06-06).**
+  Same session as the phantom-edge cap, at Chad's direction. The
+  `grade_my_bets` edge-band report showed the 0.065–0.10 band hitting
+  36–44% all-time (below UD breakeven ~57.7%) while 0.10–0.15 hit 62% —
+  the only band clearing breakeven. The UD verdict's old Bet ≥ 0.05 /
+  Lean ≥ 0.02 tiers and the LEG_EDGE_MIN 0.02 pool floor all sat *below*
+  even the old bar, so they went too: the bettable band is now [0.10, 0.15]
+  everywhere (sportsbook focus, UD verdict, both parlay pools). The shadow
+  suggester keeps its 0.065 floor (`SHADOW_EDGE_MIN`) so the dropped band
+  stays graded and the decision is reversible on data. Note: graded
+  surfaces (Track Record, report card) reclassify history under the new
+  band — past-period focus counts shrink accordingly (by design, per the
+  graded-surface-parity rule).
 - **Phantom-edge cap on UD verdicts + leg pool (2026-06-06).** The original
   udVerdict had no upper bound — any edge ≥ 0.05 vs UD's price read "Bet", and
   the leg pool ranked by *descending* edge, so the biggest model-vs-market
@@ -225,8 +244,9 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 
 - **Line-fixed CLV** (hold the entry line fixed; infer the close's implied K
   distribution and evaluate P at the bet line) — not built; CLV de-prioritized.
-- **Tune the bet bar** from the edge bands as samples grow (monthly, per Path C).
-  Candidate: raise the floor from 0.065 toward 0.10.
+- ~~Tune the bet bar: raise the floor from 0.065 toward 0.10~~ — **done
+  2026-06-06** (with the phantom-edge cap; see Decisions). The monthly
+  bar review continues via the shadow band + `grade_my_bets` edge report.
 - **4/5-leg boosted bases** unconfirmed (suggester only builds 2/3-leg).
 - ~~Per-leg UD price not stored in the ledger~~ — **done 2026-06-04** (the
   `ud_*_at_bet` leg stamps; see Bet provenance above).

@@ -70,15 +70,23 @@ def _is_focus(edge: float | None) -> bool:
     return FOCUS_EDGE_MIN <= a <= FOCUS_EDGE_MAX
 
 
+# Shadow floor stays at the ORIGINAL 0.065 even though the production floor
+# rose to 0.10 (2026-06-06) — the shadow track record is how we keep grading
+# the bands production no longer bets (0.065–0.10 low band + 0.15–0.20 gap),
+# so the floor decision stays revisitable on data instead of memory.
+SHADOW_EDGE_MIN = 0.065
+
+
 def _is_focus_or_gap(edge: float | None) -> bool:
-    # Shadow band: focus PLUS the 0.15-0.20 "noise gap" the production
-    # suggester currently filters out. The 2026-05-11 dead-band audit found
-    # the gap had +45% single-leg ROI (n=32) over 11 settled days — strong
-    # enough to track but not yet promoted to production selection.
+    # Shadow band: focus PLUS the bands the production suggester filters out
+    # (0.065–0.10 low band since 2026-06-06, 0.15–0.20 "noise gap" since
+    # inception). The 2026-05-11 dead-band audit found the gap had +45%
+    # single-leg ROI (n=32) over 11 settled days — strong enough to track
+    # but not yet promoted to production selection.
     if edge is None:
         return False
     a = abs(edge)
-    return FOCUS_EDGE_MIN <= a < INVESTIGATE_EDGE
+    return SHADOW_EDGE_MIN <= a < INVESTIGATE_EDGE
 
 
 def _american_to_decimal(odds: float | None) -> float | None:

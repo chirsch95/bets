@@ -15,7 +15,7 @@ What it does
    reproduces production cal_edge_v2 at the sportsbook line exactly) and the
    UD-Lab JS logic ported 1:1 (de-vig multipliers → UD's own implied prob,
    else sharp-consensus at the UD line; reliever/opener gate at line<3.0):
-     - SPORTSBOOK call  = isBettableFocus (cal_edge_v2 ∈ [0.065,0.15], line≥3)
+     - SPORTSBOOK call  = isBettableFocus (cal_edge_v2 ∈ [0.10,0.15], line≥3)
      - UD-AWARE call    = udVerdict (model edge over UD's actual price)
 3. If the slate is settled (actual_ks present), grades each call against the
    actual K total *at its own line* and reports the head-to-head: hit rates,

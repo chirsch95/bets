@@ -42,7 +42,8 @@ from .config import DATA_DIR
 from .model import prob_over_poisson
 
 # Mirrored from web.py (and shared with grade_ud.py, which imports them).
-FOCUS_EDGE_MIN, FOCUS_EDGE_MAX, INVESTIGATE_EDGE = 0.065, 0.15, 0.20
+# Floor raised 0.065 → 0.10 on 2026-06-06 — see live.py comment.
+FOCUS_EDGE_MIN, FOCUS_EDGE_MAX, INVESTIGATE_EDGE = 0.10, 0.15, 0.20
 MIN_LINE_FOR_FOCUS = 3.0
 UD_PAYOUTS = {2: 3, 3: 6, 4: 10, 5: 20}
 UD_PAYOUTS_BOOSTED = {2: 3.5, 3: 6.5}
@@ -51,7 +52,9 @@ UD_BOOSTED_CONFIRMED = {2: True, 3: True}
 # the later game's lineup won't post until after the first has started.
 MAX_GAP_SECONDS = 3 * 3600
 # Minimum model edge over UD's price for a leg to enter the parlay pool.
-LEG_EDGE_MIN = 0.02
+# Was 0.02; raised to the focus floor on 2026-06-06 — pool = the bettable
+# band [FOCUS_EDGE_MIN, FOCUS_EDGE_MAX], nothing below the bar.
+LEG_EDGE_MIN = FOCUS_EDGE_MIN
 
 
 # ---------- model helpers (Python ports of the UD-Lab JS) -------------------
@@ -129,10 +132,11 @@ def ud_verdict(c):
     # knows something the model doesn't (scratch risk, bullpen game, news).
     if c["edge"] > FOCUS_EDGE_MAX:
         return ("⚠ Investigate", "investigate", soft, False)
-    if c["edge"] >= 0.05:
+    # Floor raised to the focus band's 0.10 (2026-06-06): the old Bet >=0.05 /
+    # Lean >=0.02 tiers sat below the bet bar — sub-0.10 legs hit 36–44%
+    # all-time vs 62% for 0.10–0.15. Below the band: no bettable verdict.
+    if c["edge"] >= FOCUS_EDGE_MIN:
         return (f"Bet {c['dir'].upper()}", "focus", soft, True)
-    if c["edge"] >= 0.02:
-        return (f"Lean {c['dir'].upper()}", "focus", soft, True)
     return ("—", "noise", soft, False)
 
 
