@@ -123,6 +123,12 @@ def ud_verdict(c):
     if not c or c.get("edge") is None or not c.get("dir"):
         return ("—", "noise", False, False)
     soft = (not c["priced"]) and c["line_edge"] is not None and c["line_edge"] >= 0.02
+    # Phantom-edge cap (2026-06-06): mirror the sportsbook focus band's 0.15
+    # ceiling. Post-UD-switch, legs with claimed edge > 0.15 hit 15/40 (37%) —
+    # when the model disagrees with the market this hard, the market usually
+    # knows something the model doesn't (scratch risk, bullpen game, news).
+    if c["edge"] > FOCUS_EDGE_MAX:
+        return ("⚠ Investigate", "investigate", soft, False)
     if c["edge"] >= 0.05:
         return (f"Bet {c['dir'].upper()}", "focus", soft, True)
     if c["edge"] >= 0.02:
@@ -278,7 +284,9 @@ def build_legs_from_csv_rows(rows, board):
         hi = e.get("hi") if e else None
         lo = e.get("lo") if e else None
         c = ud_compare(_f(r.get("proj_ks_v2")), s_line, _f(r.get("novig_over")), ud_line, hi, lo)
-        if not c or c["pick_prob"] is None or not c["dir"] or c["edge"] is None or c["edge"] < LEG_EDGE_MIN:
+        # Edge floor AND the focus band's 0.15 ceiling (phantom-edge cap, see
+        # ud_verdict) — mirrors web.py udBuildLegs.
+        if not c or c["pick_prob"] is None or not c["dir"] or c["edge"] is None or c["edge"] < LEG_EDGE_MIN or c["edge"] > FOCUS_EDGE_MAX:
             continue
         lj = (r.get("opp_lineup_json") or "").strip()
         try:

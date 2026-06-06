@@ -158,12 +158,27 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 
 - Focus edge band **[0.065, 0.15]**; investigate ≥ 0.20; `MIN_LINE_FOR_FOCUS` 3.0.
 - Bet criterion (Path C): per-leg calibrated edge in [0.065, 0.15], ≥ 2 legs.
+- **UD verdict tiers:** edge ≥ 0.05 → Bet; ≥ 0.02 → Lean; **> 0.15 → ⚠ Investigate
+  (NOT bettable, excluded from the parlay leg pool)** — the phantom-edge cap,
+  added 2026-06-06 (see Decisions).
 - UD payouts `{2:3, 3:6, 4:10, 5:20}`; boosted `{2:3.5, 3:6.5}` (4/5-leg boosted
   estimated as standard + 0.5, **unconfirmed** — verify if ever built).
 - **Breakeven:** 2-leg @3× = **57.7%**/leg; 3-leg @6× = **55.0%**/leg.
 
 ## Decisions (and why)
 
+- **Phantom-edge cap on UD verdicts + leg pool (2026-06-06).** The original
+  udVerdict had no upper bound — any edge ≥ 0.05 vs UD's price read "Bet", and
+  the leg pool ranked by *descending* edge, so the biggest model-vs-market
+  disagreements dominated the suggested cards. The 2-of-24 losing streak
+  (May 31 – Jun 6) traced to exactly this: post-UD-switch, 56% of bet legs had
+  claimed edge > 0.15 (vs 25% before) and those hit **15/40 = 37%**, while the
+  model's own accuracy (weekly RMSE/bias) was unchanged. Classic phantom-edge:
+  when the model disagrees with the market by that much, the market usually
+  knows something (scratch risk, bullpen game, news). Fix: udVerdict caps at
+  the focus band's 0.15 ceiling (`> 0.15` → "⚠ Investigate", not bettable) and
+  udBuildLegs excludes those legs — restoring the pre-committed Path C band
+  [0.065, 0.15] that `parlay_suggest.py` always enforced on the sportsbook side.
 - **Drop intraday closing screenshots / CLV.** UD CLV needs 2–3 daily
   screenshots and is methodologically messy (line moves, symmetric→priced,
   staggered locks, live-line poisoning). Burden not worth it. Replaced by the

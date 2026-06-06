@@ -4563,6 +4563,11 @@ def _render_js() -> str:
     const dirUp = c.dir.toUpperCase();
     const soft = !c.priced && c.lineEdge !== null && c.lineEdge >= 0.02;
     const star = soft ? "★ " : "";
+    // Phantom-edge cap (2026-06-06): mirror the sportsbook focus band's 0.15
+    // ceiling. Post-UD-switch, legs with claimed edge > 0.15 hit 15/40 (37%) —
+    // when the model disagrees with the market this hard, the market usually
+    // knows something the model doesn't (scratch risk, bullpen game, news).
+    if (c.edge > FOCUS_MAX) return {{ cls: "investigate", label: "⚠ Investigate", soft }};
     if (c.edge >= 0.05) return {{ cls: "focus dir-" + c.dir, label: star + "Bet " + dirUp, soft }};
     if (c.edge >= 0.02) return {{ cls: "focus dir-" + c.dir, label: star + "Lean " + dirUp, soft }};
     return {{ cls: "noise", label: "—", soft }};
@@ -4693,8 +4698,9 @@ def _render_js() -> str:
       if (udLine < MIN_LINE_FOR_FOCUS) continue;
       const m = udMults(r);
       const c = udCompare(r, udLine, m.hi, m.lo);
-      // Only legs where the model has positive edge over UD's price.
-      if (!c || c.pickProb === null || !c.dir || c.edge === null || c.edge < 0.02) continue;
+      // Only legs where the model has positive edge over UD's price — capped
+      // at the focus band's 0.15 ceiling (phantom-edge cap, see udVerdict).
+      if (!c || c.pickProb === null || !c.dir || c.edge === null || c.edge < 0.02 || c.edge > FOCUS_MAX) continue;
       const gpk = parseInt(r.game_pk, 10);
       legs.push({{
         pitcher: r.pitcher || "", pitcher_id: pid, dir: c.dir,
