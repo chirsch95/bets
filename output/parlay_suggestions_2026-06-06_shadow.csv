@@ -1,5 +1,5 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
-2026-06-06,two_leg,1,2,Tatsuya Imai,837227,under,4.5,130.0,0.721,0.425,Braxton Ashcraft,677952,over,5.5,210.0,0.605,0.471,,,,,,,,613,7.13,0.436205,0.200175,0.23603,2.110142,
+2026-06-06,two_leg,1,2,Tatsuya Imai,837227,under,4.5,128.0,0.756,0.418,Braxton Ashcraft,677952,over,5.5,210.0,0.61,0.471,,,,,,,,607,7.068,0.46116,0.196878,0.264282,2.259479,
 2026-06-06,two_leg,2,2,Nick Lodolo,666157,under,4.5,120.0,0.633,0.441,Luinder Avila,679883,over,3.5,-145.0,0.881,0.568,,,,,,,,272,3.717241,0.557673,0.250488,0.307185,1.073005,
-2026-06-06,two_leg,3,2,Jacob Misiorowski,694819,over,8.5,120.0,0.552,0.437,Jack Leiter,683004,over,5.5,122.0,0.501,0.429,,,,,,,,388,4.884,0.276552,0.187473,0.089079,0.35068,
-2026-06-06,three_leg,1,3,Tatsuya Imai,837227,under,4.5,130.0,0.721,0.425,Luinder Avila,679883,over,3.5,-145.0,0.881,0.568,Braxton Ashcraft,677952,over,5.5,210.0,0.605,0.471,1105,12.047241,0.384297,0.113699,0.270597,3.629714,Tatsuya Imai
+2026-06-06,two_leg,3,2,Jacob Misiorowski,694819,over,8.5,115.0,0.552,0.439,Jack Leiter,683004,over,5.5,122.0,0.501,0.429,,,,,,,,377,4.773,0.276552,0.188331,0.088221,0.319983,
+2026-06-06,three_leg,1,3,Tatsuya Imai,837227,under,4.5,128.0,0.756,0.418,Luinder Avila,679883,over,3.5,-145.0,0.881,0.568,Braxton Ashcraft,677952,over,5.5,210.0,0.61,0.471,1094,11.942483,0.406282,0.111827,0.294455,3.852015,Tatsuya Imai
