@@ -2555,6 +2555,9 @@
   .tag-focus.tag-dir-over { background: var(--green); color: #001a00; }
   .tag-focus.tag-dir-under { background: var(--red); color: #2a0000; }
   .tag-investigate { background: var(--yellow); color: #2a1f00; }
+  /* Watch tier: visible but deliberately un-bet-like — dashed outline, no
+     fill, so it never reads as a green/red call at a glance. */
+  .tag-watch { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
   .tag-noise { background: transparent; color: var(--muted); }
   .tag-noline { background: transparent; color: var(--muted); }
   .lineup-pending {
@@ -2945,6 +2948,7 @@
 (() => {
   const FOCUS_MIN = 0.1;
   const FOCUS_MAX = 0.15;
+  const WATCH_MIN = 0.08;
   const INVESTIGATE = 0.2;
   const MIN_LINE_FOR_FOCUS = 3.0;
   const RAW_BASE = "https://raw.githubusercontent.com/chirsch95/bets/main/output/";
@@ -2953,7 +2957,7 @@
   // recompute calibrated P(over) at a hand-entered Underdog line, matching
   // the production cal_edge_v2. null → no calibration fit yet; fall back to
   // raw Poisson (same as calibration.apply()).
-  const CAL_V2 = { a: 0.3220915806101697, b: 0.005310643353878975 };
+  const CAL_V2 = { a: 0.23697783118055368, b: 0.07417472091685841 };
   // Underdog power-play base multipliers by leg count (all-must-hit).
   // Standard = symmetric picks (no per-pick multiplier shown).
   const UD_PAYOUTS = { 2: 3, 3: 6, 4: 10, 5: 20 };
@@ -4422,6 +4426,12 @@
     // Lean ≥0.02 tiers sat below the bet bar — sub-0.10 legs hit 36–44%
     // all-time vs 62% for 0.10–0.15. Below the band: no bettable verdict.
     if (c.edge >= FOCUS_MIN) return { cls: "focus dir-" + c.dir, label: star + "Bet " + dirUp, soft };
+    // Watch tier (2026-06-07): 0.08–0.10 is visible but NOT bettable — the
+    // band hit ~39–43% all-time (UD breakeven ~58%), so it stays out of the
+    // leg pool. Compromise for "what am I passing on?" without re-lowering
+    // the bar one day after the raise. Floor only comes down if the shadow
+    // band recovers above breakeven (monthly review).
+    if (c.edge >= WATCH_MIN) return { cls: "watch", label: "Watch " + dirUp, soft };
     return { cls: "noise", label: "—", soft };
   }
 

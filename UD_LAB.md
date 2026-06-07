@@ -163,7 +163,9 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
   (was [0.065, 0.15] until 2026-06-06).
 - **UD verdict tiers:** edge in **[0.10, 0.15] → Bet**; **> 0.15 → ⚠ Investigate
   (NOT bettable, excluded from the parlay leg pool)** — the phantom-edge cap;
-  below 0.10 → "—". The old Bet ≥ 0.05 / Lean ≥ 0.02 tiers were removed
+  **[0.08, 0.10) → Watch (NOT bettable, dashed grey tag, excluded from the
+  leg pool)** — visibility-only tier added 2026-06-07 (see Decisions);
+  below 0.08 → "—". The old Bet ≥ 0.05 / Lean ≥ 0.02 tiers were removed
   2026-06-06 (see Decisions).
 - Shadow suggester floor stays **0.065** (`SHADOW_EDGE_MIN`) so the dropped
   0.065–0.10 band keeps accumulating graded evidence.
@@ -173,6 +175,18 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 
 ## Decisions (and why)
 
+- **Watch tier [0.08, 0.10) — visibility, not bettability (2026-06-07).**
+  One day after the floor raise, Chad asked to lower the bar to 0.08. A fresh
+  band split over all 38 settled slates showed 0.08–0.10 hitting **43.1%
+  directional / 38.7% overs-only** (UD breakeven ~58%) — the *weaker* half of
+  the dropped band, with zero new data since the raise. Compromise chosen
+  (over "lower anyway" and "keep as-is"): UD verdicts in [0.08, 0.10) read
+  **"Watch OVER/UNDER"** — dashed grey tag, `bettable=False`, excluded from
+  both parlay leg pools — so Chad sees what the bar is filtering without
+  re-opening it. The floor itself only comes down per the standing rule:
+  shadow band recovers above breakeven on real data, monthly review.
+  Implemented in both twins (`web.py` udVerdict + `ud_parlay.py` ud_verdict,
+  `WATCH_EDGE_MIN = 0.08`).
 - **Bet-bar floor raised 0.065 → 0.10; UD Lean tier removed (2026-06-06).**
   Same session as the phantom-edge cap, at Chad's direction. The
   `grade_my_bets` edge-band report showed the 0.065–0.10 band hitting

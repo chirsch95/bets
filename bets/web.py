@@ -65,6 +65,12 @@ SHOW_HITTERS = False
 FOCUS_EDGE_MIN = 0.10  # raised from 0.065 on 2026-06-06 — see live.py comment
 FOCUS_EDGE_MAX = 0.15
 INVESTIGATE_EDGE = 0.20
+# Watch tier (2026-06-07): Chad asked to lower the floor to 0.08 one day after
+# the raise; the data said no (0.08–0.10 hit ~39–43% all-time vs ~58% UD
+# breakeven), so the compromise is visibility without bettability — UD verdicts
+# in [WATCH_EDGE_MIN, FOCUS_EDGE_MIN) read "Watch", are NOT bettable, and stay
+# out of every parlay leg pool. Keep in sync with ud_parlay.py.
+WATCH_EDGE_MIN = 0.08
 # Minimum line to consider a pitcher as a focus pick. Real starters are
 # almost never priced below 3.5 K; lines at or under 2.5 K signal the
 # book treating the pitcher as an opener / reliever / spot appearance.
@@ -2617,6 +2623,9 @@ CSS = """
   .tag-focus.tag-dir-over { background: var(--green); color: #001a00; }
   .tag-focus.tag-dir-under { background: var(--red); color: #2a0000; }
   .tag-investigate { background: var(--yellow); color: #2a1f00; }
+  /* Watch tier: visible but deliberately un-bet-like — dashed outline, no
+     fill, so it never reads as a green/red call at a glance. */
+  .tag-watch { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
   .tag-noise { background: transparent; color: var(--muted); }
   .tag-noline { background: transparent; color: var(--muted); }
   .lineup-pending {
@@ -3095,6 +3104,7 @@ def _render_js() -> str:
 (() => {{
   const FOCUS_MIN = {FOCUS_EDGE_MIN};
   const FOCUS_MAX = {FOCUS_EDGE_MAX};
+  const WATCH_MIN = {WATCH_EDGE_MIN};
   const INVESTIGATE = {INVESTIGATE_EDGE};
   const MIN_LINE_FOR_FOCUS = {MIN_LINE_FOR_FOCUS};
   const RAW_BASE = "{raw_base}";
@@ -4572,6 +4582,12 @@ def _render_js() -> str:
     // Lean ≥0.02 tiers sat below the bet bar — sub-0.10 legs hit 36–44%
     // all-time vs 62% for 0.10–0.15. Below the band: no bettable verdict.
     if (c.edge >= FOCUS_MIN) return {{ cls: "focus dir-" + c.dir, label: star + "Bet " + dirUp, soft }};
+    // Watch tier (2026-06-07): 0.08–0.10 is visible but NOT bettable — the
+    // band hit ~39–43% all-time (UD breakeven ~58%), so it stays out of the
+    // leg pool. Compromise for "what am I passing on?" without re-lowering
+    // the bar one day after the raise. Floor only comes down if the shadow
+    // band recovers above breakeven (monthly review).
+    if (c.edge >= WATCH_MIN) return {{ cls: "watch", label: "Watch " + dirUp, soft }};
     return {{ cls: "noise", label: "—", soft }};
   }}
 

@@ -44,6 +44,9 @@ from .model import prob_over_poisson
 # Mirrored from web.py (and shared with grade_ud.py, which imports them).
 # Floor raised 0.065 → 0.10 on 2026-06-06 — see live.py comment.
 FOCUS_EDGE_MIN, FOCUS_EDGE_MAX, INVESTIGATE_EDGE = 0.10, 0.15, 0.20
+# Watch tier (2026-06-07): [0.08, 0.10) verdicts read "Watch" — visible, NOT
+# bettable, excluded from the leg pool. See web.py WATCH_EDGE_MIN comment.
+WATCH_EDGE_MIN = 0.08
 MIN_LINE_FOR_FOCUS = 3.0
 UD_PAYOUTS = {2: 3, 3: 6, 4: 10, 5: 20}
 UD_PAYOUTS_BOOSTED = {2: 3.5, 3: 6.5}
@@ -137,6 +140,10 @@ def ud_verdict(c):
     # all-time vs 62% for 0.10–0.15. Below the band: no bettable verdict.
     if c["edge"] >= FOCUS_EDGE_MIN:
         return (f"Bet {c['dir'].upper()}", "focus", soft, True)
+    # Watch tier (2026-06-07): 0.08–0.10 is visible but NOT bettable — the
+    # band hit ~39–43% all-time (UD breakeven ~58%). See web.py udVerdict.
+    if c["edge"] >= WATCH_EDGE_MIN:
+        return (f"Watch {c['dir'].upper()}", "watch", soft, False)
     return ("—", "noise", soft, False)
 
 
