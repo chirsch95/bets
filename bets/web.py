@@ -2969,12 +2969,6 @@ CSS = """
   }
   html.is-bets .udlab-pl-card[data-legs]:hover { background: var(--hover-overlay); }
   html.is-bets .udlab-pl-card.lineup-blocked { cursor: not-allowed; }
-  /* Per-row lineup-posted dot in the UD Lab pitcher table — same red/green
-     language as the parlay cards. */
-  .udlab-lineup-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-    margin-right: 6px; vertical-align: middle; flex: none; }
-  .udlab-lineup-dot.in { background: var(--green); }
-  .udlab-lineup-dot.tbd { background: var(--red); }
   /* Opp + Time columns (2026-06-04): keep them on one line so the dense
      table doesn't wrap; the .table-wrap scroll handles narrow screens. */
   .udlab-table td.udlab-opp, .udlab-table td.gametime { white-space: nowrap; }
@@ -4661,11 +4655,6 @@ def _render_js() -> str:
           : "Sharp consensus prob at the UD line — UD left this pick symmetric (unpriced: edge rests on the model alone)")
       : "";
     const liveTag = `<span class="tag tag-${{live.cls.split(" ")[0]}} ${{live.cls.indexOf("dir-")>=0 ? "tag-"+live.cls.split(" ")[1] : ""}}" title="sportsbook edge ${{fmtSignedPct(pickEdge(r))}}">${{live.label}}</span>`;
-    // Lineup-posted dot (same red/green language as the parlay cards): green
-    // once the opp lineup is confirmed, red while it's TBD — so the table
-    // shows lineup status at a glance without checking the Pitchers tab.
-    const luPending = lineupPending(r);
-    const luDot = `<span class="udlab-lineup-dot ${{luPending ? "tbd" : "in"}}" title="${{luPending ? "Opponent lineup TBD — model on team-average opp K%" : "Opponent lineup posted"}}"></span>`;
     // Opp + Time cells (2026-06-04, Chad's request — same cells as the
     // Pitchers tab so checking game times / lineup ETAs doesn't require
     // tab-switching). The td.gametime[data-game-iso] shape opts these cells
@@ -4680,7 +4669,7 @@ def _render_js() -> str:
     const isoAttr = iso ? ` data-game-iso="${{escapeHTML(iso)}}"` : "";
     const pidAttr = !isNaN(pidNum) ? ` data-pitcher-id="${{pidNum}}"` : "";
     return `<tr class="${{changed ? "udlab-changed" : ""}}${{reliever ? " udlab-reliever" : ""}}${{_udImported.has(pid) ? " udlab-imported" : ""}}${{tcell.locked ? " row-locked" : ""}}">
-      <td class="player">${{luDot}}${{escapeHTML(r.pitcher || "")}}${{reliever ? ' <span class="udlab-rp">RP?</span>' : ""}}</td>
+      <td class="player">${{escapeHTML(r.pitcher || "")}}${{reliever ? ' <span class="udlab-rp">RP?</span>' : ""}}${{lineupPendingChip(r)}}</td>
       <td class="udlab-opp">${{oppPrefix(r)}}${{escapeHTML(teamAbbr(r.opp || ""))}}</td>
       <td class="gametime"${{isoAttr}}${{pidAttr}}>${{tcell.html}}</td>
       <td class="num">${{dash(proj === null ? "" : proj.toFixed(1))}}</td>
