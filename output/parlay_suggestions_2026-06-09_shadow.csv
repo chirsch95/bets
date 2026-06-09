@@ -1,7 +1,7 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,overlaps_top_2leg
 2026-06-09,two_leg,1,2,Andrew Alvarez,674841,over,4.5,120.0,0.824,0.453,Lucas Giolito,608337,under,4.5,-115.0,0.806,0.532,,,,,,,,311,4.113043,0.664144,0.240996,0.423148,1.731653,
 2026-06-09,two_leg,2,2,Trevor Rogers,669432,under,4.5,111.0,0.739,0.454,Troy Melton,675512,under,4.5,-130.0,0.808,0.545,,,,,,,,273,3.733077,0.597112,0.24743,0.349682,1.229065,
-2026-06-09,two_leg,3,2,Nick Martinez,607259,under,3.5,116.0,0.611,0.451,Walbert Ureña,700712,over,4.5,120.0,0.578,0.445,,,,,,,,375,4.752,0.353158,0.200695,0.152463,0.678207,
+2026-06-09,two_leg,3,2,Nick Martinez,607259,under,3.5,116.0,0.611,0.451,Zac Gallen,668678,under,4.5,-120.0,0.746,0.516,,,,,,,,296,3.96,0.455806,0.232716,0.22309,0.804992,
 2026-06-09,two_leg,4,2,Nathan Eovaldi,543135,over,5.5,115.0,0.589,0.446,Zack Wheeler,554430,under,5.5,110.0,0.582,0.449,,,,,,,,351,4.515,0.342798,0.200254,0.142544,0.547733,
-2026-06-09,three_leg,1,3,Andrew Alvarez,674841,over,4.5,120.0,0.824,0.453,Lucas Giolito,608337,under,4.5,-115.0,0.806,0.532,Walbert Ureña,700712,over,4.5,120.0,0.578,0.445,805,9.048696,0.383875,0.107243,0.276632,2.47357,Andrew Alvarez
-2026-06-09,three_leg,2,3,Trevor Rogers,669432,under,4.5,111.0,0.739,0.454,Nick Martinez,607259,under,3.5,116.0,0.611,0.451,Troy Melton,675512,under,4.5,-130.0,0.808,0.545,706,8.063446,0.364835,0.111591,0.253245,1.941831,
+2026-06-09,three_leg,1,3,Andrew Alvarez,674841,over,4.5,120.0,0.824,0.453,Nathan Eovaldi,543135,over,5.5,115.0,0.589,0.446,Lucas Giolito,608337,under,4.5,-115.0,0.806,0.532,784,8.843043,0.391181,0.107484,0.283697,2.459229,Andrew Alvarez
+2026-06-09,three_leg,2,3,Trevor Rogers,669432,under,4.5,111.0,0.739,0.454,Zac Gallen,668678,under,4.5,-120.0,0.746,0.516,Troy Melton,675512,under,4.5,-130.0,0.808,0.545,584,6.843974,0.445446,0.127674,0.317772,2.048618,
