@@ -480,13 +480,23 @@ def _settle_suggestions_impl(
             settled_by_pid[pid] = row
 
     with sug_path.open() as f:
-        sug_rows = list(csv.DictReader(f))
+        reader = csv.DictReader(f)
+        snapshot_fields = list(reader.fieldnames or [])
+        sug_rows = list(reader)
 
     extra_fields: list[str] = []
     for i in (1, 2, 3):
         extra_fields.extend([f"leg{i}_actual_ks", f"leg{i}_hit"])
     extra_fields.extend(["parlay_hit", "realized_pnl"])
-    fieldnames = _suggestion_fieldnames() + extra_fields
+    # Base the output columns on the snapshot's *own* header rather than the
+    # current _suggestion_fieldnames(). `out = dict(s)` preserves every source
+    # column, so if the snapshot ever carries a column this process doesn't
+    # know about (e.g. a stale long-running Flask after a schema change, or a
+    # newer snapshot format), DictWriter would otherwise raise "fields not in
+    # fieldnames". Falling back to the canonical list keeps old snapshots that
+    # predate this change working.
+    base_fields = snapshot_fields or _suggestion_fieldnames()
+    fieldnames = base_fields + [f for f in extra_fields if f not in base_fields]
 
     out_rows: list[dict] = []
     for s in sug_rows:
