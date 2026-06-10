@@ -228,7 +228,22 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
   top suggestion or pass, ONCE → place immediately (UD locks the multiplier
   at entry; later moves can't hurt a placed ticket). Pitcher-tab ideas get
   verified on the UD Lab before placing — never bet a price you didn't check.
-- **Bet after lineups + a re-run** — not off the morning board.
+- **Suggesters re-aimed at UD economics + 30% boost allocator (2026-06-09).**
+  Both suggesters (sportsbook-side in `web.py`/`parlay_suggest.py`, UD-aware in
+  the Lab) previously ranked by EV at *book* odds with *raw* `p_over` — raw
+  legs rated >70% hit ~44–57%, and book-odds ranking favors longshots while UD
+  pays flat. Graded at real UD payouts the old suggester ran −9% (2-leg) /
+  −57% (3-leg); ledger agreed (paid 3-legs −48%, unboosted −8%, boosted +44%).
+  Changes: hit probs from `cal_p_over_v2` (fallback raw pre-5/11), rank by
+  `ev_ud` (= win prob at flat payout), keep cards only if `ev_ud_boost > 0`
+  (UD_BOOST = 1.3 — Chad's recurring promo, ledger-confirmed ~1.3× multiplier;
+  only the 30% tier is modeled), combo pool seeded by hitProb not |edge|.
+  UI: 🎯 boost-target chip + banner names the one card for today's boost
+  (boost scales payout, so the best boost card = best card, all modes);
+  "boost/free only" label when cash EV ≤ 0; snapshot CSV gains `ud_payout`,
+  `ev_ud`, `ev_ud_boost` (empty pre-6/09); `suggested_card` meta gains
+  `ev_boost`/`ev_book`/`boost_target`. Free credits: same top card (house
+  money — value = p × payout, same ordering).
 - **Morning baseline auto-frozen** so intraday updates can't destroy it.
 - **Outcome ROI can't confirm an edge** (#3): over ~95 parlays the CI spans
   zero. Don't let win/loss results trigger scaling — use per-leg + calibration.

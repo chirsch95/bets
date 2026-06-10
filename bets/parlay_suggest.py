@@ -33,6 +33,13 @@ MAX_GAP_SECONDS = 3 * 3600  # skip combos whose game times span more than this
                             # — by the time the first game starts, the later
                             # game's lineup still won't be posted
 
+# Underdog flat power-play payouts and Chad's recurring 30% promo boost.
+# Mirror of web.py's UD_PAYOUTS / UD_BOOST (2026-06-09): cards are ranked
+# and filtered on EV at these payouts, NOT the sportsbook decimal product —
+# UD is the only book in play and its payout is flat per leg count.
+UD_PAYOUTS = {2: 3.0, 3: 6.0}
+UD_BOOST = 1.3
+
 
 def _safe_float(v) -> float | None:
     if v in ("", None):
@@ -132,7 +139,13 @@ def _pick_leg_from_row(r: dict) -> dict | None:
     novig_over = _safe_float(r.get("novig_over"))
     if p_over is None or novig_over is None:
         return None
-    hit_prob = p_over if direction == "over" else 1 - p_over
+    # Calibrated P(over) when available (cal_p_over_v2, 2026-05-11+), raw
+    # Poisson otherwise. Mirrors web.py pickLegFromRow (2026-06-09): raw
+    # probs are badly overconfident in the tails, and at UD's flat payout
+    # the hit probability IS the ranking.
+    cal_p_over = _safe_float(r.get("cal_p_over_v2"))
+    p_src = cal_p_over if cal_p_over is not None else p_over
+    hit_prob = p_src if direction == "over" else 1 - p_src
     novig_p = novig_over if direction == "over" else 1 - novig_over
     return {
         "pitcher": r.get("pitcher", "") or "",
@@ -157,6 +170,10 @@ def _evaluate_parlay(legs: list[dict]) -> dict:
         dec *= l["decOdds"]
         hit *= l["hitProb"]
         novig *= l["novigP"]
+    # evUD/evUDBoost are the money numbers (UD's flat payout, with/without
+    # the 30% promo); book-odds ev is kept for reference only. Mirrors
+    # web.py evaluateParlay (2026-06-09).
+    ud_mult = UD_PAYOUTS.get(len(legs))
     return {
         "legs": legs,
         "combinedAmer": _decimal_to_american(dec),
@@ -165,6 +182,9 @@ def _evaluate_parlay(legs: list[dict]) -> dict:
         "combinedNovig": novig,
         "combinedEdge": hit - novig,
         "ev": hit * (dec - 1) - (1 - hit),
+        "udPayout": ud_mult,
+        "evUD": None if ud_mult is None else hit * ud_mult - 1,
+        "evUDBoost": None if ud_mult is None else hit * ud_mult * UD_BOOST - 1,
     }
 
 
@@ -231,10 +251,12 @@ def _build_section(
             if combo_pids & exclude_pids:
                 continue
         ev = _evaluate_parlay(combo_list)
-        if ev["ev"] <= 0:
+        # Keep any card playable with the 30% boost; rank by UD-payout EV
+        # (= win probability at a flat payout). Mirrors web.py (2026-06-09).
+        if ev["evUDBoost"] is None or ev["evUDBoost"] <= 0:
             continue
         parlays.append(ev)
-    parlays.sort(key=lambda p: p["ev"], reverse=True)
+    parlays.sort(key=lambda p: p["evUD"], reverse=True)
     return _select_diverse(parlays, top, MAX_APPEARANCES)
 
 
@@ -261,7 +283,10 @@ def suggest_parlays(
         return {"two_leg": [], "three_leg": []}
     legs = [_pick_leg_from_row(r) for r in eligible_rows]
     legs = [l for l in legs if l is not None]
-    legs.sort(key=lambda l: abs(l["edge"]), reverse=True)
+    # Seed the combo pool with the most LIKELY legs, not the biggest
+    # model-market disagreements — sorting by |edge| pre-loaded the pool
+    # with phantom-edge legs. Mirrors web.py (2026-06-09).
+    legs.sort(key=lambda l: l["hitProb"], reverse=True)
     legs = legs[:PARLAY_INPUT_CAP]
     if len(legs) < 2:
         return {"two_leg": [], "three_leg": []}
@@ -305,6 +330,11 @@ def _suggestion_fieldnames() -> list[str]:
     base.extend([
         "combined_amer", "combined_dec", "combined_hit",
         "combined_novig", "combined_edge", "ev",
+        # UD-payout economics (2026-06-09): the flat power-play multiplier,
+        # EV at that payout, and EV with the 30% promo boost. These are the
+        # selection/ranking columns; `ev` (book odds) is legacy reference.
+        # Empty in snapshots written before 2026-06-09.
+        "ud_payout", "ev_ud", "ev_ud_boost",
         # Empty for two_leg cards; for three_leg, the shared pitcher name
         # if this 3-leg shares a pitcher with the top 2-leg card, else "".
         # Lets the eventual audit compare overlapping vs disjoint 3-leg ROI
@@ -326,6 +356,9 @@ def _suggestion_to_row(target_iso: str, section: str, rank: int, p: dict) -> dic
         "combined_novig": round(p["combinedNovig"], 6),
         "combined_edge": round(p["combinedEdge"], 6),
         "ev": round(p["ev"], 6),
+        "ud_payout": p["udPayout"] if p.get("udPayout") is not None else "",
+        "ev_ud": round(p["evUD"], 6) if p.get("evUD") is not None else "",
+        "ev_ud_boost": round(p["evUDBoost"], 6) if p.get("evUDBoost") is not None else "",
         "overlaps_top_2leg": p.get("overlaps_top_2leg", ""),
     }
     for i in (1, 2, 3):

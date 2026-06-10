@@ -2928,6 +2928,10 @@
   .udlab-pl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .udlab-pl-col-title { font-size: 0.85em; color: var(--muted); margin: 6px 0; }
   .udlab-pl-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+  .udlab-pl-card.boost-target { border-width: 2px; border-color: #d4a017; }
+  .udlab-boost-target { font-weight: 700; color: #d4a017; }
+  .udlab-boost-banner { border: 1px solid var(--border); border-left: 3px solid #d4a017;
+    border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 0.92em; }
   .udlab-pl-head { font-size: 0.85em; color: var(--muted); margin-bottom: 4px; }
   .udlab-pl-leg { font-size: 0.92em; padding: 2px 0; }
   .udlab-pl-head .pos { color: var(--green); }
@@ -2951,7 +2955,7 @@
   // recompute calibrated P(over) at a hand-entered Underdog line, matching
   // the production cal_edge_v2. null → no calibration fit yet; fall back to
   // raw Poisson (same as calibration.apply()).
-  const CAL_V2 = { a: 0.3301567922276281, b: 0.0031443238556175994 };
+  const CAL_V2 = { a: 0.23697783118055368, b: 0.07417472091685841 };
   // Underdog power-play base multipliers by leg count (all-must-hit).
   // Standard = symmetric picks (no per-pick multiplier shown).
   const UD_PAYOUTS = { 2: 3, 3: 6, 4: 10, 5: 20 };
@@ -2964,6 +2968,12 @@
   // confirmed. 4/5-leg (unused) estimated as standard + 0.5.
   const UD_PAYOUTS_BOOSTED = { 2: 3.5, 3: 6.5 };
   const UD_BOOSTED_CONFIRMED = { 2: true, 3: true };
+  // Chad's recurring UD promo: a 30% payout boost, usually one per day.
+  // Applied multiplicatively to the whole entry payout (ledger-confirmed:
+  // boosted 2-leg entries cluster at ~1.3× the unboosted multiplier).
+  // NOT the same thing as UD_PAYOUTS_BOOSTED above — that's UD's own
+  // higher base for multiplier-priced entries; this is the promo on top.
+  const UD_BOOST = 1.3;
   function udEntryBase(k, anyPriced) {
     if (!anyPriced) return { base: UD_PAYOUTS[k], confirmed: true };
     if (UD_PAYOUTS_BOOSTED[k] != null)
@@ -3134,7 +3144,13 @@
     const pOver = f(r.p_over);
     const novigOver = f(r.novig_over);
     if (pOver === null || novigOver === null) return null;
-    const hitProb = dir === "over" ? pOver : 1 - pOver;
+    // Calibrated P(over) when available (cal_p_over_v2, 2026-05-11+), raw
+    // Poisson otherwise. The raw prob is badly overconfident — legs it rated
+    // >70% hit ~44-57% — and at UD's fixed payout the ranking IS the hit
+    // probability, so honesty here is the whole ballgame (2026-06-09).
+    const calPOver = f(r.cal_p_over_v2);
+    const pSrc = calPOver !== null ? calPOver : pOver;
+    const hitProb = dir === "over" ? pSrc : 1 - pSrc;
     const novigP = dir === "over" ? novigOver : 1 - novigOver;
     const pidNum = parseInt(r.pitcher_id, 10);
     const gpkNum = parseInt(r.game_pk, 10);
@@ -3160,6 +3176,11 @@
     const hit = legs.reduce((acc, l) => acc * l.hitProb, 1);
     const hasNovig = legs.every(l => l.novigP !== null && l.novigP !== undefined);
     const novig = hasNovig ? legs.reduce((acc, l) => acc * l.novigP, 1) : null;
+    // What the entry actually pays: UD's flat power play for this leg count
+    // (the sportsbook decimal product is unattainable — UD is the only book
+    // in play since 2026-05-25). evUD/evUDBoost are the money numbers;
+    // book-odds ev is kept for reference/auditing only (2026-06-09).
+    const udMult = UD_PAYOUTS[legs.length] || null;
     return {
       legs,
       combinedAmer: decimalToAmerican(dec),
@@ -3167,8 +3188,11 @@
       combinedHit: hit,
       combinedNovig: novig,
       combinedEdge: novig === null ? null : hit - novig,
-      // EV per $1 staked (same convention as ev_over / ev_under).
+      // EV per $1 at book odds (legacy reference, not bettable).
       ev: hit * (dec - 1) - (1 - hit),
+      udPayout: udMult,
+      evUD: udMult === null ? null : hit * udMult - 1,
+      evUDBoost: udMult === null ? null : hit * udMult * UD_BOOST - 1,
     };
   }
 
@@ -4153,15 +4177,14 @@
         ${time}
       </div>`;
     }).join("");
-    const evCls = p.ev > 0.02 ? "pos" : p.ev < -0.02 ? "neg" : "flat";
-    const edgeCls = p.combinedEdge === null ? "" : (p.combinedEdge > 0 ? "pos" : p.combinedEdge < 0 ? "neg" : "flat");
-    const amerStr = p.combinedAmer === null
-      ? "—"
-      : (p.combinedAmer >= 0 ? "+" : "") + p.combinedAmer;
-    const evStr = (p.ev >= 0 ? "+" : "") + p.ev.toFixed(2);
-    const edgePct = p.combinedEdge === null
-      ? "—"
-      : (p.combinedEdge >= 0 ? "+" : "") + (p.combinedEdge * 100).toFixed(1) + "%";
+    // Color and EV figures follow the UD-payout math (what the ticket
+    // actually pays), not the legacy book-odds ev (2026-06-09).
+    const evUD = p.evUD === null ? p.ev : p.evUD;
+    const evCls = evUD > 0.02 ? "pos" : evUD < -0.02 ? "neg" : "flat";
+    const payStr = p.udPayout ? p.udPayout + "×" : "—";
+    const evStr = (evUD >= 0 ? "+" : "") + evUD.toFixed(2);
+    const evBoostCls = p.evUDBoost === null ? "flat" : (p.evUDBoost > 0.02 ? "pos" : p.evUDBoost < -0.02 ? "neg" : "flat");
+    const evBoostStr = p.evUDBoost === null ? "—" : (p.evUDBoost >= 0 ? "+" : "") + p.evUDBoost.toFixed(2);
     // Compact, JSON-safe leg shape for the form pre-populator. Direction
     // gets translated to the form's O/U convention.
     const formLegs = p.legs.map(l => ({
@@ -4192,7 +4215,11 @@
     const r4 = v => v == null ? null : Math.round(v * 1e4) / 1e4;
     const cardMeta = {
       source: "pitchers",
-      ev: r4(p.ev), prob: r4(p.combinedHit), edge: r4(p.combinedEdge),
+      // ev = UD-payout EV (the honest claim) as of 2026-06-09; ev_book keeps
+      // the legacy book-odds figure so old/new snapshots stay comparable.
+      ev: r4(p.evUD !== null ? p.evUD : p.ev), ev_boost: r4(p.evUDBoost),
+      ev_book: r4(p.ev), ud_payout: p.udPayout,
+      prob: r4(p.combinedHit), edge: r4(p.combinedEdge),
       dec_odds: r4(p.combinedDec),
       legs: p.legs.map(l => ({ pid: l.pitcher_id, dir: l.dir, line: l.line })),
     };
@@ -4205,10 +4232,10 @@
       ${overlapBadge}
       <div class="parlay-legs">${legsHTML}</div>
       <div class="parlay-stats">
-        <div class="parlay-stat"><span class="parlay-stat-label">Payout</span><span class="parlay-stat-val">${amerStr}</span></div>
-        <div class="parlay-stat"><span class="parlay-stat-label">Hit %</span><span class="parlay-stat-val">${(p.combinedHit * 100).toFixed(1)}%</span></div>
-        <div class="parlay-stat"><span class="parlay-stat-label">Edge</span><span class="parlay-stat-val ${edgeCls}">${edgePct}</span></div>
-        <div class="parlay-stat"><span class="parlay-stat-label">EV / $1</span><span class="parlay-stat-val ${evCls}">${evStr}</span></div>
+        <div class="parlay-stat"><span class="parlay-stat-label" title="Underdog flat power-play payout for this leg count">Payout</span><span class="parlay-stat-val">${payStr}</span></div>
+        <div class="parlay-stat"><span class="parlay-stat-label" title="Calibrated probability every leg hits">Hit %</span><span class="parlay-stat-val">${(p.combinedHit * 100).toFixed(1)}%</span></div>
+        <div class="parlay-stat"><span class="parlay-stat-label" title="EV per $1 at the UD payout, no boost">EV / $1</span><span class="parlay-stat-val ${evCls}">${evStr}</span></div>
+        <div class="parlay-stat"><span class="parlay-stat-label" title="EV per $1 with the 30% promo boost applied">🚀 30%</span><span class="parlay-stat-val ${evBoostCls}">${evBoostStr}</span></div>
       </div>
     </div>`;
   }
@@ -4248,7 +4275,12 @@
     const legs = focus
       .map(pickLegFromRow)
       .filter(l => l !== null)
-      .sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge))
+      // Seed the combo pool with the most LIKELY legs, not the biggest
+      // model-market disagreements — at UD's fixed payout, win probability
+      // is the ranking, and sorting by |edge| pre-loaded the pool with
+      // exactly the phantom-edge legs (2026-06-09; keep in sync with
+      // parlay_suggest.py).
+      .sort((a, b) => b.hitProb - a.hitProb)
       .slice(0, PARLAY_INPUT_CAP);
     if (legs.length < 2) return "";
 
@@ -4310,8 +4342,11 @@
           return true;
         })
         .map(evaluateParlay)
-        .filter(p => p.ev > 0)
-        .sort((a, b) => b.ev - a.ev);
+        // Keep any card playable with the 30% boost; cards that are only
+        // +EV boosted get labeled on the card itself. Rank by UD-payout EV
+        // (= win probability, since the payout is flat per leg count).
+        .filter(p => p.evUDBoost !== null && p.evUDBoost > 0)
+        .sort((a, b) => b.evUD - a.evUD);
       const ranked = selectDiverse(sorted, top, MAX_APPEARANCES);
       if (!ranked.length) return { html: "", picked: ranked };
       const html = `<div class="parlay-section">
@@ -4357,7 +4392,7 @@
     return `<section class="parlay-suggester">
       <div class="parlay-suggester-header">
         <h3>Parlay Suggestions</h3>
-        <span class="parlay-note">Positive-EV combos · one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1 · 3-legs marked ⚠ if they overlap the top 2-leg</span>
+        <span class="parlay-note">Ranked by EV at UD payouts (3× / 6×) with calibrated probabilities · one leg per game · games within 3 hrs · capped per pitcher · 🚀 = with the 30% boost (cards kept if +EV boosted) · 3-legs marked ⚠ if they overlap the top 2-leg · verify prices on the UD Lab before betting</span>
       </div>
       ${twoLeg}
       ${threeLegHtml}
@@ -4607,9 +4642,16 @@
         const eb = udEntryBase(k, anyPriced);
         const winP = combo.reduce((a, l) => a * l.prob, 1);
         const payMult = combo.reduce((a, l) => a * (l.mult || 1), eb.base);
-        return { legs: combo, prob: winP, payMult, confirmed: eb.confirmed, ev: winP * payMult - 1 };
+        // evBoost = the same entry with Chad's 30% promo applied. The promo
+        // scales the payout, so card *ranking* is identical either way —
+        // what changes is the bet/pass verdict. Cards in the gap
+        // (ev <= 0 < evBoost) are playable ONLY with the boost or a free
+        // credit; udParlayCard labels them.
+        return { legs: combo, prob: winP, payMult, confirmed: eb.confirmed,
+                 ev: winP * payMult - 1,
+                 evBoost: winP * payMult * UD_BOOST - 1 };
       })
-      .filter(x => x.ev > 0)
+      .filter(x => x.evBoost > 0)
       .sort((a, b) => b.ev - a.ev);
   }
 
@@ -4645,6 +4687,16 @@
     for (const card of three) {
       const shared = card.legs.find(l => topPids.has(l.pitcher_id));
       card.overlapsTop2Leg = shared ? (topByPid[shared.pitcher_id] || shared.pitcher || "shared pitcher") : "";
+    }
+    // Boost allocation: the daily 30% boost belongs on the single card with
+    // the highest boosted EV across BOTH sections. Boost scales the payout,
+    // so this is also the highest expected-payout card, period — there is
+    // never a reason to split hairs between "best for cash" and "best for
+    // the boost"; they're the same card.
+    const all = [...two, ...three];
+    if (all.length) {
+      const best = all.reduce((a, b) => (b.evBoost > a.evBoost ? b : a));
+      best.boostTarget = true;
     }
     return { two, three };
   }
@@ -4688,7 +4740,8 @@
     const r4 = v => v == null ? null : Math.round(v * 1e4) / 1e4;
     const cardMeta = {
       source: "ud_lab",
-      ev: r4(x.ev), prob: r4(x.prob), pay_mult: r4(x.payMult),
+      ev: r4(x.ev), ev_boost: r4(x.evBoost), prob: r4(x.prob), pay_mult: r4(x.payMult),
+      boost_target: !!x.boostTarget,
       confirmed: !!x.confirmed, unpriced_legs: unpricedLegs.length,
       legs: x.legs.map(l => ({ pid: l.pitcher_id, dir: l.dir, line: l.udLine,
                                mult: r4(l.mult || 1), priced: !!l.priced })),
@@ -4706,9 +4759,20 @@
     const cautionChip = caution
       ? `<span class="udlab-caution" title="${unpricedLegs.length} leg(s) UD hasn't priced (no multiplier) — the edge rests only on the model disagreeing with the sportsbook at UD's default line. Early tracking: unpriced legs underperform UD-priced ones. Lower confidence.">△ ${unpricedLegs.length} unpriced</span> `
       : "";
-    return `<div class="udlab-pl-card ${lineupCls}"${dataAttr} title="${escapeHTML(lineupTip)}">
+    // Boost-aware verdict line. Three states:
+    //   ev > 0           → playable cash, even better boosted
+    //   ev <= 0 < evBoost → ONLY playable with the 30% boost or a free credit
+    //   (evBoost <= 0 cards never reach here — filtered in udRankedCombos)
+    const boostChip = x.boostTarget
+      ? `<span class="udlab-boost-target" title="Best card to spend today's 30% boost on — highest boosted EV across all suggested cards.">🎯 boost this</span> `
+      : "";
+    const gateChip = x.ev <= 0
+      ? `<span class="udlab-caution" title="Negative EV at the plain payout — only play this with the 30% boost or a free credit.">boost/free only</span> `
+      : "";
+    const evBoostStr = `<span class="${x.evBoost > 0 ? "pos" : "neg"}" title="EV with the 30% promo boost applied (payout × 1.3)">🚀 ${(x.evBoost >= 0 ? "+" : "")}${x.evBoost.toFixed(3)}</span>`;
+    return `<div class="udlab-pl-card ${lineupCls}${x.boostTarget ? " boost-target" : ""}"${dataAttr} title="${escapeHTML(lineupTip)}">
       ${overlapBadge}
-      <div class="udlab-pl-head">${cautionChip}${x.confirmed ? "" : "~"}${x.payMult.toFixed(2)}× · win ${pct1(x.prob)} · <span class="${x.ev > 0 ? "pos" : "neg"}">EV ${(x.ev >= 0 ? "+" : "")}${x.ev.toFixed(3)}</span></div>
+      <div class="udlab-pl-head">${boostChip}${gateChip}${cautionChip}${x.confirmed ? "" : "~"}${x.payMult.toFixed(2)}× · win ${pct1(x.prob)} · <span class="${x.ev > 0 ? "pos" : "neg"}">EV ${(x.ev >= 0 ? "+" : "")}${x.ev.toFixed(3)}</span> · ${evBoostStr}</div>
       ${legHtml}
     </div>`;
   }
@@ -4765,9 +4829,25 @@
     const plBody = (two || three)
       ? `<div class="udlab-pl-grid"><div>${two}</div><div>${three}</div></div>`
       : `<p class="muted">No positive-EV UD parlays from the lines entered yet.</p>`;
+    // Daily boost-allocation verdict. One line that answers "where does
+    // today's 30% boost go, and should I bet at all without it?"
+    const allCards = [...sel.two, ...sel.three];
+    let boostBanner = "";
+    if (allCards.length) {
+      const best = allCards.find(x => x.boostTarget) || allCards[0];
+      const legsTxt = best.legs.map(l =>
+        `${l.pitcher} ${l.dir.toUpperCase()} ${l.udLine}`).join(" + ");
+      const cashTxt = best.ev > 0
+        ? `also +EV unboosted (${(best.ev * 100).toFixed(1)}%)`
+        : `<strong>without the boost it's ${(best.ev * 100).toFixed(1)}% → pass unless boosted or free</strong>`;
+      boostBanner = `<div class="udlab-boost-banner">🎯 <strong>Today's 30% boost:</strong> ${escapeHTML(legsTxt)} — EV <span class="pos">+${(best.evBoost * 100).toFixed(1)}%</span> boosted · ${cashTxt} · free credits play the same card (house money — any card is +EV, this one extracts the most).</div>`;
+    } else {
+      boostBanner = `<div class="udlab-boost-banner muted">No card clears the bar today, even with the 30% boost — <strong>pass</strong>. Skipped bets cost nothing.</div>`;
+    }
     return `<div class="udlab-parlays">
       ${diffSummary}
-      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(Positive-EV combos · one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1 · 3-legs marked ⚠ if they overlap the top 2-leg · payout = base × pick multipliers, boosted base 3.5 (2-leg) / 6.5 (3-leg) · <strong>△ unpriced</strong> = leg(s) UD hasn't priced, edge rests on the model alone — lower confidence)</span></div>
+      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1 at UD payouts · cards that are only +EV with the 30% boost are kept and labeled <em>boost/free only</em> · 🚀 = EV with the boost · 3-legs marked ⚠ if they overlap the top 2-leg · paid 3-legs are −48% lifetime, prefer free credits there · payout = base × pick multipliers, priced base 3.5 (2-leg) / 6.5 (3-leg) · <strong>△ unpriced</strong> = leg(s) UD hasn't priced, edge rests on the model alone — lower confidence)</span></div>
+      ${boostBanner}
       ${plBody}
     </div>`;
   }
