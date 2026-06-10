@@ -173,6 +173,7 @@ def settle_date(target_date: date) -> Path | None:
                 error_v0="",
                 error_v1="",
                 error_v2="",
+                error_v2bc="",
                 error_ml="",
                 over_pnl="",
                 under_pnl="",
@@ -188,10 +189,12 @@ def settle_date(target_date: date) -> Path | None:
         proj_v0 = _maybe_float(row.get("proj_ks_v0"))
         proj_v1 = _maybe_float(row.get("proj_ks_v1"))
         proj_v2 = _maybe_float(row.get("proj_ks_v2"))
+        proj_v2bc = _maybe_float(row.get("proj_ks_v2bc"))
         proj_ml = _maybe_float(row.get("proj_ks_ml"))
         row["error_v0"] = round(ks - proj_v0, 2) if proj_v0 is not None else ""
         row["error_v1"] = round(ks - proj_v1, 2) if proj_v1 is not None else ""
         row["error_v2"] = round(ks - proj_v2, 2) if proj_v2 is not None else ""
+        row["error_v2bc"] = round(ks - proj_v2bc, 2) if proj_v2bc is not None else ""
         row["error_ml"] = round(ks - proj_ml, 2) if proj_ml is not None else ""
 
         line = _maybe_float(row.get("line"))

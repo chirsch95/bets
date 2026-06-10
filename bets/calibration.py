@@ -42,7 +42,10 @@ from .config import OUTPUT_DIR, PROJECT_ROOT
 # version upgrades, and doesn't care whether fit() ran as `__main__`
 # or as an import.
 CALIBRATION_PATH = PROJECT_ROOT / "data" / "calibration.json"
-MODELS = ("v0", "v1", "v2", "ml")
+# v2bc = bias-corrected v2 shadow (2026-06-09, see residuals.trailing_mean_bias).
+# fit() skips it until ≥30 settled rows carry proj_ks_v2bc; apply() falls
+# back to the raw probability until then.
+MODELS = ("v0", "v1", "v2", "ml", "v2bc")
 
 
 def _safe_float(s):

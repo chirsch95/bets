@@ -160,6 +160,22 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
     else:
         print("SwStr% lookup unavailable — v2 will fall back to actual K%.\n")
 
+    # v2bc shadow (2026-06-09): v2 minus its own trailing 30-day mean bias.
+    # v2 has been over-projecting Ks by a growing margin (+0.28 K May →
+    # +0.49 K June), which inflates Over edges; the all-time Platt fit can't
+    # track drift. Shadow-rollout discipline applies — v2bc rides along as
+    # columns only (no production routing). Pre-committed promotion bar:
+    # see SHADOW_V2BC_2026-06-09.md (check alongside the ~7/04 ML review).
+    try:
+        from .residuals import trailing_mean_bias
+        v2_bias = trailing_mean_bias("v2", window_days=30, up_to=target_date)
+    except Exception as e:  # noqa: BLE001
+        print(f"v2bc shadow: bias lookup failed ({e}) — using 0.0")
+        v2_bias = 0.0
+    if v2_bias:
+        print(f"v2bc shadow: correcting v2 by {-v2_bias:+.2f} K "
+              f"(trailing 30-day mean bias {v2_bias:+.2f} K)\n")
+
     rows = []
     for s in starters:
         ps = pitcher_stats(s["pitcher_id"], season)
@@ -234,6 +250,9 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
             "proj_ks_v0": round(v0, 2),
             "proj_ks_v1": round(v1["proj_ks"], 2),
             "proj_ks_v2": round(v2["proj_ks"], 2),
+            # Bias-corrected v2 shadow — see the v2_bias comment above the
+            # loop. Floor at 0.05 so the Poisson mean stays valid.
+            "proj_ks_v2bc": round(max(0.05, v2["proj_ks"] - v2_bias), 2),
             "proj_ks_ml": round(ml_proj, 2) if ml_proj is not None else None,
             "opp_lineup_json": opp_lineup_json,
         }
@@ -281,6 +300,12 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
             else:
                 row["cal_p_over_ml"] = None
                 row["cal_edge_ml"] = None
+            # v2bc shadow probabilities. Until calibration.fit() has ≥30
+            # graded v2bc rows, apply() falls back to the raw Poisson prob.
+            raw_p_over_v2bc = prob_over_poisson(line, row["proj_ks_v2bc"])
+            cal_p_over_v2bc = _cal.apply(raw_p_over_v2bc, "v2bc")
+            row["cal_p_over_v2bc"] = round(cal_p_over_v2bc, 3) if cal_p_over_v2bc is not None else None
+            row["cal_edge_v2bc"] = round(cal_p_over_v2bc - novig_over, 3) if cal_p_over_v2bc is not None else None
         else:
             row["line"] = None
             row["over_odds"] = None
@@ -297,6 +322,8 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
             row["cal_edge_v2"] = None
             row["cal_p_over_ml"] = None
             row["cal_edge_ml"] = None
+            row["cal_p_over_v2bc"] = None
+            row["cal_edge_v2bc"] = None
 
         rows.append(row)
 

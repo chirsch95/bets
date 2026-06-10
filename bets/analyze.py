@@ -42,6 +42,8 @@ def projection_accuracy(rows: list[dict]) -> None:
         "v0": [x for x in (_f(r.get("error_v0")) for r in rows) if x is not None],
         "v1": [x for x in (_f(r.get("error_v1")) for r in rows) if x is not None],
         "v2": [x for x in (_f(r.get("error_v2")) for r in rows) if x is not None],
+        # bias-corrected v2 shadow (2026-06-09+; empty for earlier rows)
+        "v2bc": [x for x in (_f(r.get("error_v2bc")) for r in rows) if x is not None],
         "ml": [x for x in (_f(r.get("error_ml")) for r in rows) if x is not None],
     }
     if not series["v0"]:

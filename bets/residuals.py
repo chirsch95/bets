@@ -49,6 +49,45 @@ def _f(value) -> float | None:
         return None
 
 
+def trailing_mean_bias(
+    model: str = "v2",
+    window_days: int = 30,
+    up_to=None,
+    min_n: int = 100,
+) -> float:
+    """Mean signed projection bias (proj − actual) for `model` over settled
+    starts in the trailing `window_days` before `up_to` (exclusive — today's
+    rows are never settled yet anyway, and excluding them keeps replays
+    deterministic). Returns 0.0 when fewer than `min_n` graded starts exist,
+    so the v2bc shadow degrades to plain v2 instead of chasing noise.
+
+    Feeds the proj_ks_v2bc shadow (2026-06-09): v2 over-projected by a
+    GROWING margin (+0.28 K May → +0.49 K June 2026), which inflates Over
+    edges; the all-time Platt calibration can't track a drifting bias. Sign
+    convention: settle stores error = actual − proj, so bias = −mean(error).
+    """
+    from datetime import date as _date, timedelta as _timedelta
+
+    end = up_to or _date.today()
+    start = end - _timedelta(days=window_days)
+    errs: list[float] = []
+    for path in sorted(OUTPUT_DIR.glob("pitcher_ks_*_settled.csv")):
+        try:
+            d = _date.fromisoformat(path.stem.split("_")[2])
+        except (IndexError, ValueError):
+            continue
+        if not (start <= d < end):
+            continue
+        with path.open() as f:
+            for r in csv.DictReader(f):
+                e = _f(r.get(f"error_{model}"))
+                if e is not None:
+                    errs.append(e)
+    if len(errs) < min_n:
+        return 0.0
+    return -mean(errs)
+
+
 def _load_settled() -> list[dict]:
     rows: list[dict] = []
     for path in sorted(OUTPUT_DIR.glob("pitcher_ks_*_settled.csv")):
