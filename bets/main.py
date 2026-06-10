@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from tabulate import tabulate
 
 from .config import (
+    DATA_DIR,
     LEAGUE_K_PCT,
     OUTPUT_DIR,
     PARK_K_FACTORS,
@@ -375,6 +376,54 @@ def run(target_date: date | None = None, force_fetch: bool = False) -> None:
         f"({pinned_count} row(s) pinned to prior snapshot, "
         f"{len(merged_rows) - pinned_count} refreshed)"
     )
+
+    # Sportsbook CLOSING-line capture for CLV (2026-06-09). Every pipeline
+    # run upserts each pitcher's CURRENT market numbers into
+    # data/book_close_<date>.json — but only while his game hasn't started,
+    # so the last pre-game refresh's value stands as the close (same guard
+    # as capture_ud_close.py). Fully automatic, no screenshots: this is the
+    # CLV instrument that replaced the dropped UD closing-screenshot
+    # workflow (UD_LAB.md decisions). com.bets.refresh-close runs afternoon/
+    # evening refreshes on the Air so the last snapshot lands near first
+    # pitch. Failures never block the pipeline.
+    try:
+        from datetime import datetime, timezone
+        close_path = DATA_DIR / f"book_close_{target_date.isoformat()}.json"
+        close_board: dict[str, dict] = {}
+        if close_path.exists():
+            try:
+                close_board = json.loads(close_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                close_board = {}
+        now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        close_updates = 0
+        for r in rows:
+            pid_raw = r.get("pitcher_id")
+            gpk_raw = r.get("game_pk")
+            try:
+                pid = int(pid_raw) if pid_raw not in (None, "") else None
+                gpk = int(gpk_raw) if gpk_raw not in (None, "") else None
+            except (TypeError, ValueError):
+                continue
+            if pid is None or r.get("line") is None:
+                continue
+            if gpk is not None and gpk in started_pks:
+                continue  # game underway — keep the earlier pre-game value
+            close_board[str(pid)] = {
+                "line": r.get("line"),
+                "over_odds": r.get("over_odds"),
+                "under_odds": r.get("under_odds"),
+                "novig_over": r.get("novig_over"),
+                "ts": now_iso,
+            }
+            close_updates += 1
+        if close_board:
+            tmp_close = close_path.with_suffix(".json.tmp")
+            tmp_close.write_text(json.dumps(close_board, indent=2, sort_keys=True) + "\n")
+            os.replace(tmp_close, close_path)
+            print(f"Book-close board → {close_path.name} ({close_updates} pre-game row(s) updated)")
+    except Exception as e:  # noqa: BLE001
+        print(f"book-close capture skipped: {e}")
 
     # Snapshot the parlay-suggester output alongside the slate so we
     # later have a record of exactly which 2/3-leg cards the dashboard
