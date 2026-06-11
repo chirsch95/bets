@@ -1,2 +1,3 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,ud_payout,ev_ud,ev_ud_boost,overlaps_top_2leg
 2026-06-11,two_leg,1,2,Tyler Phillips,663969,over,3.5,112.0,0.561,0.455,Christian Scott,681035,over,5.5,136.0,0.482,0.408,,,,,,,,400,5.0032,0.270402,0.18564,0.084762,0.352875,3.0,-0.188794,0.054568,
+2026-06-11,two_leg,2,2,Martín Pérez,527048,over,4.5,120.0,0.522,0.431,Bryan Woo,693433,over,6.5,116.0,0.512,0.444,,,,,,,,375,4.752,0.267264,0.191364,0.0759,0.270039,3.0,-0.198208,0.04233,
