@@ -21,8 +21,11 @@ live dashboard.
 
 Storage: data/ud_parlay_snaps_<date>.jsonl (gitignored, Air-canonical,
 covered by the 3am data backup). One JSON object per line:
-  {"ts": ISO-UTC, "trigger": "refresh"|"board-save", "two": [...], "three": [...]}
-Each card: {prob, pay_mult, confirmed, ev, caution_unpriced, legs:[...]}.
+  {"ts": ISO-UTC, "trigger": "refresh"|"board-save", "two": [...], "three": [...],
+   "fun_two": [...], "fun_three": [...]}
+Each card: {prob, pay_mult, confirmed, ev, ev_boost, value, boost_target,
+cash_eligible, has_watch, caution_unpriced, legs:[...]}. fun_* are the
+free-credit / fun-budget longshots (looser pool, three-bucket policy).
 
 Snapshots are NOT taken on single-cell edits (POST /api/ud-line) — only on
 "Save all" and pipeline refreshes — so a board mid-edit doesn't spam the
@@ -272,6 +275,83 @@ def ud_select_parlays(legs):
     return sel
 
 
+# ---------- FUN bucket: free-credit / fun-budget longshots -------------------
+# Three-bucket policy (2026-06-15). Mirror of web.py udBuildFunLegs /
+# udFunCombos / udSelectFunParlays. A looser pool that DROPS the 0.08 floor and
+# the 0.15 phantom cap (any model-favored leg, edge > 0), reliever gate kept,
+# ranked by expected payout (prob × payout) — house money / accepted-−EV fun.
+def build_fun_legs_from_csv_rows(rows, board):
+    legs = []
+    for r in rows:
+        pid = str(r.get("pitcher_id") or "").strip()
+        if not pid:
+            continue
+        e = board.get(pid)
+        s_line = _f(r.get("line"))
+        ud_line = e["line"] if (e and e.get("line") is not None) else s_line
+        if ud_line is None or ud_line < MIN_LINE_FOR_FOCUS:
+            continue
+        hi = e.get("hi") if e else None
+        lo = e.get("lo") if e else None
+        c = ud_compare(_f(r.get("proj_ks_v2")), s_line, _f(r.get("novig_over")), ud_line, hi, lo)
+        if not c or c["pick_prob"] is None or not c["dir"] or c["edge"] is None or c["edge"] <= 0:
+            continue
+        lj = (r.get("opp_lineup_json") or "").strip()
+        try:
+            gpk = int(r.get("game_pk")) if r.get("game_pk") not in (None, "") else None
+        except (TypeError, ValueError):
+            gpk = None
+        legs.append(dict(
+            pitcher=(r.get("pitcher") or "").strip(), pid=pid, dir=c["dir"],
+            prob=c["pick_prob"], ud_line=c["ud_line"], mult=c["side_mult"] or 1.0,
+            edge=c["edge"], priced=c["priced"], band="fun", game_pk=gpk,
+            game_time=_parse_iso_epoch(r.get("game_datetime_utc")),
+            lineup_pending=not (lj and lj != "[]"),
+        ))
+    return sorted(legs, key=lambda l: -(l["prob"] * (l["mult"] or 1.0)))
+
+
+def ud_fun_combos(legs, k):
+    if len(legs) < k:
+        return []
+    out = []
+    for combo in combinations(legs, k):
+        games = [l["game_pk"] for l in combo if l["game_pk"] is not None]
+        if len(games) != len(set(games)):
+            continue
+        times = [l.get("game_time") for l in combo if l.get("game_time") is not None]
+        if times and (max(times) - min(times) > MAX_GAP_SECONDS):
+            continue
+        any_priced = any(l["priced"] for l in combo)
+        base, confirmed = ud_entry_base(k, any_priced)
+        win_p = 1.0
+        pay = base
+        for l in combo:
+            win_p *= l["prob"]
+            pay *= (l["mult"] or 1.0)
+        value = win_p * pay  # expected $ back per $1 (house-money EV)
+        out.append(dict(legs=combo, prob=win_p, pay_mult=pay, confirmed=confirmed,
+                        value=value, ev=value - 1, ev_boost=value * UD_BOOST - 1, fun=True))
+    return sorted(out, key=lambda x: -x["value"])
+
+
+def ud_fun_parlays(legs):
+    def pick(k, cap):
+        used = set()
+        out = []
+        for x in ud_fun_combos(legs, k):
+            if len(out) >= cap:
+                break
+            if any(l["pid"] in used for l in x["legs"]):
+                continue
+            for l in x["legs"]:
+                used.add(l["pid"])
+            out.append(x)
+        return out
+
+    return dict(two=pick(2, 2), three=pick(3, 2))
+
+
 # ---------- the snapshot ------------------------------------------------------
 def _f(v):
     if v in ("", None):
@@ -341,6 +421,7 @@ def _serialize_card(x):
         confirmed=x["confirmed"],
         ev=round(x["ev"], 4),
         ev_boost=round(x["ev_boost"], 4),
+        value=round(x["value"], 4) if x.get("value") is not None else None,
         boost_target=bool(x.get("boost_target")),
         cash_eligible=bool(x.get("cash_eligible")),
         has_watch=bool(x.get("has_watch")),
@@ -373,11 +454,14 @@ def snapshot(target: date, trigger: str) -> dict | None:
         return None
     rows = list(csv.DictReader(io.StringIO(text)))
     picks = ud_select_parlays(build_legs_from_csv_rows(rows, board))
+    fun = ud_fun_parlays(build_fun_legs_from_csv_rows(rows, board))
     rec = dict(
         ts=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         trigger=trigger,
         two=[_serialize_card(x) for x in picks["two"]],
         three=[_serialize_card(x) for x in picks["three"]],
+        fun_two=[_serialize_card(x) for x in fun["two"]],
+        fun_three=[_serialize_card(x) for x in fun["three"]],
     )
     path = snaps_path(target)
     path.parent.mkdir(parents=True, exist_ok=True)

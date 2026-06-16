@@ -2929,6 +2929,9 @@
   .udlab-pl-col-title { font-size: 0.85em; color: var(--muted); margin: 6px 0; }
   .udlab-pl-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
   .udlab-pl-card.boost-target { border-width: 2px; border-color: #d4a017; }
+  /* FUN bucket: free-credit / fun-budget longshots (three-bucket policy). */
+  .udlab-fun-section { margin-top: 16px; padding-top: 10px; border-top: 1px dashed var(--border); }
+  .udlab-pl-card.udlab-fun-card { border-style: dashed; }
   .udlab-boost-target { font-weight: 700; color: #d4a017; }
   .udlab-boost-banner { border: 1px solid var(--border); border-left: 3px solid #d4a017;
     border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 0.92em; }
@@ -4709,6 +4712,111 @@
     return { two, three };
   }
 
+  // ---- FUN bucket: free-credit / fun-budget longshots (three-bucket policy
+  // 2026-06-15). A separate, looser pool that DROPS the 0.08 floor and the
+  // 0.15 phantom cap — any leg the model favors (edge > 0) qualifies,
+  // including the big-payout phantom picks the money pools exclude. Ranked by
+  // expected payout (p × payout), NOT edge, to maximize the "watch it hit"
+  // upside on zero-risk (free credits) or accepted-−EV (fun budget) money.
+  // Reliever gate still applies. Mirror: ud_parlay.build_fun_legs /
+  // ud_fun_parlays.
+  function udBuildFunLegs(rows) {
+    const legs = [];
+    for (const r of rows) {
+      const pid = String(r.pitcher_id || "").trim();
+      if (!pid) continue;
+      const udLine = effUDLine(r);
+      if (udLine === null || udLine < MIN_LINE_FOR_FOCUS) continue;
+      const m = udMults(r);
+      const c = udCompare(r, udLine, m.hi, m.lo);
+      if (!c || c.pickProb === null || !c.dir || c.edge === null || c.edge <= 0) continue;
+      const gpk = parseInt(r.game_pk, 10);
+      legs.push({
+        pitcher: r.pitcher || "", pitcher_id: pid, dir: c.dir,
+        prob: c.pickProb, udLine: c.udLine, mult: c.sideMult || 1,
+        edge: c.edge, priced: c.priced, band: "fun",
+        lineupPending: lineupPending(r),
+        game_pk: isNaN(gpk) ? null : gpk,
+        gameTimeISO: r.game_datetime_utc || "",
+      });
+    }
+    return legs.sort((a, b) => (b.prob * (b.mult || 1)) - (a.prob * (a.mult || 1)));
+  }
+
+  function udFunCombos(legs, k) {
+    if (legs.length < k) return [];
+    const seenGames = (combo) => {
+      const s = new Set();
+      for (const l of combo) { if (l.game_pk === null) continue; if (s.has(l.game_pk)) return false; s.add(l.game_pk); }
+      return true;
+    };
+    const MAX_GAP_MS = 3 * 3600 * 1000;
+    const withinWindow = (combo) => {
+      let lo = Infinity, hi = -Infinity;
+      for (const l of combo) { if (!l.gameTimeISO) continue; const t = Date.parse(l.gameTimeISO); if (isNaN(t)) continue; if (t < lo) lo = t; if (t > hi) hi = t; }
+      if (lo === Infinity || hi === -Infinity) return true;
+      return hi - lo <= MAX_GAP_MS;
+    };
+    return combos(legs, k)
+      .filter(seenGames)
+      .filter(withinWindow)
+      .map(combo => {
+        const anyPriced = combo.some(l => l.priced);
+        const eb = udEntryBase(k, anyPriced);
+        const winP = combo.reduce((a, l) => a * l.prob, 1);
+        const payMult = combo.reduce((a, l) => a * (l.mult || 1), eb.base);
+        const value = winP * payMult;  // expected $ back per $1 (house-money EV)
+        return { legs: combo, prob: winP, payMult, confirmed: eb.confirmed,
+                 value, ev: value - 1, evBoost: value * UD_BOOST - 1, fun: true };
+      })
+      .sort((a, b) => b.value - a.value);
+  }
+
+  function udSelectFunParlays(legs) {
+    const pick = (k, cap) => {
+      const used = new Set();
+      const out = [];
+      for (const x of udFunCombos(legs, k)) {
+        if (out.length >= cap) break;
+        if (x.legs.some(l => used.has(l.pitcher_id))) continue;
+        x.legs.forEach(l => used.add(l.pitcher_id));
+        out.push(x);
+      }
+      return out;
+    };
+    return { two: pick(2, 2), three: pick(3, 2) };
+  }
+
+  function udFunCard(x) {
+    const pendingLegs = x.legs.filter(l => l.lineupPending);
+    const lineupCls = pendingLegs.length ? "lineup-blocked" : "lineup-ready";
+    const lineupTip = pendingLegs.length
+      ? "Waiting on lineups: " + pendingLegs.map(l => l.pitcher).join(", ")
+      : "All lineups posted — tap to add this longshot (tag it Free credit or Fun budget)";
+    const formLegs = x.legs.map(l => ({ pitcher: l.pitcher, pitcher_id: l.pitcher_id, line: l.udLine, ou: l.dir === "over" ? "O" : "U" }));
+    const r4 = v => v == null ? null : Math.round(v * 1e4) / 1e4;
+    const cardMeta = {
+      source: "ud_lab", kind: "fun",
+      ev: r4(x.ev), ev_boost: r4(x.evBoost), prob: r4(x.prob), pay_mult: r4(x.payMult),
+      value: r4(x.value), confirmed: !!x.confirmed,
+      legs: x.legs.map(l => ({ pid: l.pitcher_id, dir: l.dir, line: l.udLine, mult: r4(l.mult || 1), priced: !!l.priced, band: "fun" })),
+    };
+    const dataAttr = pendingLegs.length ? ""
+      : ` data-legs='${escapeHTML(JSON.stringify(formLegs))}' data-card='${escapeHTML(JSON.stringify(cardMeta))}'`;
+    const legHtml = x.legs.map(l =>
+      `<div class="udlab-pl-leg">${escapeHTML(l.pitcher)}${l.lineupPending ? ' <span class="lineup-pending">TBD</span>' : ""} <strong>${l.dir.toUpperCase()} ${l.udLine}</strong>${l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""} · ${pct1(l.prob)}</div>`
+    ).join("");
+    return `<div class="udlab-pl-card udlab-fun-card ${lineupCls}"${dataAttr} title="${escapeHTML(lineupTip)}">
+      <div class="udlab-pl-head">${x.confirmed ? "" : "~"}${x.payMult.toFixed(2)}× · win ${pct1(x.prob)} · returns <strong>${x.value.toFixed(2)}×</strong> per $1</div>
+      ${legHtml}
+    </div>`;
+  }
+
+  function udFunColumn(picked, k) {
+    if (!picked.length) return "";
+    return `<div class="udlab-pl-col-title">${k}-leg longshot</div>${picked.map(udFunCard).join("")}`;
+  }
+
   function udParlayCard(x) {
     // △ caution (replaced ⏰ "place early" 2026-06-04). The old badge
     // watched for symmetric UD lines diverging from the sharp consensus —
@@ -4854,11 +4962,24 @@
     } else {
       boostBanner = `<div class="udlab-boost-banner muted">No card clears the bar today, even with the 30% boost — <strong>pass</strong>. Skipped bets cost nothing.</div>`;
     }
+    // FUN bucket: free-credit / fun-budget longshots (looser pool — see
+    // udBuildFunLegs). Rendered as a third section below the money parlays.
+    const funSel = udSelectFunParlays(udBuildFunLegs(rows));
+    const funTwo = udFunColumn(funSel.two, 2);
+    const funThree = udFunColumn(funSel.three, 3);
+    const funBody = (funTwo || funThree)
+      ? `<div class="udlab-pl-grid"><div>${funTwo}</div><div>${funThree}</div></div>`
+      : `<p class="muted">No model-favored longshots on the board right now.</p>`;
+    const funSection = `<div class="udlab-fun-section">
+      <div class="udlab-pl-head-main">🎁 Free-credit / fun-budget longshots <span class="muted">(house money or the ~$15/wk fun budget — the 0.15 phantom cap and 0.08 floor are dropped here; ranked by expected payout, not edge. −EV on cash, but +value on free credits and accepted entertainment on the fun budget. Tap → tag it Free or Fun.)</span></div>
+      ${funBody}
+    </div>`;
     return `<div class="udlab-parlays">
       ${diffSummary}
       <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1 at UD payouts · cards that are only +EV with the 30% boost are kept and labeled <em>boost/free only</em> · 🚀 = EV with the boost · 3-legs marked ⚠ if they overlap the top 2-leg · paid 3-legs are −48% lifetime, prefer free credits there · payout = base × pick multipliers, priced base 3.5 (2-leg) / 6.5 (3-leg) · <strong>△ unpriced</strong> = leg(s) UD hasn't priced, edge rests on the model alone — lower confidence)</span></div>
       ${boostBanner}
       ${plBody}
+      ${funSection}
     </div>`;
   }
 
@@ -4904,6 +5025,26 @@
       h += `<table class="udlab-rec-table"><thead><tr><th>Model edge when you bet</th><th>legs</th><th>hit</th></tr></thead><tbody>`;
       for (const b of d.bands) h += `<tr><td>${escapeHTML(b.label)}</td><td>${b.n}</td><td class="${b.above_breakeven ? "above" : "below"}">${(b.rate * 100).toFixed(0)}%</td></tr>`;
       h += `</tbody></table><div class="rec-note">Bands clearing ~${udPct(be.leg3)} beat Underdog breakeven. As samples grow, this is what to tune the bet bar toward.</div>`;
+    }
+    // Three-bucket breakdown (2026-06-15): how each lane is performing.
+    if (d.buckets) {
+      const lbl = { focus: "Edge (focus)", boost: "Boost", default: "Legacy/untagged", free: "Free credits" };
+      const rows = ["focus", "boost", "default", "free"].filter(k => d.buckets[k]).map(k => {
+        const b = d.buckets[k];
+        const cost = k === "free" ? "$0" : "$" + b.staked.toFixed(0);
+        return `<tr><td>${lbl[k]}</td><td>${b.n}</td><td>${cost}→$${b.returned.toFixed(0)}</td><td class="${(b.roi || 0) >= 0 ? "above" : "below"}">${udSignedPct(b.roi)}</td></tr>`;
+      }).join("");
+      if (rows) h += `<table class="udlab-rec-table" style="margin-top:8px"><thead><tr><th>Bucket</th><th>bets</th><th>cost→ret</th><th>ROI</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    // Fun budget: walled off from the edge read; show spend + this-week tally.
+    if (d.fun && d.fun.n) {
+      let thisWeek = 0;
+      try {
+        const t = new Date(dateInChicago(0) + "T12:00:00");
+        const mon = new Date(t); mon.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+        thisWeek = (d.fun.by_week || {})[mon.toISOString().slice(0, 10)] || 0;
+      } catch (e) {}
+      h += `<div class="rec-line" style="margin-top:6px"><strong>🎁 Fun budget:</strong> $${d.fun.spend.toFixed(0)}→$${d.fun.returned.toFixed(0)} (net $${d.fun.net.toFixed(0)}, entertainment — not an edge claim) · <strong>this week $${thisWeek.toFixed(0)}/$15</strong></div>`;
     }
     return h + `</div>`;
   }
@@ -6910,6 +7051,7 @@
             <option value="default">default (1u)</option>
             <option value="focus">focus (2u)</option>
             <option value="boost">boost</option>
+            <option value="fun">fun (lottery budget)</option>
             <option value="other">other</option>
           </select>
         </div>
@@ -8785,6 +8927,18 @@
     legCountSel.value = String(legs.length);
     legsContainer.innerHTML = renderLegInputs(legs.length, legs);
     recomputeCombined();
+    // Auto-tag the three-bucket lane from the tapped card so the betting
+    // record self-populates (Chad can still override the dropdown). A FUN
+    // longshot card → "fun"; the daily boost target → "boost"; a clean
+    // cash-eligible card → "focus"; otherwise (boost/free-only) → "boost".
+    // free_entry is set via its own checkbox (server coerces that reason).
+    const reasonEl = document.getElementById("bf-reason");
+    if (reasonEl && card) {
+      reasonEl.value = card.kind === "fun" ? "fun"
+        : card.boost_target ? "boost"
+        : card.cash_eligible ? "focus"
+        : "boost";
+    }
     const form = document.getElementById("bets-form");
     if (form) form.scrollIntoView({ behavior: "smooth", block: "center" });
   }
