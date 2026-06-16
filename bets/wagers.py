@@ -221,9 +221,15 @@ def _normalize(bet: dict) -> dict:
     # parlay-card handoff, else "manual"), so None means the bet predates
     # the feature — unknown provenance, kept distinct from "manual" so the
     # by-source analysis never miscounts history.
+    # Anything that isn't one of the three valid tags (absent, null, "")
+    # normalizes to None. Earlier this branched to "manual" when the key was
+    # merely *present*, which rotted legacy bets: an unknown bet normalized to
+    # None, got written back as "source": null, then on the next save the
+    # now-present-but-null key fell into the "manual" branch. Mapping every
+    # non-tag to None makes None a stable fixed point across save cycles.
     source = (bet.get("source") or "").strip().lower()
     if source not in ("ud_lab", "pitchers", "manual"):
-        source = None if "source" not in bet else "manual"
+        source = None
     # The suggested card as displayed at tap time (EV, win prob, payout,
     # per-leg multipliers). Free-form dict — captured verbatim, never
     # recomputed. The JS marks it edited:true when the saved legs no
