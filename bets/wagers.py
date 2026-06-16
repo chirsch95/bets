@@ -209,8 +209,13 @@ def _normalize(bet: dict) -> dict:
     site = (bet.get("site") or "").strip().upper()
     if site not in ("PP", "UD", "DK"):
         site = ""
+    # "fun" (2026-06-15, three-bucket policy): a real-money entertainment
+    # ticket from the weekly fun budget — knowingly sub-bar / longshot, walled
+    # off from the edge-measurement set in bet_record (excluded from paid ROI,
+    # the confidence CI, and the model-edge bands). Distinct from free_entry
+    # (house money) and from focus/boost (the bankroll edge plays).
     reason = (bet.get("stake_reason") or "").strip().lower()
-    if reason not in ("default", "focus", "boost", "free_entry", "other"):
+    if reason not in ("default", "focus", "boost", "free_entry", "fun", "other"):
         reason = "free_entry" if free_entry else "default"
     elif free_entry and reason != "free_entry":
         # A free entry should always tag as such; otherwise the analysis

@@ -38,6 +38,25 @@ def main():
         if ci["spans_zero"]:
             print("    → not yet distinguishable from zero (need more bets to confirm an edge).")
 
+    print("\nBY BUCKET (three-bucket policy)")
+    labels = {"focus": "EDGE (focus)", "boost": "BOOST", "default": "legacy/untagged",
+              "free": "FREE credits", "fun": "FUN budget"}
+    for bk in ("focus", "boost", "default", "free", "fun"):
+        d = r["buckets"].get(bk)
+        if not d:
+            continue
+        roi = f"{d['roi']:+.0%}" if d["roi"] is not None else "—"
+        cost = "$0 (house)" if bk == "free" else f"${d['staked']:.0f}"
+        tail = "  [walled off from edge ROI]" if bk == "fun" else ""
+        print(f"  {labels[bk]:16}: {d['n']:3} bets, {d['wins']}/{d['n']}={d['win_rate']:.0%} won, "
+              f"{cost} → ${d['returned']:.0f}, ROI {roi}{tail}")
+    fun = r["fun"]
+    if fun["n"]:
+        wk = sorted(fun["by_week"])
+        latest = f"  (latest week {wk[-1]}: ${fun['by_week'][wk[-1]]:.0f}/$15)" if wk else ""
+        print(f"  fun-budget spend: ${fun['spend']:.0f} → ${fun['returned']:.0f} "
+              f"(net ${fun['net']:+.0f}, entertainment — not an edge claim){latest}")
+
     leg = r["leg"]
     be = r["breakeven"]
     print("\nPER-LEG HIT RATE (graded vs actual strikeouts)")

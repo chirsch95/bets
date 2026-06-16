@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import random
+from datetime import date, timedelta
 from pathlib import Path
 
 from .config import OUTPUT_DIR
@@ -17,6 +18,18 @@ from . import wagers
 
 # Underdog per-leg breakeven (all-must-hit): 2-leg @3× = 57.7%, 3-leg @6× = 55.0%.
 UD_BREAKEVEN_2, UD_BREAKEVEN_3 = 0.577, 0.550
+
+
+def _bucket(b: dict) -> str:
+    """Three-bucket policy lane (2026-06-15). free = house money;
+    fun = real-money entertainment budget (walled off from edge math);
+    boost / focus = bankroll edge plays; default = legacy untagged."""
+    if b.get("free_entry") or (b.get("stake_reason") or "").lower() == "free_entry":
+        return "free"
+    sr = (b.get("stake_reason") or "").lower()
+    if sr in ("fun", "boost", "focus"):
+        return sr
+    return "default"
 
 _BANDS = [
     (-9.0, 0.065, "below bar (<0.065)"),
@@ -76,13 +89,19 @@ def compute(user_id: str, bootstrap: int = 10000) -> dict:
     """Return the structured betting-record report for one user."""
     bets = wagers.load_bets(user_id).get("bets", [])
     settled = [b for b in bets if str(b.get("result", "")).lower() in ("w", "l")]
-    paid = [b for b in settled if not b.get("free_entry")]
+    # paid = the edge-measurement set: real money, excluding both house-money
+    # free entries AND the walled-off fun budget (knowingly sub-bar tickets
+    # must never move the edge ROI / CI). fun is reported on its own line.
+    paid = [b for b in settled if _bucket(b) not in ("free", "fun")]
     actuals = _actuals_by_date()
 
-    # Per-leg grading + edge buckets.
+    # Per-leg grading + edge buckets. Fun-budget bets are excluded — they're
+    # deliberately off-band longshots and would distort the model-edge view.
     legs = []  # (supporting_edge_or_None, hit_bool)
     ungraded = 0
     for b in settled:
+        if _bucket(b) == "fun":
+            continue
         amap = actuals.get(b.get("date"), {})
         for l in b.get("legs", []):
             pid = str(l.get("pitcher_id", "")).strip()
@@ -123,6 +142,30 @@ def compute(user_id: str, bootstrap: int = 10000) -> dict:
         paid_ci = {"lo": lo, "hi": hi, "p_zero": p_zero,
                    "spans_zero": lo <= 0 <= hi}
 
+    # Per-bucket ROI (three-bucket policy). focus/boost/default draw the
+    # bankroll; free is house money; fun is the walled-off entertainment lane.
+    buckets = {}
+    for bk in ("focus", "boost", "default", "free", "fun"):
+        rows = [b for b in settled if _bucket(b) == bk]
+        buckets[bk] = _roi(rows) if rows else None
+
+    # Fun budget: reported on its own line (spend/return/net + weekly tally) so
+    # the ~$15/wk entertainment allowance never contaminates the edge read.
+    fun_rows = [b for b in settled if _bucket(b) == "fun"]
+    fun_spend = sum(b.get("stake", 0) for b in fun_rows)
+    fun_ret = sum(b.get("payout", 0) for b in fun_rows)
+    by_week: dict[str, float] = {}
+    for b in fun_rows:
+        try:
+            d = date.fromisoformat(str(b.get("date", "")))
+        except ValueError:
+            continue
+        wk = (d - timedelta(days=d.weekday())).isoformat()  # Monday-anchored
+        by_week[wk] = round(by_week.get(wk, 0.0) + b.get("stake", 0), 2)
+    fun = {"n": len(fun_rows), "spend": round(fun_spend, 2),
+           "returned": round(fun_ret, 2), "net": round(fun_ret - fun_spend, 2),
+           "by_week": by_week}
+
     return {
         "n_settled": len(settled),
         "all": _roi(settled),
@@ -132,4 +175,6 @@ def compute(user_id: str, bootstrap: int = 10000) -> dict:
                 "rate": (leg_hits / graded) if graded else None, "ungraded": ungraded},
         "breakeven": {"leg2": UD_BREAKEVEN_2, "leg3": UD_BREAKEVEN_3},
         "bands": bands,
+        "buckets": buckets,
+        "fun": fun,
     }
