@@ -175,6 +175,28 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 
 ## Decisions (and why)
 
+- **Three-bucket policy — boost floor 0.08 + FUN longshot bucket (2026-06-15).**
+  Diagnosis (`finding_betting_drift`): post-6/06 tightening collapsed volume ~3×
+  and killed the fun, while the ledger showed the cash grind netted ≈0 — ALL
+  realized profit came from the boost (+35%) and free credits (+$116). Fix is
+  three lanes, not one bar (`THREE_BUCKET_POLICY_2026-06-15.md`):
+  - **EDGE (cash):** [0.10, 0.15], unchanged — the honest core, `stake_reason=focus`.
+  - **BOOST:** suggester leg pool floor lowered **0.10 → 0.08** (`WATCH_MIN`).
+    Legs tag `band=core` [0.10,0.15] (cash-eligible) vs `watch` [0.08,0.10)
+    (boost/free only — ~43% hit < ~51% boosted breakeven, a deliberate
+    volume/fun trade Chad chose). A card with any watch leg is boost/free-only
+    regardless of EV sign (`cashEligible = ev>0 && !hasWatch`). 0.15 phantom cap
+    still holds. `stake_reason=boost`.
+  - **FUN:** a NEW separate pool (`udBuildFunLegs`/`ud_fun_combos`) that DROPS
+    the 0.08 floor AND the 0.15 phantom cap (any model-favored leg, edge>0),
+    ranked by expected payout (p×payout), not edge. Rendered as the third
+    "🎁 Free-credit / fun-budget longshots" section. House money (free credits)
+    or the ~$15/wk real-money fun budget (`stake_reason=fun`), walled off from
+    the edge read. Journaled as `fun_two`/`fun_three` in the snapshot.
+  Measurement loop: tapping a card auto-tags its `stake_reason`; `bet_record`
+  splits ROI by bucket and reports the fun lane separately (excluded from paid
+  ROI / CI / edge-bands). Also fixed a latent twin gap — `ud_parlay.py` had
+  never modeled the boost (no `ev_boost`/`boost_target`); now at parity.
 - **Watch tier [0.08, 0.10) — visibility, not bettability (2026-06-07).**
   One day after the floor raise, Chad asked to lower the bar to 0.08. A fresh
   band split over all 38 settled slates showed 0.08–0.10 hitting **43.1%
