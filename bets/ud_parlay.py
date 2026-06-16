@@ -51,6 +51,11 @@ MIN_LINE_FOR_FOCUS = 3.0
 UD_PAYOUTS = {2: 3, 3: 6, 4: 10, 5: 20}
 UD_PAYOUTS_BOOSTED = {2: 3.5, 3: 6.5}
 UD_BOOSTED_CONFIRMED = {2: True, 3: True}
+# Chad's recurring 30% promo boost (mirror of web.py UD_BOOST, 2026-06-09).
+# Applied as payout × 1.3 → ev_boost. NOT the same as UD_PAYOUTS_BOOSTED above
+# (that is UD's own multiplier-pick base). The UD twin previously didn't model
+# this at all — it dropped boost-only cards and picked no boost target.
+UD_BOOST = 1.3
 # Games within a 3-hr window (mirrors both suggesters): a wider gap means
 # the later game's lineup won't post until after the first has started.
 MAX_GAP_SECONDS = 3 * 3600
@@ -230,9 +235,15 @@ def ud_ranked_combos(legs, k):
             win_p *= l["prob"]
             pay *= (l["mult"] or 1.0)
         ev = win_p * pay - 1
-        if ev <= 0:
+        ev_boost = win_p * pay * UD_BOOST - 1
+        # Keep boost/free-only cards (ev <= 0 < ev_boost) — mirror web.py
+        # udRankedCombos, which filters on evBoost, not ev.
+        if ev_boost <= 0:
             continue
-        out.append(dict(legs=combo, prob=win_p, pay_mult=pay, confirmed=confirmed, ev=ev))
+        has_watch = any(l.get("band") == "watch" for l in combo)
+        out.append(dict(legs=combo, prob=win_p, pay_mult=pay, confirmed=confirmed,
+                        ev=ev, ev_boost=ev_boost, has_watch=has_watch,
+                        cash_eligible=(ev > 0 and not has_watch)))
     return sorted(out, key=lambda x: -x["ev"])
 
 
@@ -252,7 +263,13 @@ def ud_select_parlays(legs):
             out.append(x)
         return out
 
-    return dict(two=pick(2, 3), three=pick(3, 3))
+    sel = dict(two=pick(2, 3), three=pick(3, 3))
+    # Boost allocation (mirror web.py udSelectParlays): the daily 30% boost
+    # belongs on the single highest-boosted-EV card across both sections.
+    all_cards = sel["two"] + sel["three"]
+    if all_cards:
+        max(all_cards, key=lambda x: x["ev_boost"])["boost_target"] = True
+    return sel
 
 
 # ---------- the snapshot ------------------------------------------------------
@@ -295,9 +312,11 @@ def build_legs_from_csv_rows(rows, board):
         hi = e.get("hi") if e else None
         lo = e.get("lo") if e else None
         c = ud_compare(_f(r.get("proj_ks_v2")), s_line, _f(r.get("novig_over")), ud_line, hi, lo)
-        # Edge floor AND the focus band's 0.15 ceiling (phantom-edge cap, see
-        # ud_verdict) — mirrors web.py udBuildLegs.
-        if not c or c["pick_prob"] is None or not c["dir"] or c["edge"] is None or c["edge"] < LEG_EDGE_MIN or c["edge"] > FOCUS_EDGE_MAX:
+        # Three-bucket policy (2026-06-15): pool floor lowered 0.10 → 0.08
+        # (WATCH_EDGE_MIN). [0.10,0.15] = "core" (cash-eligible); [0.08,0.10) =
+        # "watch" (boost/free only). The 0.15 phantom cap still applies.
+        # Mirrors web.py udBuildLegs.
+        if not c or c["pick_prob"] is None or not c["dir"] or c["edge"] is None or c["edge"] < WATCH_EDGE_MIN or c["edge"] > FOCUS_EDGE_MAX:
             continue
         lj = (r.get("opp_lineup_json") or "").strip()
         try:
@@ -308,6 +327,7 @@ def build_legs_from_csv_rows(rows, board):
             pitcher=(r.get("pitcher") or "").strip(), pid=pid, dir=c["dir"],
             prob=c["pick_prob"], ud_line=c["ud_line"], mult=c["side_mult"] or 1.0,
             edge=c["edge"], priced=c["priced"], game_pk=gpk,
+            band="core" if c["edge"] >= FOCUS_EDGE_MIN else "watch",
             game_time=_parse_iso_epoch(r.get("game_datetime_utc")),
             lineup_pending=not (lj and lj != "[]"),
         ))
@@ -320,12 +340,17 @@ def _serialize_card(x):
         pay_mult=round(x["pay_mult"], 4),
         confirmed=x["confirmed"],
         ev=round(x["ev"], 4),
+        ev_boost=round(x["ev_boost"], 4),
+        boost_target=bool(x.get("boost_target")),
+        cash_eligible=bool(x.get("cash_eligible")),
+        has_watch=bool(x.get("has_watch")),
         # Caution flag (replaced ⏰ place-early 2026-06-04): unpriced legs'
         # edge rests only on model-vs-sportsbook disagreement; early
         # tracking shows they underperform priced legs.
         caution_unpriced=sum(1 for l in x["legs"] if not l["priced"]),
         legs=[dict(pid=l["pid"], pitcher=l["pitcher"], dir=l["dir"],
                    line=l["ud_line"], mult=l["mult"], priced=l["priced"],
+                   band=l.get("band", "core"),
                    edge=round(l["edge"], 4), model_p=round(l["prob"], 4),
                    lineup_pending=l["lineup_pending"])
               for l in x["legs"]],

@@ -4740,15 +4740,18 @@ def _render_js() -> str:
       if (udLine < MIN_LINE_FOR_FOCUS) continue;
       const m = udMults(r);
       const c = udCompare(r, udLine, m.hi, m.lo);
-      // Only legs inside the focus band [0.10, 0.15] vs UD's price — the
-      // 0.15 phantom-edge cap (see udVerdict) plus the 0.10 floor
-      // (2026-06-06: sub-0.10 legs hit below UD breakeven all-time).
-      if (!c || c.pickProb === null || !c.dir || c.edge === null || c.edge < FOCUS_MIN || c.edge > FOCUS_MAX) continue;
+      // Three-bucket policy (2026-06-15): pool floor lowered 0.10 → 0.08
+      // (WATCH_MIN). Legs in [0.10, 0.15] are "core" (cash-eligible); legs in
+      // [0.08, 0.10) are "watch" — boost/free only (~43% hit < the ~51%
+      // boosted breakeven, a deliberate volume/fun trade). The 0.15
+      // phantom-edge cap still applies to both (the FUN longshot pool is the
+      // only place it's dropped; see udBuildFunLegs).
+      if (!c || c.pickProb === null || !c.dir || c.edge === null || c.edge < WATCH_MIN || c.edge > FOCUS_MAX) continue;
       const gpk = parseInt(r.game_pk, 10);
       legs.push({{
         pitcher: r.pitcher || "", pitcher_id: pid, dir: c.dir,
         prob: c.pickProb, udLine: c.udLine, mult: c.sideMult || 1,
-        edge: c.edge, priced: c.priced,
+        edge: c.edge, priced: c.priced, band: c.edge >= FOCUS_MIN ? "core" : "watch",
         soft: (!c.priced && c.lineEdge !== null && c.lineEdge >= 0.02),
         lineupPending: lineupPending(r),
         game_pk: isNaN(gpk) ? null : gpk,
@@ -4803,9 +4806,14 @@ def _render_js() -> str:
         // what changes is the bet/pass verdict. Cards in the gap
         // (ev <= 0 < evBoost) are playable ONLY with the boost or a free
         // credit; udParlayCard labels them.
+        const ev = winP * payMult - 1;
+        // Cash-eligible only if every leg is core (>=0.10) AND the card is +EV
+        // unboosted. Any watch-band (0.08-0.10) leg makes the card boost/free
+        // only, regardless of EV sign (three-bucket policy 2026-06-15).
+        const hasWatch = combo.some(l => l.band === "watch");
         return {{ legs: combo, prob: winP, payMult, confirmed: eb.confirmed,
-                 ev: winP * payMult - 1,
-                 evBoost: winP * payMult * UD_BOOST - 1 }};
+                 ev, evBoost: winP * payMult * UD_BOOST - 1,
+                 hasWatch, cashEligible: ev > 0 && !hasWatch }};
       }})
       .filter(x => x.evBoost > 0)
       .sort((a, b) => b.ev - a.ev);
@@ -4897,10 +4905,10 @@ def _render_js() -> str:
     const cardMeta = {{
       source: "ud_lab",
       ev: r4(x.ev), ev_boost: r4(x.evBoost), prob: r4(x.prob), pay_mult: r4(x.payMult),
-      boost_target: !!x.boostTarget,
+      boost_target: !!x.boostTarget, cash_eligible: !!x.cashEligible, has_watch: !!x.hasWatch,
       confirmed: !!x.confirmed, unpriced_legs: unpricedLegs.length,
       legs: x.legs.map(l => ({{ pid: l.pitcher_id, dir: l.dir, line: l.udLine,
-                               mult: r4(l.mult || 1), priced: !!l.priced }})),
+                               mult: r4(l.mult || 1), priced: !!l.priced, band: l.band || "core" }})),
     }};
     const dataAttr = pendingLegs.length ? ""
       : ` data-legs='${{escapeHTML(JSON.stringify(formLegs))}}' data-card='${{escapeHTML(JSON.stringify(cardMeta))}}'`;
@@ -4922,8 +4930,8 @@ def _render_js() -> str:
     const boostChip = x.boostTarget
       ? `<span class="udlab-boost-target" title="Best card to spend today's 30% boost on — highest boosted EV across all suggested cards.">🎯 boost this</span> `
       : "";
-    const gateChip = x.ev <= 0
-      ? `<span class="udlab-caution" title="Negative EV at the plain payout — only play this with the 30% boost or a free credit.">boost/free only</span> `
+    const gateChip = !x.cashEligible
+      ? `<span class="udlab-caution" title="${{x.hasWatch ? "Contains a 0.08–0.10 watch-band leg (~43% hit, under the ~51% boosted breakeven) — play only with the 30% boost or a free credit." : "Negative EV at the plain payout — only play this with the 30% boost or a free credit."}}">boost/free only</span> `
       : "";
     const evBoostStr = `<span class="${{x.evBoost > 0 ? "pos" : "neg"}}" title="EV with the 30% promo boost applied (payout × 1.3)">🚀 ${{(x.evBoost >= 0 ? "+" : "")}}${{x.evBoost.toFixed(3)}}</span>`;
     return `<div class="udlab-pl-card ${{lineupCls}}${{x.boostTarget ? " boost-target" : ""}}"${{dataAttr}} title="${{escapeHTML(lineupTip)}}">
@@ -4993,9 +5001,11 @@ def _render_js() -> str:
       const best = allCards.find(x => x.boostTarget) || allCards[0];
       const legsTxt = best.legs.map(l =>
         `${{l.pitcher}} ${{l.dir.toUpperCase()}} ${{l.udLine}}`).join(" + ");
-      const cashTxt = best.ev > 0
+      const cashTxt = best.cashEligible
         ? `also +EV unboosted (${{(best.ev * 100).toFixed(1)}}%)`
-        : `<strong>without the boost it's ${{(best.ev * 100).toFixed(1)}}% → pass unless boosted or free</strong>`;
+        : best.hasWatch
+          ? `<strong>has a 0.08–0.10 watch leg → boost or free credit only</strong>`
+          : `<strong>without the boost it's ${{(best.ev * 100).toFixed(1)}}% → pass unless boosted or free</strong>`;
       boostBanner = `<div class="udlab-boost-banner">🎯 <strong>Today's 30% boost:</strong> ${{escapeHTML(legsTxt)}} — EV <span class="pos">+${{(best.evBoost * 100).toFixed(1)}}%</span> boosted · ${{cashTxt}} · free credits play the same card (house money — any card is +EV, this one extracts the most).</div>`;
     }} else {{
       boostBanner = `<div class="udlab-boost-banner muted">No card clears the bar today, even with the 30% boost — <strong>pass</strong>. Skipped bets cost nothing.</div>`;
