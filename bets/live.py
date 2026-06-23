@@ -34,7 +34,7 @@ from .fetch import HTTP_TIMEOUT, MLB_STATS_BASE
 # hit 62%. The dropped band stays tracked via the shadow suggester
 # (parlay_suggest SHADOW_EDGE_MIN) and bet_record's edge-band report.
 FOCUS_EDGE_MIN = 0.10
-FOCUS_EDGE_MAX = 0.15
+FOCUS_EDGE_MAX = 0.20  # raised 0.15→0.20 (2026-06-22): v2bc removes the need for a phantom cap
 INVESTIGATE_EDGE = 0.20
 # Role-mismatch gate: see web.py MIN_LINE_FOR_FOCUS comment. Lines below
 # this floor signal the book is treating the pitcher as a reliever/opener;

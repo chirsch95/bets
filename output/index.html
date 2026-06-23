@@ -2948,7 +2948,7 @@
 <script>
 (() => {
   const FOCUS_MIN = 0.1;
-  const FOCUS_MAX = 0.15;
+  const FOCUS_MAX = 0.2;
   const WATCH_MIN = 0.08;
   const INVESTIGATE = 0.2;
   const MIN_LINE_FOR_FOCUS = 3.0;
@@ -4450,10 +4450,11 @@
     const dirUp = c.dir.toUpperCase();
     const soft = !c.priced && c.lineEdge !== null && c.lineEdge >= 0.02;
     const star = soft ? "★ " : "";
-    // Phantom-edge cap (2026-06-06): mirror the sportsbook focus band's 0.15
-    // ceiling. Post-UD-switch, legs with claimed edge > 0.15 hit 15/40 (37%) —
-    // when the model disagrees with the market this hard, the market usually
-    // knows something the model doesn't (scratch risk, bullpen game, news).
+    // Investigate gate (raised 0.15→0.20 on 2026-06-22 with v2bc promotion):
+    // the old 0.15 phantom cap was a band-aid for v2's over-projection bias.
+    // v2bc corrects that bias at the model level; 0.15-0.20 v2bc edges hit
+    // 69-80% in settled data. Gate stays at 0.20 as a safety valve for
+    // truly extreme disagreements (scratch risk, bullpen games, etc.).
     if (c.edge > FOCUS_MAX) return { cls: "investigate", label: "⚠ Investigate", soft };
     // Floor raised to the focus band's 0.10 (2026-06-06): the old Bet ≥0.05 /
     // Lean ≥0.02 tiers sat below the bet bar — sub-0.10 legs hit 36–44%

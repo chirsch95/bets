@@ -64,7 +64,7 @@ SHOW_HITTERS = False
 # live.py + parlay_suggest.py. Applied against CALIBRATED edge (cal_edge_v2)
 # under Path C — see pickEdge() helper in the JS below and project_path_c memory.
 FOCUS_EDGE_MIN = 0.10  # raised from 0.065 on 2026-06-06 — see live.py comment
-FOCUS_EDGE_MAX = 0.15
+FOCUS_EDGE_MAX = 0.20  # raised from 0.15 on 2026-06-22: v2bc bias correction makes phantom cap unnecessary
 INVESTIGATE_EDGE = 0.20
 # Watch tier (2026-06-07): Chad asked to lower the floor to 0.08 one day after
 # the raise; the data said no (0.08–0.10 hit ~39–43% all-time vs ~58% UD
@@ -4607,10 +4607,11 @@ def _render_js() -> str:
     const dirUp = c.dir.toUpperCase();
     const soft = !c.priced && c.lineEdge !== null && c.lineEdge >= 0.02;
     const star = soft ? "★ " : "";
-    // Phantom-edge cap (2026-06-06): mirror the sportsbook focus band's 0.15
-    // ceiling. Post-UD-switch, legs with claimed edge > 0.15 hit 15/40 (37%) —
-    // when the model disagrees with the market this hard, the market usually
-    // knows something the model doesn't (scratch risk, bullpen game, news).
+    // Investigate gate (raised 0.15→0.20 on 2026-06-22 with v2bc promotion):
+    // the old 0.15 phantom cap was a band-aid for v2's over-projection bias.
+    // v2bc corrects that bias at the model level; 0.15-0.20 v2bc edges hit
+    // 69-80% in settled data. Gate stays at 0.20 as a safety valve for
+    // truly extreme disagreements (scratch risk, bullpen games, etc.).
     if (c.edge > FOCUS_MAX) return {{ cls: "investigate", label: "⚠ Investigate", soft }};
     // Floor raised to the focus band's 0.10 (2026-06-06): the old Bet ≥0.05 /
     // Lean ≥0.02 tiers sat below the bet bar — sub-0.10 legs hit 36–44%

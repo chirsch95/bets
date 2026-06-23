@@ -46,7 +46,7 @@ from .model import prob_over_poisson
 
 # Mirrored from web.py (and shared with grade_ud.py, which imports them).
 # Floor raised 0.065 → 0.10 on 2026-06-06 — see live.py comment.
-FOCUS_EDGE_MIN, FOCUS_EDGE_MAX, INVESTIGATE_EDGE = 0.10, 0.15, 0.20
+FOCUS_EDGE_MIN, FOCUS_EDGE_MAX, INVESTIGATE_EDGE = 0.10, 0.20, 0.20
 # Watch tier (2026-06-07): [0.08, 0.10) verdicts read "Watch" — visible, NOT
 # bettable, excluded from the leg pool. See web.py WATCH_EDGE_MIN comment.
 WATCH_EDGE_MIN = 0.08
