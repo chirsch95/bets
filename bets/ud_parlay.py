@@ -166,9 +166,10 @@ def classify(edge):
     return "noise"
 
 
-def is_bettable_focus(cal_edge_v2, s_line):
-    """Port of web.py isBettableFocus (uses cal_edge_v2 as pickEdge)."""
-    if cal_edge_v2 is None or classify(cal_edge_v2) != "focus":
+def is_bettable_focus(cal_edge, s_line):
+    """Port of web.py isBettableFocus. Caller should pass cal_edge_v2bc
+    (primary since 2026-06-22) falling back to cal_edge_v2."""
+    if cal_edge is None or classify(cal_edge) != "focus":
         return False
     return s_line is not None and s_line >= MIN_LINE_FOR_FOCUS
 
@@ -183,23 +184,27 @@ def graded_side_won(direction, line, actual_ks):
     return over if direction == "over" else (not over)
 
 
-def compute_calls(proj, s_line, novig, cal_edge_v2, ud_line, hi, lo, reliever, actual_ks):
+def compute_calls(proj, s_line, novig, cal_edge, ud_line, hi, lo, reliever, actual_ks,
+                  cal_edge_v2=None):
     """One projection-state → both calls (UD-aware + sportsbook), graded.
 
+    cal_edge should be the primary model edge (v2bc since 2026-06-22, v2 before).
+    cal_edge_v2 is accepted as a legacy keyword arg for backward compat.
+
     Used twice per pitcher: once on the frozen morning slate (pre-lineup,
-    team-avg opp K%) and once on the post-lineup pre-game projection. Grades
-    each call at its own line so the morning-vs-post-lineup comparison shows
-    whether the lineup post changed the call and whether it was right."""
+    team-avg opp K%) and once on the post-lineup pre-game projection."""
+    # Resolve primary edge: positional cal_edge wins; legacy kwarg is fallback.
+    primary_edge = cal_edge if cal_edge is not None else cal_edge_v2
     c = ud_compare(proj, s_line, novig, ud_line, hi, lo)
     if reliever:
         ud_label, ud_bettable, ud_dir, ud_soft = ("RP — skip", False, None, False)
     else:
         ud_label, _, ud_soft, ud_bettable = ud_verdict(c)
         ud_dir = c["dir"] if (c and ud_bettable) else None
-    sb_bettable = is_bettable_focus(cal_edge_v2, s_line)
-    sb_dir = ("over" if cal_edge_v2 >= 0 else "under") if (sb_bettable and cal_edge_v2 is not None) else None
+    sb_bettable = is_bettable_focus(primary_edge, s_line)
+    sb_dir = ("over" if primary_edge >= 0 else "under") if (sb_bettable and primary_edge is not None) else None
     return dict(
-        proj=proj, s_line=s_line, novig=novig, cal_edge_v2=cal_edge_v2, c=c,
+        proj=proj, s_line=s_line, novig=novig, cal_edge_v2=primary_edge, c=c,
         ud_label=ud_label, ud_bettable=ud_bettable, ud_dir=ud_dir, ud_soft=ud_soft,
         sb_bettable=sb_bettable, sb_dir=sb_dir,
         ud_won=(graded_side_won(ud_dir, ud_line, actual_ks) if ud_bettable else None),

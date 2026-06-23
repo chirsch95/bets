@@ -107,8 +107,9 @@ def load_postlineup(target: date) -> dict:
             pid = str(r.get("pitcher_id", "")).strip()
             if not pid:
                 continue
-            out[pid] = dict(proj_ks_v2=_f(r.get("proj_ks_v2")), line=_f(r.get("line")),
-                            novig_over=_f(r.get("novig_over")), cal_edge_v2=_f(r.get("cal_edge_v2")),
+            out[pid] = dict(proj_ks_v2=_f(r.get("proj_ks_v2")), proj_ks_v2bc=_f(r.get("proj_ks_v2bc")),
+                            line=_f(r.get("line")), novig_over=_f(r.get("novig_over")),
+                            cal_edge_v2=_f(r.get("cal_edge_v2")), cal_edge_v2bc=_f(r.get("cal_edge_v2bc")),
                             opp_k_source=r.get("opp_k_source", ""))
     return out
 
@@ -182,13 +183,16 @@ def main():
         actual_ks = actuals.get(pid, {}).get("actual_ks")
 
         # Morning view (frozen slate: pre-lineup, team-avg opp K%).
-        morn = compute_calls(_f(s.get("proj_ks_v2")), _f(s.get("line")), _f(s.get("novig_over")),
-                             _f(s.get("cal_edge_v2")), ud_line, e["hi"], e["lo"], reliever, actual_ks)
+        # Primary edge: v2bc (promoted 2026-06-22), falling back to v2.
+        morn_edge = _f(s.get("cal_edge_v2bc")) if _f(s.get("cal_edge_v2bc")) is not None else _f(s.get("cal_edge_v2"))
+        morn = compute_calls(_f(s.get("proj_ks_v2bc") or s.get("proj_ks_v2")), _f(s.get("line")), _f(s.get("novig_over")),
+                             morn_edge, ud_line, e["hi"], e["lo"], reliever, actual_ks)
         # Post-lineup view (last pre-game run), if available.
         post = None
         if have_post and pid in postlineup:
             pl = postlineup[pid]
-            post = compute_calls(pl["proj_ks_v2"], pl["line"], pl["novig_over"], pl["cal_edge_v2"],
+            post_edge = pl.get("cal_edge_v2bc") if pl.get("cal_edge_v2bc") is not None else pl["cal_edge_v2"]
+            post = compute_calls(pl.get("proj_ks_v2bc") or pl["proj_ks_v2"], pl["line"], pl["novig_over"], post_edge,
                                  ud_line, e["hi"], e["lo"], reliever, actual_ks)
             post["opp_k_source"] = pl.get("opp_k_source", "")
 

@@ -60,10 +60,12 @@ def _safe_int(v) -> int | None:
 
 
 def _pick_edge(r: dict) -> float | None:
-    """Mirror of the JS pickEdge() helper: prefer calibrated edge,
-    fall back to raw edge for rows that predate the Platt calibration
-    (cal_edge_v2 was introduced 2026-05-11). Path C uses cal_edge_v2 as
-    the bet-classification source."""
+    """Mirror of the JS pickEdge() helper: prefer v2bc calibrated edge
+    (primary since 2026-06-22), fall back to v2 cal edge, then raw edge
+    for pre-calibration rows."""
+    bc = _safe_float(r.get("cal_edge_v2bc"))
+    if bc is not None:
+        return bc
     cal = _safe_float(r.get("cal_edge_v2"))
     if cal is not None:
         return cal
@@ -139,11 +141,10 @@ def _pick_leg_from_row(r: dict) -> dict | None:
     novig_over = _safe_float(r.get("novig_over"))
     if p_over is None or novig_over is None:
         return None
-    # Calibrated P(over) when available (cal_p_over_v2, 2026-05-11+), raw
-    # Poisson otherwise. Mirrors web.py pickLegFromRow (2026-06-09): raw
-    # probs are badly overconfident in the tails, and at UD's flat payout
-    # the hit probability IS the ranking.
-    cal_p_over = _safe_float(r.get("cal_p_over_v2"))
+    # Calibrated P(over): prefer v2bc (primary since 2026-06-22), fall back
+    # to v2, then raw Poisson for pre-calibration rows. At UD's flat payout
+    # the hit probability IS the ranking, so model honesty is everything.
+    cal_p_over = _safe_float(r.get("cal_p_over_v2bc")) or _safe_float(r.get("cal_p_over_v2"))
     p_src = cal_p_over if cal_p_over is not None else p_over
     hit_prob = p_src if direction == "over" else 1 - p_src
     novig_p = novig_over if direction == "over" else 1 - novig_over

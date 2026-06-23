@@ -31,11 +31,11 @@ REPO = "chirsch95/bets"
 BRANCH = "main"
 
 
-def _v2_calibration() -> tuple[float, float] | None:
-    """Return the v2 Platt scaler (a, b) from data/calibration.json so the
-    UD Lab tab can recompute calibrated P(over) at a hand-entered Underdog
-    line in the browser — apples-to-apples with the production cal_edge_v2,
-    which goes through the same scaler. Mirrors calibration.PlattScaler:
+def _primary_calibration() -> tuple[float, float] | None:
+    """Return the primary model's Platt scaler (a, b) from data/calibration.json
+    so the UD Lab tab can recompute calibrated P(over) at a hand-entered Underdog
+    line in the browser. Primary model is v2bc (promoted 2026-06-22); falls back
+    to v2 if v2bc calibration isn't available yet. Mirrors calibration.PlattScaler:
     cal_p = sigmoid(a * logit(raw_p) + b). Returns None if no calibration
     has been fit yet, in which case the JS falls back to the raw Poisson
     probability (matching calibration.apply()'s no-op fallback)."""
@@ -44,10 +44,11 @@ def _v2_calibration() -> tuple[float, float] | None:
         return None
     try:
         raw = json.loads(path.read_text())
-        v2 = (raw.get("models") or {}).get("v2")
-        if not v2:
+        models = raw.get("models") or {}
+        cal = models.get("v2bc") or models.get("v2")
+        if not cal:
             return None
-        return float(v2["a"]), float(v2["b"])
+        return float(cal["a"]), float(cal["b"])
     except (json.JSONDecodeError, OSError, KeyError, TypeError, ValueError):
         return None
 
@@ -3099,7 +3100,7 @@ def _render_js() -> str:
     live in Python."""
     raw_base = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/output/"
     show_hitters_js = "true" if SHOW_HITTERS else "false"
-    _cal = _v2_calibration()
+    _cal = _primary_calibration()
     cal_v2_js = "null" if _cal is None else f"{{ a: {_cal[0]}, b: {_cal[1]} }}"
     return f"""
 (() => {{
@@ -3210,12 +3211,13 @@ def _render_js() -> str:
     return isNaN(n) ? null : n;
   }}
 
-  // pickEdge — returns the calibrated edge (cal_edge_v2) if present,
-  // else falls back to raw `edge` for backward compat with pre-Platt
-  // historical settled rows (pre-2026-05-11). All pick classification,
-  // sorting, filtering, and bucketing routes through this. Path C bet
-  // criterion is applied against pickEdge(r), not r.edge.
+  // pickEdge — primary model is v2bc (promoted 2026-06-22); falls back to
+  // cal_edge_v2 for rows predating v2bc, then raw edge for pre-Platt rows.
+  // All pick classification, sorting, filtering, and bucketing routes through
+  // this. Path C bet criterion is applied against pickEdge(r), not r.edge.
   function pickEdge(r) {{
+    const bc = f(r.cal_edge_v2bc);
+    if (bc !== null) return bc;
     const cal = f(r.cal_edge_v2);
     return cal !== null ? cal : f(r.edge);
   }}
@@ -3303,11 +3305,11 @@ def _render_js() -> str:
     const pOver = f(r.p_over);
     const novigOver = f(r.novig_over);
     if (pOver === null || novigOver === null) return null;
-    // Calibrated P(over) when available (cal_p_over_v2, 2026-05-11+), raw
-    // Poisson otherwise. The raw prob is badly overconfident — legs it rated
-    // >70% hit ~44-57% — and at UD's fixed payout the ranking IS the hit
-    // probability, so honesty here is the whole ballgame (2026-06-09).
-    const calPOver = f(r.cal_p_over_v2);
+    // Calibrated P(over): prefer v2bc (primary since 2026-06-22), fall back to
+    // v2, then raw Poisson for pre-calibration rows. The raw prob is badly
+    // overconfident — legs it rated >70% hit ~44-57% — and at UD's fixed payout
+    // the ranking IS the hit probability, so honesty here is the whole ballgame.
+    const calPOver = f(r.cal_p_over_v2bc) !== null ? f(r.cal_p_over_v2bc) : f(r.cal_p_over_v2);
     const pSrc = calPOver !== null ? calPOver : pOver;
     const hitProb = dir === "over" ? pSrc : 1 - pSrc;
     const novigP = dir === "over" ? novigOver : 1 - novigOver;

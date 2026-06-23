@@ -2958,7 +2958,7 @@
   // recompute calibrated P(over) at a hand-entered Underdog line, matching
   // the production cal_edge_v2. null → no calibration fit yet; fall back to
   // raw Poisson (same as calibration.apply()).
-  const CAL_V2 = { a: 0.38858975734311557, b: 0.03686019813204831 };
+  const CAL_V2 = { a: 0.6152880187335668, b: 0.2988805245200487 };
   // Underdog power-play base multipliers by leg count (all-must-hit).
   // Standard = symmetric picks (no per-pick multiplier shown).
   const UD_PAYOUTS = { 2: 3, 3: 6, 4: 10, 5: 20 };
@@ -3054,12 +3054,13 @@
     return isNaN(n) ? null : n;
   }
 
-  // pickEdge — returns the calibrated edge (cal_edge_v2) if present,
-  // else falls back to raw `edge` for backward compat with pre-Platt
-  // historical settled rows (pre-2026-05-11). All pick classification,
-  // sorting, filtering, and bucketing routes through this. Path C bet
-  // criterion is applied against pickEdge(r), not r.edge.
+  // pickEdge — primary model is v2bc (promoted 2026-06-22); falls back to
+  // cal_edge_v2 for rows predating v2bc, then raw edge for pre-Platt rows.
+  // All pick classification, sorting, filtering, and bucketing routes through
+  // this. Path C bet criterion is applied against pickEdge(r), not r.edge.
   function pickEdge(r) {
+    const bc = f(r.cal_edge_v2bc);
+    if (bc !== null) return bc;
     const cal = f(r.cal_edge_v2);
     return cal !== null ? cal : f(r.edge);
   }
@@ -3147,11 +3148,11 @@
     const pOver = f(r.p_over);
     const novigOver = f(r.novig_over);
     if (pOver === null || novigOver === null) return null;
-    // Calibrated P(over) when available (cal_p_over_v2, 2026-05-11+), raw
-    // Poisson otherwise. The raw prob is badly overconfident — legs it rated
-    // >70% hit ~44-57% — and at UD's fixed payout the ranking IS the hit
-    // probability, so honesty here is the whole ballgame (2026-06-09).
-    const calPOver = f(r.cal_p_over_v2);
+    // Calibrated P(over): prefer v2bc (primary since 2026-06-22), fall back to
+    // v2, then raw Poisson for pre-calibration rows. The raw prob is badly
+    // overconfident — legs it rated >70% hit ~44-57% — and at UD's fixed payout
+    // the ranking IS the hit probability, so honesty here is the whole ballgame.
+    const calPOver = f(r.cal_p_over_v2bc) !== null ? f(r.cal_p_over_v2bc) : f(r.cal_p_over_v2);
     const pSrc = calPOver !== null ? calPOver : pOver;
     const hitProb = dir === "over" ? pSrc : 1 - pSrc;
     const novigP = dir === "over" ? novigOver : 1 - novigOver;
