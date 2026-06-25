@@ -1564,6 +1564,47 @@ CSS = """
     text-transform: none;
     letter-spacing: 0;
   }
+  /* Paper simulation bankroll block — sits between track record cards and
+     real bets so the reading order is: model theory → paper sim → reality. */
+  .sim-bankroll-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-top: 12px;
+  }
+  .sim-bankroll-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .sim-bankroll-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .sim-bankroll-net {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+  .sim-bankroll-net.pos { color: var(--green); }
+  .sim-bankroll-net.neg { color: var(--red); }
+  .sim-bankroll-meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .sim-bankroll-svg { display: block; width: 100%; height: auto; }
+  table.sim-table { font-size: 13px; margin-top: 8px; width: 100%; }
+  table.sim-table th { font-weight: 600; color: var(--muted); }
+  table.sim-table .pos { color: var(--green); }
+  table.sim-table .neg { color: var(--red); }
   /* Real-bets sub-block: same card chrome but a separator + sub-heading
      so the user can scan "theory above, reality below" at a glance. */
   .parlay-actual-wrap {
@@ -5737,6 +5778,7 @@ def _render_js() -> str:
           pnl: pnl === null ? 0 : pnl,
           predicted: predicted === null ? 0 : predicted,
           ev: ev === null ? 0 : ev,
+          udPayout: f(r.ud_payout),
         }});
       }}
     }}
@@ -6418,6 +6460,113 @@ def _render_js() -> str:
     }}).join("");
   }}
 
+  // Paper simulation: if you had placed $SIM_STAKE on every suggested
+  // card at UD flat payouts (3× two-leg, 6× three-leg), how much would
+  // you be up or down? Derives P&L from ud_payout + parlay_hit on the
+  // settled CSV; falls back to the canonical UD multiplier from leg_count
+  // for older files that predate the ud_payout column.
+  function renderSimBankroll(all) {{
+    const SIM_STAKE = 10;
+    const UD_BY_LEGS = {{2: 3.0, 3: 6.0}};
+    const cards = all.map(item => {{
+      const ud = item.udPayout !== null ? item.udPayout : (UD_BY_LEGS[item.legCount] || null);
+      const simPnl = ud !== null
+        ? (item.won ? (ud - 1) * SIM_STAKE : -SIM_STAKE)
+        : (item.won ? 0 : -SIM_STAKE);
+      return {{ ...item, simPnl }};
+    }});
+    if (!cards.length) return "";
+
+    const n = cards.length;
+    const wins = cards.filter(c => c.won).length;
+    const totalStaked = n * SIM_STAKE;
+    const netPnl = cards.reduce((s, c) => s + c.simPnl, 0);
+    const roi = totalStaked > 0 ? netPnl / totalStaked : 0;
+    const netCls = netPnl > 0.01 ? "pos" : netPnl < -0.01 ? "neg" : "";
+    const roiCls = roi > 0.001 ? "pos" : roi < -0.001 ? "neg" : "";
+
+    // Cumulative P&L by date (ascending) for the sparkline.
+    const byDate = {{}};
+    for (const c of cards) {{
+      byDate[c.date] = (byDate[c.date] || 0) + c.simPnl;
+    }}
+    const dates = Object.keys(byDate).sort();
+    const cumSeries = [];
+    let running = 0;
+    for (const d of dates) {{
+      running += byDate[d];
+      cumSeries.push({{ date: d, cum: running }});
+    }}
+
+    // SVG line chart — reuses cal-tick class for axis labels.
+    let svgHtml = "";
+    if (cumSeries.length >= 2) {{
+      const W = 360, H = 90, padL = 40, padR = 8, padT = 10, padB = 6;
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+      const allVals = cumSeries.map(p => p.cum).concat([0]);
+      const rawMin = Math.min(...allVals), rawMax = Math.max(...allVals);
+      const span = (rawMax - rawMin) || 1;
+      const xFor = i => padL + (i / (cumSeries.length - 1)) * plotW;
+      const yFor = v => padT + plotH - ((v - rawMin) / span) * plotH;
+      const zeroY = yFor(0);
+      const final = cumSeries[cumSeries.length - 1].cum;
+      const lineStroke = final >= 0 ? "var(--green)" : "var(--red)";
+      const pts = cumSeries.map((p, i) => `${{xFor(i).toFixed(1)}},${{yFor(p.cum).toFixed(1)}}`).join(" ");
+
+      // Y-axis: $0 label + min/max labels if meaningfully different.
+      const yLabels = [];
+      const fmt = v => (v >= 0 ? "+" : "") + "$" + Math.round(Math.abs(v)) * (v < 0 ? -1 : 1);
+      yLabels.push(`<text x="${{padL - 4}}" y="${{zeroY.toFixed(1)}}" class="cal-tick" text-anchor="end" dominant-baseline="middle">$0</text>`);
+      if (rawMin < -5) yLabels.push(`<text x="${{padL - 4}}" y="${{yFor(rawMin).toFixed(1)}}" class="cal-tick" text-anchor="end" dominant-baseline="middle">${{fmt(rawMin)}}</text>`);
+      if (rawMax > 5) yLabels.push(`<text x="${{padL - 4}}" y="${{yFor(rawMax).toFixed(1)}}" class="cal-tick" text-anchor="end" dominant-baseline="middle">${{fmt(rawMax)}}</text>`);
+
+      svgHtml = `<svg viewBox="0 0 ${{W}} ${{H}}" class="sim-bankroll-svg">
+        <line x1="${{padL}}" y1="${{zeroY.toFixed(1)}}" x2="${{W - padR}}" y2="${{zeroY.toFixed(1)}}" class="sparkline-axis" />
+        ${{yLabels.join("")}}
+        <polyline points="${{pts}}" fill="none" stroke="${{lineStroke}}" stroke-width="2" stroke-linejoin="round" />
+        ${{cumSeries.map((p, i) => `<circle cx="${{xFor(i).toFixed(1)}}" cy="${{yFor(p.cum).toFixed(1)}}" r="2.5" fill="${{lineStroke}}" />`).join("")}}
+      </svg>`;
+    }}
+
+    // Per-bucket summary table.
+    const mkRow = (rows, lbl) => {{
+      if (!rows.length) return `<tr><td>${{lbl}}</td><td class="num" colspan="5">—</td></tr>`;
+      const rn = rows.length, rw = rows.filter(c => c.won).length;
+      const rStaked = rn * SIM_STAKE;
+      const rNet = rows.reduce((s, c) => s + c.simPnl, 0);
+      const rRoi = rStaked > 0 ? rNet / rStaked : 0;
+      const nCls = rNet > 0.01 ? "pos" : rNet < -0.01 ? "neg" : "";
+      const rCls = rRoi > 0.001 ? "pos" : rRoi < -0.001 ? "neg" : "";
+      return `<tr>
+        <td>${{lbl}}</td>
+        <td class="num">${{rn}}</td>
+        <td class="num">${{rw}} (${{(rw/rn*100).toFixed(0)}}%)</td>
+        <td class="num">$${{rStaked.toFixed(0)}}</td>
+        <td class="num ${{nCls}}">${{rNet >= 0 ? "+" : ""}}$${{rNet.toFixed(0)}}</td>
+        <td class="num ${{rCls}}">${{rRoi >= 0 ? "+" : ""}}${{(rRoi*100).toFixed(1)}}%</td>
+      </tr>`;
+    }};
+    const two = cards.filter(c => c.legCount === 2);
+    const three = cards.filter(c => c.legCount === 3);
+
+    return `<div class="sim-bankroll-wrap">
+      <div class="sim-bankroll-header">
+        <span class="sim-bankroll-label">Paper sim — $${{SIM_STAKE}}/card at UD payouts</span>
+        <span class="sim-bankroll-net ${{netCls}}">${{netPnl >= 0 ? "+" : ""}}$${{netPnl.toFixed(0)}} net · <span class="${{roiCls}}">${{roi >= 0 ? "+" : ""}}${{(roi*100).toFixed(1)}}% ROI</span></span>
+      </div>
+      <div class="sim-bankroll-meta">${{n}} cards · ${{wins}}/${{n}} hit (${{(wins/n*100).toFixed(0)}}%) · $${{totalStaked.toFixed(0)}} staked</div>
+      ${{svgHtml}}
+      <div class="table-scroll"><table class="sim-table">
+        <thead><tr><th></th><th class="num">Cards</th><th class="num">Wins</th><th class="num">Staked</th><th class="num">Net</th><th class="num">ROI</th></tr></thead>
+        <tbody>
+          ${{mkRow(two, "2-leg (3×)")}}
+          ${{mkRow(three, "3-leg (6×)")}}
+          ${{mkRow(cards, "All")}}
+        </tbody>
+      </table></div>
+    </div>`;
+  }}
+
   // Parlay track record — measures the suggester end-to-end (the actual
   // product, not the individual legs). Each day's top 5 two-leg + top 3
   // three-leg cards are snapshotted at slate time by bets/parlay_suggest.py
@@ -6447,6 +6596,7 @@ def _render_js() -> str:
       </select>
     </label>`
       : "";
+    const simBlock = renderSimBankroll(all);
     return `<section class="results-section">
       <div class="parlay-track-header">
         <h2>Parlay Track Record — last ${{maxDays}} days</h2>
@@ -6454,6 +6604,7 @@ def _render_js() -> str:
       </div>
       <p class="results-aux">Top 5 two-leg + top 3 three-leg cards each day, snapshotted at slate time, graded against actual K outcomes (1u flat). Units and ROI use the selected DFS payout schedule.</p>
       <div class="parlay-track-grid" id="parlay-track-grid">${{renderParlayTrackCards(all, _activeDFSProfile)}}</div>
+      ${{simBlock}}
       ${{actualBlock}}
     </section>`;
   }}
