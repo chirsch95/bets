@@ -3,19 +3,16 @@
 <plist version="1.0">
 <dict>
     <key>Label</key><string>com.bets.refresh-close</string>
-    <!-- Closing-line capture runs (2026-06-09): POST the local /refresh so
+    <!-- Closing-line capture runs: POST the local /refresh so
          the pipeline re-fetches odds and bets.main upserts the pre-game
-         book_close_<date>.json board. Times (CT, Air-local) sit just ahead
-         of the day's first-pitch waves so the LAST pre-game snapshot per
-         game lands near its close:
-           12:30 - early day games (~13:10 starts)
-           17:45 - early evening games (~18:10-18:40)
-           19:00 - prime-time games (~19:10-19:40)
-           21:00 - west-coast games (~21:10-21:40)
+         book_close_<date>.json board. Reduced from 4 runs to 1 on
+         2026-06-25 after downgrading Odds API back to the 500/mo plan.
+         Single 21:00 run captures west-coast closings; day/early-evening
+         games close earlier but the model is in data-gathering mode so
+         same-evening CLV is sufficient for analysis.
          /refresh holds the pipeline lock (no race with manual refreshes)
-         and auto-pushes like every other Air refresh. Odds credits are a
-         non-issue on the 20K/mo plan with skip-started/skip-covered
-         filtering. -fsS + max-time so a hung Flask can't strand curl. -->
+         and auto-pushes like every other Air refresh. -fsS + max-time so
+         a hung Flask can't strand curl. -->
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/curl</string>
@@ -28,9 +25,6 @@
     </array>
     <key>StartCalendarInterval</key>
     <array>
-        <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>30</integer></dict>
-        <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>45</integer></dict>
-        <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
         <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
     </array>
     <key>StandardOutPath</key><string>/Users/chadhirsch/Library/Logs/bets-refresh-close.out</string>

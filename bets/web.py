@@ -60,6 +60,12 @@ def _primary_calibration() -> tuple[float, float] | None:
 # plus re-adding the workflow step + server route is all you need.
 SHOW_HITTERS = False
 
+# Data-gathering mode: suppress actionable bet labels, parlay add-to-bets
+# handoffs, and picks-section framing. Model still runs, grading still runs,
+# CLV still captures — only the "you should bet this" UI is suppressed.
+# Flip to False to restore full bet-recommendation mode.
+DATA_ONLY_MODE = True
+
 # Edge bands. Mirror values used by the JS classifier — keep in sync with
 # live.py + parlay_suggest.py. Applied against CALIBRATED edge (cal_edge_v2)
 # under Path C — see pickEdge() helper in the JS below and project_path_c memory.
@@ -1100,6 +1106,17 @@ CSS = """
     text-align: center;
     color: var(--muted);
     font-size: 13px;
+  }
+  .picks-data-banner {
+    background: #1a2a1a;
+    border: 1px solid #2d4a2d;
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: #7ab87a;
+    text-align: center;
+    letter-spacing: 0.02em;
   }
   /* Bet badges on hero cards — one per open parlay this pitcher is in.
      Color follows the live state of THIS leg so a glance answers "is
@@ -3109,6 +3126,7 @@ def _render_js() -> str:
   const WATCH_MIN = {WATCH_EDGE_MIN};
   const INVESTIGATE = {INVESTIGATE_EDGE};
   const MIN_LINE_FOR_FOCUS = {MIN_LINE_FOR_FOCUS};
+  const DATA_ONLY = {"true" if DATA_ONLY_MODE else "false"};
   const RAW_BASE = "{raw_base}";
   const SHOW_HITTERS = {show_hitters_js};
   // v2 Platt calibration (a, b) baked in at gen time so the UD Lab tab can
@@ -3243,8 +3261,16 @@ def _render_js() -> str:
     return line !== null && line >= MIN_LINE_FOR_FOCUS;
   }}
 
-  function label(cls, dir) {{
-    if (cls === "focus" && dir) return `Bet <strong>${{dir.toUpperCase()}}</strong>`;
+  function label(cls, dir, edge) {{
+    if (cls === "focus" && dir) {{
+      if (DATA_ONLY) {{
+        const pct = edge !== undefined && edge !== null
+          ? (edge >= 0 ? "+" : "") + (edge * 100).toFixed(1) + "%"
+          : dir.toUpperCase();
+        return `<strong>${{pct}}</strong>`;
+      }}
+      return `Bet <strong>${{dir.toUpperCase()}}</strong>`;
+    }}
     if (cls === "investigate" && dir) return `Verify <strong>${{dir.toUpperCase()}}</strong>?`;
     if (cls === "noline") return "No line";
     return "—";
@@ -4079,7 +4105,7 @@ def _render_js() -> str:
       <td class="num">${{pct1(r.p_over)}}</td>
       <td class="num"${{novigTitle}}>${{pct1(r.novig_over)}}</td>
       <td class="num edge ${{dir}}">${{edgeStr}}</td>
-      <td class="badge"><span class="tag ${{tagCls}}">${{label(cls, dir)}}</span></td>
+      <td class="badge"><span class="tag ${{tagCls}}">${{label(cls, dir, edge)}}</span></td>
     </tr>`;
   }}
 
@@ -4306,17 +4332,24 @@ def _render_js() -> str:
     const focus = rows.filter(isBettableFocus)
       .sort((a, b) => Math.abs(pickEdge(b)) - Math.abs(pickEdge(a)));
 
+    const title = DATA_ONLY ? "Model Signals" : "Today's Picks";
+    const dataBanner = DATA_ONLY
+      ? `<div class="picks-data-banner">Data gathering mode — tracking model signals only, no bets being placed</div>`
+      : "";
+
     if (!focus.length) {{
       return `<section class="picks-hero">
-        <div class="picks-hero-title">Today's Picks</div>
+        <div class="picks-hero-title">${{title}}</div>
+        ${{dataBanner}}
         <div class="picks-empty">No actionable picks today — model edge is in the noise band on every line. See the full table below for context.</div>
       </section>`;
     }}
 
     return `<section class="picks-hero">
       <div class="picks-hero-title">
-        Today's Picks <span class="picks-hero-count">${{focus.length}} actionable</span>
+        ${{title}} <span class="picks-hero-count">${{focus.length}} in focus band</span>
       </div>
+      ${{dataBanner}}
       <div class="picks-grid">
         ${{focus.map(renderHeroPickCard).join("")}}
       </div>
@@ -4384,7 +4417,7 @@ def _render_js() -> str:
       dec_odds: r4(p.combinedDec),
       legs: p.legs.map(l => ({{ pid: l.pitcher_id, dir: l.dir, line: l.line }})),
     }};
-    const dataAttr = pendingLegs.length ? ""
+    const dataAttr = (pendingLegs.length || DATA_ONLY) ? ""
       : ` data-legs='${{legsAttr}}' data-card='${{escapeHTML(JSON.stringify(cardMeta))}}'`;
     const overlapBadge = p.overlapsTop2Leg
       ? `<div class="parlay-overlap-badge" title="Shares ${{escapeHTML(p.overlapsTop2Leg)}} with the top 2-leg ticket. 2026-05-15 audit: overlapping 3-leg picks went -78% ROI vs disjoint +22% (small sample). Disjoint rule dropped 2026-05-16 for visibility — bet consciously.">⚠ overlap</div>`
@@ -4550,10 +4583,14 @@ def _render_js() -> str:
     const twoLeg = twoResult.html;
     if (!twoLeg && !threeLegHtml) return "";
 
+    const parlayTitle = DATA_ONLY ? "Parlay Signals (data mode)" : "Parlay Suggestions";
+    const parlayNote = DATA_ONLY
+      ? "Data gathering — showing model signals only. Ranked by EV at UD payouts (3× / 6×) with calibrated probabilities · cards are not clickable in data mode"
+      : "Ranked by EV at UD payouts (3× / 6×) with calibrated probabilities · one leg per game · games within 3 hrs · capped per pitcher · 🚀 = with the 30% boost (cards kept if +EV boosted) · 3-legs marked ⚠ if they overlap the top 2-leg · verify prices on the UD Lab before betting";
     return `<section class="parlay-suggester">
       <div class="parlay-suggester-header">
-        <h3>Parlay Suggestions</h3>
-        <span class="parlay-note">Ranked by EV at UD payouts (3× / 6×) with calibrated probabilities · one leg per game · games within 3 hrs · capped per pitcher · 🚀 = with the 30% boost (cards kept if +EV boosted) · 3-legs marked ⚠ if they overlap the top 2-leg · verify prices on the UD Lab before betting</span>
+        <h3>${{parlayTitle}}</h3>
+        <span class="parlay-note">${{parlayNote}}</span>
       </div>
       ${{twoLeg}}
       ${{threeLegHtml}}
@@ -5472,7 +5509,7 @@ def _render_js() -> str:
       <td class="num">${{pct1(r.p_over)}}</td>
       <td class="num"${{novigTitle}}>${{pct1(r.novig_over)}}</td>
       <td class="num edge ${{dir}}">${{edgeStr}}</td>
-      <td class="badge"><span class="tag ${{tagCls}}">${{label(cls, dir)}}</span></td>
+      <td class="badge"><span class="tag ${{tagCls}}">${{label(cls, dir, edge)}}</span></td>
     </tr>`;
   }}
 
@@ -5507,7 +5544,7 @@ def _render_js() -> str:
     // "Our Pick" cell — mirrors slate-table tag styling so the user can
     // see at a glance what we recommended yesterday morning.
     const pickTagCls = `tag-${{cls}}` + (dir ? ` tag-dir-${{dir}}` : "");
-    const pickCell = `<td><span class="tag ${{pickTagCls}}">${{label(cls, dir)}}</span></td>`;
+    const pickCell = `<td><span class="tag ${{pickTagCls}}">${{label(cls, dir, edge)}}</span></td>`;
 
     // "Result" cell — verdict for focus picks (HIT/MISS), informational
     // OVER hit/UNDER hit for everything else. No-line stays muted.

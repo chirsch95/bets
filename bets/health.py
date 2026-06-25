@@ -47,11 +47,11 @@ HEALTH_STATE_PATH = DATA_DIR / "health_state.json"
 
 # Budget per source per day. After this many retries without recovery,
 # we alert once and stop — protects against runaway loops on auth
-# failures, expired keys, etc. Bumped from 3 to 5 on 2026-05-16 after
-# upgrading Odds API to the 20K/mo plan: free-tier credit anxiety is no
-# longer the binding constraint, so we can afford more aggressive
-# auto-healing on flaky days.
-RETRY_CAP = 5
+# failures, expired keys, etc. Lowered from 5 to 2 on 2026-06-25 after
+# downgrading Odds API back to the 500/mo plan: each pipeline run costs
+# 8–16 credits, so 5 retries could burn the full day's budget on one
+# staleness event.
+RETRY_CAP = 2
 
 # Active hours (local time). Outside this, staleness is recorded but
 # retries are deferred — no point burning Odds API credits at 3am.
