@@ -8773,7 +8773,7 @@ def _render_js() -> str:
       document.body.classList.add("loading");
     }}
 
-    const TRACK_DAYS = 14;
+    const TRACK_DAYS = 60;
     try {{
       const fetches = [
         fetchTodaysCSV("pitcher_ks"),
