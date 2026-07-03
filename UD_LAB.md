@@ -157,6 +157,10 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 
 ## Key constants / formulas
 
+- **Primary model edge = v2bc** (`cal_edge_v2bc`, promoted 2026-06-22;
+  graded surfaces completed 2026-07-02) — falls back to `cal_edge_v2` for
+  rows predating the v2bc shadow (pre-06-09), then raw edge (pre-05-11).
+  `pickEdge()` (JS) / `_pick_edge()` (Python) are the single routing points.
 - Focus edge band **[0.10, 0.15]** (floor raised from 0.065 on 2026-06-06);
   investigate ≥ 0.20; `MIN_LINE_FOR_FOCUS` 3.0.
 - Bet criterion (Path C): per-leg calibrated edge in [0.10, 0.15], ≥ 2 legs
@@ -175,6 +179,20 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
 
 ## Decisions (and why)
 
+- **One-bet-per-day boost hero (2026-07-02, $100 restart).** The
+  2026-07-02 critical review (`CRITICAL_REVIEW_2026-07-02.md`) reconfirmed
+  on 137 paid bets that unboosted standard-payout cash grades ≈ −7% while
+  boosted bets ran +16% — the payout structure (boost + multipliers + free
+  credits), not model-vs-market edge, is the profit source (CLV ≈ 0 on 27
+  matched legs). Chad restarted with a $100 bankroll and a one-bet-per-day
+  rule: **the boost-target card, $5, with the 30% boost — or no bet.** The
+  UD Lab's boost banner became a tappable hero (`udlab-hero`): names the
+  card, payout → boosted payout, win %, boosted EV, and the two no-bet
+  states ("boost spent → pass" when not cash-eligible; "no card clears the
+  bar → passing costs nothing"). Tapping the hero (or any card) prefills
+  the Bets form with stake $5 (`BOOST_STAKE`) and pre-types "30%" in the
+  boost field for the boost-target card. Cash/EDGE cards remain rendered
+  (the lanes still self-measure) but the hero is the headline decision.
 - **Three-bucket policy — boost floor 0.08 + FUN longshot bucket (2026-06-15).**
   Diagnosis (`finding_betting_drift`): post-6/06 tightening collapsed volume ~3×
   and killed the fun, while the ledger showed the cash grind netted ≈0 — ALL

@@ -2987,6 +2987,17 @@
   .udlab-boost-target { font-weight: 700; color: #d4a017; }
   .udlab-boost-banner { border: 1px solid var(--border); border-left: 3px solid #d4a017;
     border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 0.92em; }
+  /* "Today's one bet" hero — the boost banner promoted to the daily
+     decision (one-bet-per-day policy, 2026-07-02). */
+  .udlab-boost-banner.udlab-hero { border-width: 2px; border-left-width: 4px;
+    border-color: #d4a017; padding: 10px 14px; }
+  .udlab-boost-banner.udlab-hero.tappable { cursor: pointer; }
+  .udlab-boost-banner.udlab-hero.tappable:hover { background: rgba(212, 160, 23, 0.07); }
+  .udlab-hero-title { font-weight: 700; font-size: 1.05em; color: #d4a017; margin-bottom: 4px; }
+  .udlab-hero-card { font-weight: 600; font-size: 1.02em; margin-bottom: 2px; }
+  .udlab-hero-stats { font-size: 0.95em; margin-bottom: 4px; }
+  .udlab-hero-stats .pos { color: var(--green); }
+  .udlab-hero-note { font-size: 0.88em; color: var(--muted); }
   .udlab-pl-head { font-size: 0.85em; color: var(--muted); margin-bottom: 4px; }
   .udlab-pl-leg { font-size: 0.92em; padding: 2px 0; }
   .udlab-pl-head .pos { color: var(--green); }
@@ -3011,7 +3022,7 @@
   // recompute calibrated P(over) at a hand-entered Underdog line, matching
   // the production cal_edge_v2. null → no calibration fit yet; fall back to
   // raw Poisson (same as calibration.apply()).
-  const CAL_V2 = { a: 0.6039399636744076, b: 0.30461037550874526 };
+  const CAL_V2 = { a: 0.6152880187335668, b: 0.2988805245200487 };
   // Underdog power-play base multipliers by leg count (all-must-hit).
   // Standard = symmetric picks (no per-pick multiplier shown).
   const UD_PAYOUTS = { 2: 3, 3: 6, 4: 10, 5: 20 };
@@ -3030,6 +3041,11 @@
   // NOT the same thing as UD_PAYOUTS_BOOSTED above — that's UD's own
   // higher base for multiplier-priced entries; this is the promo on top.
   const UD_BOOST = 1.3;
+  // One-bet-per-day policy (2026-07-02 restart review): the daily play is
+  // the boost-target card at this stake, boosted, or no bet at all.
+  // Unboosted standard-payout cash graded ≈ −7% lifetime; the boost is the
+  // profit source. Prefilled into the Bets form on card tap.
+  const BOOST_STAKE = 5;
   function udEntryBase(k, anyPriced) {
     if (!anyPriced) return { base: UD_PAYOUTS[k], confirmed: true };
     if (UD_PAYOUTS_BOOSTED[k] != null)
@@ -4891,6 +4907,40 @@
     return `<div class="udlab-pl-col-title">${k}-leg longshot</div>${picked.map(udFunCard).join("")}`;
   }
 
+  // Shared tap-to-bet payload for a money card — used by the card itself
+  // AND the "Today's one bet" hero banner, so tapping either hands the
+  // exact same legs + tap-time snapshot (suggested_card provenance) to the
+  // Bets form. Returns "" while any leg's lineup is pending, which keeps
+  // the tap target un-clickable until everything posts.
+  function udCardDataAttr(x) {
+    const pendingLegs = x.legs.filter(l => l.lineupPending);
+    if (pendingLegs.length) return "";
+    const unpricedLegs = x.legs.filter(l => !l.priced);
+    // Line = the UD line — that's the number actually on the ticket — so
+    // the form's yellow "overridden" border correctly flags any divergence
+    // from the sportsbook slate line.
+    const formLegs = x.legs.map(l => ({
+      pitcher: l.pitcher,
+      pitcher_id: l.pitcher_id,
+      line: l.udLine,
+      ou: l.dir === "over" ? "O" : "U",
+    }));
+    // Tap-time card snapshot (2026-06-04): the card's claim — EV, win prob,
+    // payout, per-leg multipliers — exactly as displayed when tapped. Rides
+    // the handoff into the saved bet (suggested_card) so churn in later
+    // renders can never rewrite what the suggester promised at placement.
+    const r4 = v => v == null ? null : Math.round(v * 1e4) / 1e4;
+    const cardMeta = {
+      source: "ud_lab",
+      ev: r4(x.ev), ev_boost: r4(x.evBoost), prob: r4(x.prob), pay_mult: r4(x.payMult),
+      boost_target: !!x.boostTarget, cash_eligible: !!x.cashEligible, has_watch: !!x.hasWatch,
+      confirmed: !!x.confirmed, unpriced_legs: unpricedLegs.length,
+      legs: x.legs.map(l => ({ pid: l.pitcher_id, dir: l.dir, line: l.udLine,
+                               mult: r4(l.mult || 1), priced: !!l.priced, band: l.band || "core" })),
+    };
+    return ` data-legs='${escapeHTML(JSON.stringify(formLegs))}' data-card='${escapeHTML(JSON.stringify(cardMeta))}'`;
+  }
+
   function udParlayCard(x) {
     // △ caution (replaced ⏰ "place early" 2026-06-04). The old badge
     // watched for symmetric UD lines diverging from the sharp consensus —
@@ -4911,33 +4961,10 @@
     const lineupTip = pendingLegs.length
       ? "Waiting on lineups: " + pendingLegs.map(l => l.pitcher).join(", ")
       : "All lineups posted — tap to add this parlay to your bets";
-    // Cross-tab handoff (mirrors the sportsbook suggester's renderParlayCard):
-    // compact JSON legs for the Bets-form pre-populator. Line = the UD line —
-    // that's the number actually on the ticket — so the form's yellow
-    // "overridden" border correctly flags any divergence from the sportsbook
-    // slate line. Same lineup gating: data-legs is omitted while any leg's
-    // lineup is TBD, so the card stays un-clickable until everything posts.
-    const formLegs = x.legs.map(l => ({
-      pitcher: l.pitcher,
-      pitcher_id: l.pitcher_id,
-      line: l.udLine,
-      ou: l.dir === "over" ? "O" : "U",
-    }));
-    // Tap-time card snapshot (2026-06-04): the card's claim — EV, win prob,
-    // payout, per-leg multipliers — exactly as displayed when tapped. Rides
-    // the handoff into the saved bet (suggested_card) so churn in later
-    // renders can never rewrite what the suggester promised at placement.
-    const r4 = v => v == null ? null : Math.round(v * 1e4) / 1e4;
-    const cardMeta = {
-      source: "ud_lab",
-      ev: r4(x.ev), ev_boost: r4(x.evBoost), prob: r4(x.prob), pay_mult: r4(x.payMult),
-      boost_target: !!x.boostTarget, cash_eligible: !!x.cashEligible, has_watch: !!x.hasWatch,
-      confirmed: !!x.confirmed, unpriced_legs: unpricedLegs.length,
-      legs: x.legs.map(l => ({ pid: l.pitcher_id, dir: l.dir, line: l.udLine,
-                               mult: r4(l.mult || 1), priced: !!l.priced, band: l.band || "core" })),
-    };
-    const dataAttr = pendingLegs.length ? ""
-      : ` data-legs='${escapeHTML(JSON.stringify(formLegs))}' data-card='${escapeHTML(JSON.stringify(cardMeta))}'`;
+    // Cross-tab handoff + tap-time snapshot — shared builder (see
+    // udCardDataAttr above). Empty while any leg's lineup is TBD, so the
+    // card stays un-clickable until everything posts.
+    const dataAttr = udCardDataAttr(x);
     const legHtml = x.legs.map(l =>
       `<div class="udlab-pl-leg">${l.soft ? "★ " : ""}${escapeHTML(l.pitcher)}${l.lineupPending ? ' <span class="lineup-pending">TBD</span>' : ""} <strong>${l.dir.toUpperCase()} ${l.udLine}</strong>${l.mult && l.mult !== 1 ? " @" + l.mult + "×" : ""} · ${pct1(l.prob)}</div>`
     ).join("");
@@ -5019,22 +5046,39 @@
     const plBody = (two || three)
       ? `<div class="udlab-pl-grid"><div>${two}</div><div>${three}</div></div>`
       : `<p class="muted">No positive-EV UD parlays from the lines entered yet.</p>`;
-    // Daily boost-allocation verdict. One line that answers "where does
-    // today's 30% boost go, and should I bet at all without it?"
+    // ── "Today's one bet" hero ────────────────────────────────────────
+    // One-bet-per-day policy (2026-07-02 restart review): the daily play
+    // is the boost-target card, $BOOST_STAKE, WITH the 30% boost — or no
+    // bet at all. The critical review found unboosted standard-payout cash
+    // graded ≈ −7% lifetime while all realized profit came from the boost
+    // + free credits, so the banner IS the decision, not a footnote: it
+    // names the card, the stake, and the no-bet states (boost already
+    // spent / nothing qualifies). Tappable like a card — same handoff.
     const allCards = [...sel.two, ...sel.three];
     let boostBanner = "";
     if (allCards.length) {
       const best = allCards.find(x => x.boostTarget) || allCards[0];
       const legsTxt = best.legs.map(l =>
         `${l.pitcher} ${l.dir.toUpperCase()} ${l.udLine}`).join(" + ");
+      const pending = best.legs.filter(l => l.lineupPending);
+      const heroAttr = udCardDataAttr(best);
+      const tapTxt = pending.length
+        ? `⏳ waiting on lineups (${escapeHTML(pending.map(l => l.pitcher).join(", "))}) — bet only after they post`
+        : `tap to add it ($${BOOST_STAKE} · tagged boost)`;
       const cashTxt = best.cashEligible
-        ? `also +EV unboosted (${(best.ev * 100).toFixed(1)}%)`
-        : best.hasWatch
-          ? `<strong>has a 0.08–0.10 watch leg → boost or free credit only</strong>`
-          : `<strong>without the boost it's ${(best.ev * 100).toFixed(1)}% → pass unless boosted or free</strong>`;
-      boostBanner = `<div class="udlab-boost-banner">🎯 <strong>Today's 30% boost:</strong> ${escapeHTML(legsTxt)} — EV <span class="pos">+${(best.evBoost * 100).toFixed(1)}%</span> boosted · ${cashTxt} · free credits play the same card (house money — any card is +EV, this one extracts the most).</div>`;
+        ? `boost already spent? it's still +EV plain (+${(best.ev * 100).toFixed(1)}%) — or just pass`
+        : `<strong>boost already spent? pass</strong> — this card is not playable plain (${(best.ev * 100).toFixed(1)}%)`;
+      boostBanner = `<div class="udlab-boost-banner udlab-hero${heroAttr ? " tappable" : ""}"${heroAttr}>
+        <div class="udlab-hero-title">🎯 Today's one bet — $${BOOST_STAKE} with the 30% boost</div>
+        <div class="udlab-hero-card">${escapeHTML(legsTxt)}</div>
+        <div class="udlab-hero-stats">${best.confirmed ? "" : "~"}${best.payMult.toFixed(2)}× → <strong>${(best.payMult * UD_BOOST).toFixed(2)}× boosted</strong> · win ${pct1(best.prob)} · EV <span class="pos">+${(best.evBoost * 100).toFixed(1)}%</span> boosted</div>
+        <div class="udlab-hero-note">${cashTxt} · free credits play this same card · ${tapTxt}</div>
+      </div>`;
     } else {
-      boostBanner = `<div class="udlab-boost-banner muted">No card clears the bar today, even with the 30% boost — <strong>pass</strong>. Skipped bets cost nothing.</div>`;
+      boostBanner = `<div class="udlab-boost-banner udlab-hero">
+        <div class="udlab-hero-title">🎯 No bet today</div>
+        <div class="udlab-hero-note muted">No card clears the bar, even with the 30% boost. Passing costs nothing — the one-bet-a-day rule includes zero-bet days, and skipping IS the winning play on days like this.</div>
+      </div>`;
     }
     // FUN bucket: free-credit / fun-budget longshots (looser pool — see
     // udBuildFunLegs). Rendered as a third section below the money parlays.
@@ -5408,7 +5452,13 @@
     const lineRaw = slateOrLive(r, "slate_line", "line");
     const line = f(lineRaw);
     const overHit = f(slateOrLive(r, "slate_over_hit", "over_hit"));
-    const edge = f(slateOrLive(r, "slate_edge", "edge"));
+    // Classify with the calibrated primary edge (v2bc since 2026-06-22 →
+    // v2 → raw for older rows) so the "Our Pick" tag matches what Today's
+    // Picks would actually have surfaced (graded-surface-parity rule).
+    const bcEdge = f(slateOrLive(r, "slate_cal_edge_v2bc", "cal_edge_v2bc"));
+    const calEdge = f(slateOrLive(r, "slate_cal_edge_v2", "cal_edge_v2"));
+    const rawEdge = f(slateOrLive(r, "slate_edge", "edge"));
+    const edge = bcEdge !== null ? bcEdge : (calEdge !== null ? calEdge : rawEdge);
     const cls = classify(edge);
     const dir = edge === null || edge === 0 ? "" : (edge > 0 ? "over" : "under");
     let errCls = "zero", errStr = "—";
@@ -5548,13 +5598,15 @@
             actual,
           });
         }
-        // Prefer calibrated cal_edge_v2 (slate-time when present) — same
-        // signal the live dashboard's pickEdge() uses for classification.
-        // Raw slate_edge/edge is the fallback for pre-Platt historical
-        // rows (pre-2026-05-11) that lack cal_edge_v2.
+        // Prefer calibrated v2bc (primary since 2026-06-22), slate-time when
+        // present — same signal the live dashboard's pickEdge() uses for
+        // classification (graded-surface-parity rule). Falls back to
+        // cal_edge_v2 for rows predating the v2bc shadow (pre-2026-06-09),
+        // then raw slate_edge/edge for pre-Platt rows (pre-2026-05-11).
+        const bcEdge = f(slateOrLive(r, "slate_cal_edge_v2bc", "cal_edge_v2bc"));
         const calEdge = f(slateOrLive(r, "slate_cal_edge_v2", "cal_edge_v2"));
         const rawEdge = f(slateOrLive(r, "slate_edge", "edge"));
-        const edge = calEdge !== null ? calEdge : rawEdge;
+        const edge = bcEdge !== null ? bcEdge : (calEdge !== null ? calEdge : rawEdge);
         if (edge === null) continue;
         const overHit = f(slateOrLive(r, "slate_over_hit", "over_hit"));
         if (overHit === null) continue;
@@ -8364,15 +8416,17 @@
 
       // Distill the day's actionable picks (focus band) into W-L-units
       // for the report-card header. Must match what Today's Picks
-      // surfaces — i.e. isBettableFocus: calibrated cal_edge_v2 in the
-      // focus band AND line >= MIN_LINE_FOR_FOCUS (gates out
-      // openers/relievers). Falls back to raw edge for pre-Platt
-      // historical rows (pre-2026-05-11) that lack cal_edge_v2.
+      // surfaces — i.e. isBettableFocus: calibrated primary edge (v2bc since
+      // 2026-06-22) in the focus band AND line >= MIN_LINE_FOR_FOCUS (gates
+      // out openers/relievers). Falls back to cal_edge_v2 for rows predating
+      // the v2bc shadow (pre-2026-06-09), then raw edge for pre-Platt
+      // historical rows (pre-2026-05-11).
       const dayPicks = [];
       for (const r of settled.rows) {
+        const bcEdge = f(slateOrLive(r, "slate_cal_edge_v2bc", "cal_edge_v2bc"));
         const calEdge = f(slateOrLive(r, "slate_cal_edge_v2", "cal_edge_v2"));
         const rawEdge = f(slateOrLive(r, "slate_edge", "edge"));
-        const edge = calEdge !== null ? calEdge : rawEdge;
+        const edge = bcEdge !== null ? bcEdge : (calEdge !== null ? calEdge : rawEdge);
         if (edge === null) continue;
         if (classify(edge) !== "focus") continue;
         const line = f(slateOrLive(r, "slate_line", "line"));
@@ -9123,6 +9177,15 @@
         : card.cash_eligible ? "focus"
         : "boost";
     }
+    // One-bet-per-day policy (2026-07-02): prefill the $5 stake so a tapped
+    // card is save-ready, and pre-type the boost note on the boost-target
+    // card. Both stay editable — free-entry stakes vary (the checkbox path
+    // is unaffected), and the boost note should be cleared if the boost is
+    // already spent and the card is being played plain.
+    const stakeEl = document.getElementById("bf-stake");
+    if (stakeEl && card) stakeEl.value = String(BOOST_STAKE);
+    const boostEl = document.getElementById("bf-boost");
+    if (boostEl && card) boostEl.value = card.boost_target ? "30%" : "";
     const form = document.getElementById("bets-form");
     if (form) form.scrollIntoView({ behavior: "smooth", block: "center" });
   }
@@ -9370,7 +9433,7 @@
     // the form handoff doesn't run on public, where there's nowhere to
     // hand off to. Document-level delegation survives every re-render.
     document.addEventListener("click", (e) => {
-      const card = e.target.closest(".parlay-card[data-legs], .udlab-pl-card[data-legs]");
+      const card = e.target.closest(".parlay-card[data-legs], .udlab-pl-card[data-legs], .udlab-boost-banner[data-legs]");
       if (!card || !isBets()) return;
       handleAddParlayToBets(card.dataset.legs || "[]", card.dataset.card || "");
     });
