@@ -4445,49 +4445,25 @@
     };
 
     const twoResult = buildSection(2, TOP_TWO, "Top 2-leg parlays", null);
-    // Disjoint rule dropped 2026-05-16 — Chad wanted visibility into all
-    // possible 3-legs. Audit signal preserved by marking overlapping cards
-    // in renderParlayCard (see .parlay-overlap-badge). overlapsTop2Leg
-    // stores the shared pitcher's name (truthy) or "" (falsy) for templating.
-    const top2LegPids = new Set();
-    let top2LegByPid = {};
-    if (twoResult.picked.length) {
-      for (const l of twoResult.picked[0].legs) {
-        if (l.pitcher_id !== null && l.pitcher_id !== undefined) {
-          top2LegPids.add(l.pitcher_id);
-          top2LegByPid[l.pitcher_id] = l.pitcher;
-        }
-      }
-    }
-    const threeResult = buildSection(3, TOP_THREE, "Top 3-leg parlays", null);
-    for (const card of threeResult.picked) {
-      const shared = card.legs.find(l =>
-        l.pitcher_id !== null && l.pitcher_id !== undefined && top2LegPids.has(l.pitcher_id)
-      );
-      card.overlapsTop2Leg = shared ? (top2LegByPid[shared.pitcher_id] || shared.pitcher || "shared pitcher") : "";
-    }
-    // The HTML for the 3-leg section was rendered inside buildSection
-    // before overlap info existed — re-render so the badge appears.
-    const threeLegHtml = threeResult.picked.length
-      ? `<div class="parlay-section">
-          <div class="parlay-section-title">Top 3-leg parlays</div>
-          <div class="parlay-grid">${threeResult.picked.map(renderParlayCard).join("")}</div>
-        </div>`
-      : "";
+    // 2-LEG ONLY (2026-07-02 restart policy): paid 3-legs graded −49.9%
+    // lifetime, so the 3-leg section was retired from both suggestion
+    // surfaces (here and the UD Lab). parlay_suggest.py still writes
+    // three_leg snapshot rows so the retired section keeps grading as a
+    // shadow (same precedent as the 0.065 shadow floor). The ⚠ overlap
+    // badge left with it.
     const twoLeg = twoResult.html;
-    if (!twoLeg && !threeLegHtml) return "";
+    if (!twoLeg) return "";
 
     const parlayTitle = DATA_ONLY ? "Parlay Signals (data mode)" : "Parlay Suggestions";
     const parlayNote = DATA_ONLY
       ? "Data gathering — showing model signals only. Ranked by EV at UD payouts (3× / 6×) with calibrated probabilities · cards are not clickable in data mode"
-      : "Ranked by EV at UD payouts (3× / 6×) with calibrated probabilities · one leg per game · games within 3 hrs · capped per pitcher · 🚀 = with the 30% boost (cards kept if +EV boosted) · 3-legs marked ⚠ if they overlap the top 2-leg · verify prices on the UD Lab before betting";
+      : "2-leg only (3-leg cash retired 2026-07-02, −49.9% lifetime) · ranked by EV at UD payouts (3×) with calibrated probabilities · one leg per game · games within 3 hrs · capped per pitcher · 🚀 = with the 30% boost (cards kept if +EV boosted) · verify prices on the UD Lab before betting";
     return `<section class="parlay-suggester">
       <div class="parlay-suggester-header">
         <h3>${parlayTitle}</h3>
         <span class="parlay-note">${parlayNote}</span>
       </div>
       ${twoLeg}
-      ${threeLegHtml}
     </section>`;
   }
 
@@ -4789,14 +4765,14 @@
       const shared = card.legs.find(l => topPids.has(l.pitcher_id));
       card.overlapsTop2Leg = shared ? (topByPid[shared.pitcher_id] || shared.pitcher || "shared pitcher") : "";
     }
-    // Boost allocation: the daily 30% boost belongs on the single card with
-    // the highest boosted EV across BOTH sections. Boost scales the payout,
-    // so this is also the highest expected-payout card, period — there is
-    // never a reason to split hairs between "best for cash" and "best for
-    // the boost"; they're the same card.
-    const all = [...two, ...three];
-    if (all.length) {
-      const best = all.reduce((a, b) => (b.evBoost > a.evBoost ? b : a));
+    // Boost allocation: the daily 30% boost belongs on the single 2-leg
+    // card with the highest boosted EV. 2-LEG ONLY (2026-07-02 restart
+    // policy): paid 3-legs graded −49.9% lifetime, so money suggestions —
+    // and therefore the boost — never go to a 3-leg card. 3-leg combos are
+    // still computed for the measurement journal and the FUN (free-credit)
+    // lane, but they can't be today's bet.
+    if (two.length) {
+      const best = two.reduce((a, b) => (b.evBoost > a.evBoost ? b : a));
       best.boostTarget = true;
     }
     return { two, three };
@@ -5027,8 +5003,11 @@
   function renderUDParlayCompare(rows) {
     const legs = udBuildLegs(rows);
     const sel = udSelectParlays(legs);  // no pitcher repeats across cards
+    // Money suggestions are 2-LEG ONLY (2026-07-02 restart policy — paid
+    // 3-legs −49.9% lifetime). sel.three keeps being computed so the
+    // Python twin's journal grades it as a shadow, but it isn't rendered
+    // here; 3-leg longshots live only in the FUN (free-credit) section.
     const two = udParlayColumn(sel.two, 2);
-    const three = udParlayColumn(sel.three, 3);
     const diff = udLegDiff(rows);
     const chip = (txt, cls) => `<span class="udlab-chip ${cls}">${escapeHTML(txt)}</span>`;
     const diffChips = [
@@ -5043,9 +5022,9 @@
           <div class="udlab-diff-legend"><span class="udlab-chip add">+ added on UD</span> <span class="udlab-chip flip">⇄ flipped</span> <span class="udlab-chip drop">− dropped on UD</span> · ${diff.same.length} unchanged</div>
         </div>`
       : `<div class="udlab-diff muted">Enter UD lines above to see how they change the picks.</div>`;
-    const plBody = (two || three)
-      ? `<div class="udlab-pl-grid"><div>${two}</div><div>${three}</div></div>`
-      : `<p class="muted">No positive-EV UD parlays from the lines entered yet.</p>`;
+    const plBody = two
+      ? `<div class="udlab-pl-grid"><div>${two}</div></div>`
+      : `<p class="muted">No positive-EV UD 2-leg parlays from the lines entered yet.</p>`;
     // ── "Today's one bet" hero ────────────────────────────────────────
     // One-bet-per-day policy (2026-07-02 restart review): the daily play
     // is the boost-target card, $BOOST_STAKE, WITH the 30% boost — or no
@@ -5054,10 +5033,10 @@
     // + free credits, so the banner IS the decision, not a footnote: it
     // names the card, the stake, and the no-bet states (boost already
     // spent / nothing qualifies). Tappable like a card — same handoff.
-    const allCards = [...sel.two, ...sel.three];
+    const twoCards = sel.two;  // 2-leg only — 3-leg cash retired 2026-07-02
     let boostBanner = "";
-    if (allCards.length) {
-      const best = allCards.find(x => x.boostTarget) || allCards[0];
+    if (twoCards.length) {
+      const best = twoCards.find(x => x.boostTarget) || twoCards[0];
       const legsTxt = best.legs.map(l =>
         `${l.pitcher} ${l.dir.toUpperCase()} ${l.udLine}`).join(" + ");
       const pending = best.legs.filter(l => l.lineupPending);
@@ -5094,7 +5073,7 @@
     </div>`;
     return `<div class="udlab-parlays">
       ${diffSummary}
-      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1 at UD payouts · cards that are only +EV with the 30% boost are kept and labeled <em>boost/free only</em> · 🚀 = EV with the boost · 3-legs marked ⚠ if they overlap the top 2-leg · paid 3-legs are −48% lifetime, prefer free credits there · payout = base × pick multipliers, priced base 3.5 (2-leg) / 6.5 (3-leg) · <strong>△ unpriced</strong> = leg(s) UD hasn't priced, edge rests on the model alone — lower confidence)</span></div>
+      <div class="udlab-pl-head-main">UD-aware parlays <span class="muted">(<strong>2-leg only</strong> — paid 3-legs graded −49.9% lifetime, so 3-leg cash was retired 2026-07-02; longshots live in the 🎁 free-credit section below · one leg per game · games within 3 hrs · capped per pitcher · ranked by EV per $1 at UD payouts · cards that are only +EV with the 30% boost are kept and labeled <em>boost/free only</em> · 🚀 = EV with the boost · payout = base × pick multipliers, priced base 3.5 · <strong>△ unpriced</strong> = leg(s) UD hasn't priced, edge rests on the model alone — lower confidence)</span></div>
       ${boostBanner}
       ${plBody}
       ${funSection}

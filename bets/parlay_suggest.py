@@ -292,12 +292,13 @@ def suggest_parlays(
     if len(legs) < 2:
         return {"two_leg": [], "three_leg": []}
     two_leg = _build_section(legs, 2, TOP_TWO)
-    # Disjoint rule dropped 2026-05-16 for visibility (Chad wanted to see
-    # all possible 3-legs, not just disjoint ones). The 2026-05-15 audit's
-    # finding (-78% ROI on overlapping 3-legs vs +22% on disjoint, small n)
-    # is preserved by tagging each card with `overlaps_top_2leg` for both
-    # the dashboard UI and the snapshot CSV — so we can re-test the audit
-    # under the corrected v2 model with a larger sample.
+    # three_leg is MEASUREMENT-ONLY since 2026-07-02: the dashboard retired
+    # 3-leg money suggestions (paid 3-legs −49.9% lifetime; restart policy is
+    # 2-leg boost-only), but the snapshot keeps writing/grading three_leg
+    # rows so the retired section stays evaluable — same precedent as the
+    # 0.065 shadow floor. Disjoint rule dropped 2026-05-16; the 2026-05-15
+    # audit finding (-78% ROI on overlapping 3-legs vs +22% disjoint, small
+    # n) is preserved via the `overlaps_top_2leg` tag.
     three_leg = _build_section(legs, 3, TOP_THREE)
     top2_pids: set[int] = set()
     top2_by_pid: dict[int, str] = {}

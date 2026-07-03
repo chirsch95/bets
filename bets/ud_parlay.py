@@ -273,10 +273,13 @@ def ud_select_parlays(legs):
 
     sel = dict(two=pick(2, 3), three=pick(3, 3))
     # Boost allocation (mirror web.py udSelectParlays): the daily 30% boost
-    # belongs on the single highest-boosted-EV card across both sections.
-    all_cards = sel["two"] + sel["three"]
-    if all_cards:
-        max(all_cards, key=lambda x: x["ev_boost"])["boost_target"] = True
+    # belongs on the single highest-boosted-EV 2-LEG card (2026-07-02
+    # restart policy — paid 3-legs graded −49.9% lifetime, so money
+    # suggestions and the boost never go to a 3-leg). `three` is still
+    # computed and journaled so the retired section keeps grading as a
+    # shadow; the UI no longer renders it as a money suggestion.
+    if sel["two"]:
+        max(sel["two"], key=lambda x: x["ev_boost"])["boost_target"] = True
     return sel
 
 

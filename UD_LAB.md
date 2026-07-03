@@ -193,6 +193,13 @@ through the slate-pin overlay. `data/` lives only on the Air (not the laptop).
   the Bets form with stake $5 (`BOOST_STAKE`) and pre-types "30%" in the
   boost field for the boost-target card. Cash/EDGE cards remain rendered
   (the lanes still self-measure) but the hero is the headline decision.
+  **2-leg only (same day, follow-up):** paid 3-legs graded −49.9% lifetime,
+  so 3-leg money suggestions were retired everywhere — the boost target and
+  hero come from the 2-leg pool only, and neither suggester renders a 3-leg
+  money column (Pitchers tab ⚠ overlap badge left with it). 3-leg combos
+  are still computed: `parlay_suggest.py` snapshots and the `ud_parlay.py`
+  journal keep grading them as a shadow (0.065-shadow-floor precedent), and
+  the FUN free-credit section still offers 3-leg longshots (house money).
 - **Three-bucket policy — boost floor 0.08 + FUN longshot bucket (2026-06-15).**
   Diagnosis (`finding_betting_drift`): post-6/06 tightening collapsed volume ~3×
   and killed the fun, while the ledger showed the cash grind netted ≈0 — ALL
