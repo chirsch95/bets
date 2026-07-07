@@ -1,2 +1,2 @@
 date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,ud_payout,ev_ud,ev_ud_boost,overlaps_top_2leg
-2026-07-07,two_leg,1,2,Hurston Waldrep,694462,over,4.5,100.0,0.659,0.478,Zac Gallen,668678,under,3.5,120.0,0.565,0.437,,,,,,,,340,4.4,0.372335,0.208886,0.163449,0.638274,3.0,0.117005,0.452106,
+2026-07-07,two_leg,1,2,Hurston Waldrep,694462,over,4.5,100.0,0.659,0.478,Zac Gallen,668678,under,3.5,125.0,0.575,0.437,,,,,,,,350,4.5,0.378925,0.208886,0.170039,0.705162,3.0,0.136775,0.477808,
