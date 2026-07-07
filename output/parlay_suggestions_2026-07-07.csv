@@ -1,0 +1,2 @@
+date,section,rank,leg_count,leg1_pitcher,leg1_pitcher_id,leg1_dir,leg1_line,leg1_odds,leg1_p_hit,leg1_novig_p,leg2_pitcher,leg2_pitcher_id,leg2_dir,leg2_line,leg2_odds,leg2_p_hit,leg2_novig_p,leg3_pitcher,leg3_pitcher_id,leg3_dir,leg3_line,leg3_odds,leg3_p_hit,leg3_novig_p,combined_amer,combined_dec,combined_hit,combined_novig,combined_edge,ev,ud_payout,ev_ud,ev_ud_boost,overlaps_top_2leg
+2026-07-07,two_leg,1,2,Hurston Waldrep,694462,over,4.5,100.0,0.659,0.478,Seth Lugo,607625,under,4.5,116.0,0.561,0.45,,,,,,,,332,4.32,0.369699,0.2151,0.154599,0.5971,3.0,0.109097,0.441826,
