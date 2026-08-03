@@ -1,6 +1,7 @@
 date,game_pk,game_datetime_utc,pitcher_id,pitcher,opp,is_home,season_k_pct,recent_k_pct,swstr_pct,opp_k_pct,opp_k_source,park_factor,matchup_k_pct,exp_bf,proj_ks_v0,proj_ks_v1,proj_ks_v2,proj_ks_v2bc,proj_ks_ml,opp_lineup_json,line,over_odds,over_book,under_odds,under_book,n_books,p_over,novig_over,edge,ev_over,ev_under,cal_p_over_v2,cal_edge_v2,cal_p_over_ml,cal_edge_ml,cal_p_over_v2bc,cal_edge_v2bc
 2026-08-03,824324,2026-08-04T00:40:00Z,693855,Ian Seymour,Colorado Rockies,False,0.279,0.316,0.14,0.228,team,0.92,0.274,28.0,6.76,8.35,7.68,7.68,,[],,,,,,0,,,,,,,,,,,
 2026-08-03,823520,2026-08-03T23:05:00Z,693645,Cam Schlittler,St. Louis Cardinals,True,0.307,0.339,0.151,0.203,team,1.0,0.289,24.0,7.35,6.92,6.92,6.92,,[],,,,,,0,,,,,,,,,,,
+2026-08-03,823431,2026-08-03T22:40:00Z,674841,Andrew Alvarez,Philadelphia Phillies,False,0.23,0.206,0.12,0.236,team,1.0,0.231,28.0,5.07,6.48,6.48,6.48,,[],,,,,,0,,,,,,,,,,,
 2026-08-03,823757,2026-08-03T23:40:00Z,687075,Brandon Sproat,Pittsburgh Pirates,True,0.241,0.223,0.115,0.24,team,1.0,0.249,21.5,5.38,5.37,5.37,5.37,,[],,,,,,0,,,,,,,,,,,
 2026-08-03,823431,2026-08-03T22:40:00Z,605400,Aaron Nola,Washington Nationals,True,0.233,0.24,0.125,0.213,team,1.0,0.223,23.3,5.42,5.18,5.18,5.18,,[],,,,,,0,,,,,,,,,,,
 2026-08-03,824647,2026-08-04T00:05:00Z,571510,Matthew Boyd,Los Angeles Dodgers,True,0.219,0.178,0.123,0.206,team,1.0,0.185,24.0,4.66,4.45,4.45,4.45,,[],,,,,,0,,,,,,,,,,,
