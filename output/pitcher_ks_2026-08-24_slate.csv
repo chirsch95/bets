@@ -1,4 +1,5 @@
 date,game_pk,game_datetime_utc,pitcher_id,pitcher,opp,is_home,season_k_pct,recent_k_pct,swstr_pct,opp_k_pct,opp_k_source,park_factor,matchup_k_pct,exp_bf,proj_ks_v0,proj_ks_v1,proj_ks_v2,proj_ks_v2bc,proj_ks_ml,opp_lineup_json,line,over_odds,over_book,under_odds,under_book,n_books,p_over,novig_over,edge,ev_over,ev_under,cal_p_over_v2,cal_edge_v2,cal_p_over_ml,cal_edge_ml,cal_p_over_v2bc,cal_edge_v2bc
+2026-08-24,824557,2026-08-24T23:40:00Z,664353,José Urquidy,Texas Rangers,True,0.314,0.0,0.139,0.23,team,1.0,0.321,23.0,7.23,7.37,7.37,7.37,,[],,,,,,0,,,,,,,,,,,
 2026-08-24,823992,2026-08-25T01:38:00Z,800048,Parker Messick,Los Angeles Angels,False,0.257,0.29,0.127,0.252,team,1.0,0.303,24.1,6.22,7.29,7.29,7.29,,[],,,,,,0,,,,,,,,,,,
 2026-08-24,823097,2026-08-25T01:40:00Z,554430,Zack Wheeler,Seattle Mariners,False,0.304,0.287,0.153,0.23,team,1.03,0.313,21.1,6.83,6.41,6.6,6.6,,[],,,,,,0,,,,,,,,,,,
 2026-08-24,822695,2026-08-24T22:45:00Z,676917,Cade Cavalli,Colorado Rockies,True,0.27,0.287,0.123,0.228,team,1.0,0.28,23.1,6.37,6.46,6.46,6.46,,[],,,,,,0,,,,,,,,,,,
@@ -14,6 +15,7 @@ date,game_pk,game_datetime_utc,pitcher_id,pitcher,opp,is_home,season_k_pct,recen
 2026-08-24,823828,2026-08-24T22:40:00Z,624133,Ranger Suarez,Miami Marlins,False,0.242,0.176,0.106,0.217,team,1.0,0.208,20.0,4.96,4.16,4.16,4.16,,[],,,,,,0,,,,,,,,,,,
 2026-08-24,823992,2026-08-25T01:38:00Z,691946,George Klassen,Cleveland Guardians,True,0.208,0.208,0.155,0.215,team,1.0,0.198,20.2,4.78,4.01,4.01,4.01,,[],,,,,,0,,,,,,,,,,,
 2026-08-24,824235,2026-08-24T22:40:00Z,664285,Framber Valdez,Tampa Bay Rays,True,0.181,0.172,0.095,0.187,team,1.0,0.147,25.4,4.08,3.74,3.74,3.74,,[],,,,,,0,,,,,,,,,,,
+2026-08-24,823183,2026-08-25T01:45:00Z,687931,Carson Whisenhunt,Cincinnati Reds,True,0.15,0.159,0.13,0.254,team,0.98,0.17,21.7,3.54,3.76,3.69,3.69,,[],,,,,,0,,,,,,,,,,,
 2026-08-24,825041,2026-08-25T01:40:00Z,518876,Merrill Kelly,Chicago Cubs,True,0.149,0.167,0.104,0.218,team,1.0,0.151,23.9,3.59,3.61,3.61,3.61,,[],,,,,,0,,,,,,,,,,,
 2026-08-24,822695,2026-08-24T22:45:00Z,663372,Ryan Feltner,Washington Nationals,False,0.157,0.114,0.115,0.217,team,1.0,0.135,22.7,3.21,3.06,3.06,3.06,,[],,,,,,0,,,,,,,,,,,
 2026-08-24,824964,2026-08-25T01:40:00Z,605488,Jeffrey Springs,Minnesota Twins,True,0.177,0.093,0.108,0.212,team,1.0,0.135,20.9,3.29,2.82,2.82,2.82,,[],,,,,,0,,,,,,,,,,,
