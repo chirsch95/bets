@@ -1,0 +1,9 @@
+date,game_pk,game_datetime_utc,pitcher_id,pitcher,opp,is_home,season_k_pct,recent_k_pct,swstr_pct,opp_k_pct,opp_k_source,park_factor,matchup_k_pct,exp_bf,proj_ks_v0,proj_ks_v1,proj_ks_v2,proj_ks_v2bc,proj_ks_ml,opp_lineup_json,line,over_odds,over_book,under_odds,under_book,n_books,p_over,novig_over,edge,ev_over,ev_under,cal_p_over_v2,cal_edge_v2,cal_p_over_ml,cal_edge_ml,cal_p_over_v2bc,cal_edge_v2bc
+2026-09-29,849849,2026-09-29T21:00:00Z,696146,Hagen Smith,Houston Astros,False,0.373,0.375,0.153,0.219,team,1.0,0.364,28.0,8.59,10.2,10.2,10.2,,[],,,,,,0,,,,,,,,,,,
+2026-09-29,849845,2026-09-29T18:00:00Z,666200,Jesús Luzardo,Atlanta Braves,False,0.303,0.336,0.148,0.216,team,1.0,0.304,25.8,7.27,7.85,7.85,7.85,,[],,,,,,0,,,,,,,,,,,
+2026-09-29,849851,2026-09-30T00:00:00Z,801139,Payton Tolle,New York Yankees,False,0.284,0.308,0.154,0.247,team,1.0,0.322,23.5,6.75,7.57,7.57,7.57,,[],,,,,,0,,,,,,,,,,,
+2026-09-29,849845,2026-09-29T18:00:00Z,519242,Chris Sale,Philadelphia Phillies,True,0.309,0.305,0.154,0.217,team,1.0,0.296,24.9,7.07,7.37,7.37,7.37,,[],,,,,,0,,,,,,,,,,,
+2026-09-29,849851,2026-09-30T00:00:00Z,693645,Cam Schlittler,Boston Red Sox,True,0.314,0.345,0.153,0.217,team,1.0,0.315,22.6,7.51,7.13,7.13,7.13,,[],,,,,,0,,,,,,,,,,,
+2026-09-29,849849,2026-09-29T21:00:00Z,805123,AJ Blubaugh,Chicago White Sox,True,0.234,0.0,0.137,0.241,team,1.0,0.252,23.0,5.39,5.79,5.79,5.79,,[],,,,,,0,,,,,,,,,,,
+2026-09-29,849843,2026-09-30T02:00:00Z,650633,Michael King,Chicago Cubs,True,0.21,0.198,0.114,0.211,team,1.02,0.196,23.9,4.72,4.59,4.68,4.68,,[],,,,,,0,,,,,,,,,,,
+2026-09-29,849843,2026-09-30T02:00:00Z,571510,Matthew Boyd,San Diego Padres,False,0.185,0.168,0.11,0.216,team,1.02,0.174,23.7,4.09,4.05,4.13,4.13,,[],,,,,,0,,,,,,,,,,,
